@@ -395,7 +395,7 @@ fn write_hooks(
             rules::loaders_name(&naming::pascal(&svc.name))
         ));
     }
-    if rules::service_has_rules(svc) {
+    if rules::service_has_clock(fc.tree, svc) {
         w.line("/** The server's clock, read once per request before the facts load. Default: the system clock. */");
         w.line(format!("clock?: (ctx: {ctx}) => Date;"));
     }
@@ -516,6 +516,9 @@ fn write_endpoint(
             "service: {},",
             ts_str(&format!("{package}/{}", svc.name))
         ));
+    }
+    for line in veld_emit_typescript::platform::endpoint_members(fc, svc, ep) {
+        w.line(line);
     }
     if let Some(p) = svc.principal.as_ref().filter(|_| fc.tree.uses_derived()) {
         let ty = veld_ir::Type::Decl(p.decl);
@@ -644,7 +647,7 @@ fn write_factory(
     } else {
         ""
     };
-    let ruled = rules::service_has_builder(svc);
+    let ruled = rules::service_has_builder(fc.tree, svc);
     if ruled {
         write_builder(w, fc, names, svc, diags);
     }

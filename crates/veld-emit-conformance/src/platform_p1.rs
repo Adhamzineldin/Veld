@@ -326,6 +326,125 @@ pub fn check_limits_are_refused(generator: &dyn DynGenerator) -> Result<(), Stri
     )
 }
 
+/// The generator must declare `visibility` as a server and generate the contracts with a
+/// `@visible` field; a client is not asked and still generates.
+///
+/// # Errors
+/// A description of the first role and contract for which the generator does not behave so.
+pub fn check_visibility_is_generated(generator: &dyn DynGenerator) -> Result<(), String> {
+    generated_by(
+        generator,
+        Feature::Visibility,
+        &compiled_visibility_contracts(),
+        |_| false,
+    )
+}
+
+/// The generator must declare `tenancy` as a server, and as a client when an endpoint returns a
+/// tenant-scoped model, and generate the contracts with a `@tenant` field.
+///
+/// # Errors
+/// A description of the first role and contract for which the generator does not behave so.
+pub fn check_tenancy_is_generated(generator: &dyn DynGenerator) -> Result<(), String> {
+    generated_by(
+        generator,
+        Feature::Tenancy,
+        &compiled_tenancy_contracts(),
+        client_reaches_tenant,
+    )
+}
+
+/// The generator must declare `audit` as a server and generate the contracts with an audited
+/// endpoint (an endpoint, or a service). The `ws` contract is not among them: it is refused with
+/// `E0801` at the endpoint whatever the generator declares ([`check_audited_ws_is_refused`]).
+///
+/// # Errors
+/// A description of the first role and contract for which the generator does not behave so.
+pub fn check_audit_is_generated(generator: &dyn DynGenerator) -> Result<(), String> {
+    let contracts: Vec<(Ir, u32)> = compiled_audit_contracts().into_iter().take(2).collect();
+    generated_by(generator, Feature::Audit, &contracts, |_| false)
+}
+
+/// A generator that declares `audit` must still answer `E0801`, at the endpoint, for an audited
+/// `ws` endpoint (`spec/platform.md` section 9.1), and make no files.
+///
+/// # Errors
+/// A description of the first role for which the generator does not behave so.
+pub fn check_audited_ws_is_refused(generator: &dyn DynGenerator) -> Result<(), String> {
+    let contracts = compiled_audit_contracts();
+    let Some((ir, line)) = contracts.get(2) else {
+        return Err("the contract of the audited ws endpoint is missing".to_string());
+    };
+    for role in generator.roles().iter().filter(|r| **r == Role::Server) {
+        let req = request(ir, *role);
+        match generator.generate_dyn(&req, &crate::options()) {
+            Err(d)
+                if !d.is_empty()
+                    && d.iter().all(|d| d.code == "E0801")
+                    && d.iter()
+                        .any(|d| d.origin.as_ref().map(|o| o.line) == Some(*line)) => {}
+            other => {
+                return Err(format!(
+                    "{} / line {line}: an audited ws endpoint was not refused at the endpoint: {other:?}",
+                    role.name()
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The generator must declare `limits` in every role and generate the contracts with a `@limit`.
+///
+/// # Errors
+/// A description of the first role and contract for which the generator does not behave so.
+pub fn check_limits_are_generated(generator: &dyn DynGenerator) -> Result<(), String> {
+    generated_by(
+        generator,
+        Feature::Limits,
+        &compiled_limit_contracts(),
+        |_| true,
+    )
+}
+
+/// A role that is asked about `feature` declares it, passes the gate and makes files; a client
+/// that is not asked still makes files and is not asked by the gate.
+fn generated_by(
+    generator: &dyn DynGenerator,
+    feature: Feature,
+    contracts: &[(Ir, u32)],
+    client_asked: fn(&Ir) -> bool,
+) -> Result<(), String> {
+    let name = format!("`{}`", feature.name());
+    for (ir, line) in contracts {
+        for role in generator.roles() {
+            let req = request(ir, *role);
+            let caps = generator.capabilities(*role);
+            let gate = check_capabilities(ir, &req, &caps);
+            let asked = *role != Role::Client || client_asked(ir);
+            if asked && !caps.supports(feature) {
+                return Err(format!("{}: does not declare {name}", role.name()));
+            }
+            if !gate.is_empty() {
+                return Err(format!(
+                    "{} / line {line}: the gate reported {gate:?}",
+                    role.name()
+                ));
+            }
+            match generator.generate_dyn(&req, &crate::options()) {
+                Ok(files) if !files.is_empty() => {}
+                other => {
+                    return Err(format!(
+                        "{} / line {line}: generate did not make files: {other:?}",
+                        role.name()
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 fn request(ir: &Ir, role: Role) -> GenRequest<'_> {
     GenRequest {
         ir,

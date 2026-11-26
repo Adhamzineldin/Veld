@@ -56,9 +56,11 @@ pub use messages::{
     compiled_messages_contract,
 };
 pub use platform_p1::{
-    check_audit_is_refused, check_limits_are_refused, check_tenancy_is_refused,
-    check_visibility_is_refused, compiled_audit_contracts, compiled_limit_contracts,
-    compiled_tenancy_contracts, compiled_visibility_contracts,
+    check_audit_is_generated, check_audit_is_refused, check_audited_ws_is_refused,
+    check_limits_are_generated, check_limits_are_refused, check_tenancy_is_generated,
+    check_tenancy_is_refused, check_visibility_is_generated, check_visibility_is_refused,
+    compiled_audit_contracts, compiled_limit_contracts, compiled_tenancy_contracts,
+    compiled_visibility_contracts,
 };
 pub use platform_p2::{
     check_flags_are_generated, check_flags_are_refused, check_slo_is_generated,

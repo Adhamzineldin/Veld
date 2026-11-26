@@ -49,6 +49,10 @@ interface Bounds {
   /** The compute function of a declaration with derived fields (see `deriveNode`). */
   derive?: DeriveFn;
   // #endif
+  // #if visibility
+  /** The generated function of a declaration with `@visible` fields (see `showNode`). */
+  show?: ShowFn;
+  // #endif
 }
 
 export interface FieldSchema {
@@ -1403,7 +1407,14 @@ async function prepare(
   const rules = ep.rules;
   if (rules === undefined) return null;
   const started = nowMicros();
+  // #endif
+  // #if endpoint_platform
+  const now = BigInt((hooks.platform?.at ?? hooks.clock?.(ctx) ?? new Date()).getTime());
+  // #endif
+  // #if endpoint_plain
   const now = BigInt((hooks.clock?.(ctx) ?? new Date()).getTime());
+  // #endif
+  // #if endpoint_rules
   const p = bound.value;
   const f: Record<string, unknown> = {};
   // #endif
@@ -2380,9 +2391,13 @@ export interface HandlerHooks {
   /** Called once per violated rule, on input (rejected) and on output (rejected or audited). */
   onRuleViolation?: (event: RuleViolationEvent) => void;
   // #endif
-  // #if endpoint_rules
+  // #if clocked
   /** The server's clock, read once per request before the facts load. Default: the system clock. */
   clock?: (ctx: RequestContext) => Date;
+  // #endif
+  // #if platform
+  /** What the platform features keep of the request that is running: set by the router core, never by the application. */
+  platform?: PlatformState;
   // #endif
   // #if outbox
   /** The application's outbox (`Outbox` of `runtime/events.ts`), required by an endpoint whose move emits. */
@@ -2436,6 +2451,14 @@ export interface ServerEndpoint extends EndpointSpec {
   // #if rules
   /** The rules digest of the service, sent as `Veld-Rules` on every response (section 9.7). */
   digest?: string;
+  // #endif
+  // #if platform
+  /** The signature of the principal's model, for an endpoint with auth in a service that has a principal: who "the caller" is. */
+  caller?: string;
+  // #endif
+  // #if visibility
+  /** An answer of the endpoint (a result, a declared error, a stream item) can reach a `@visible` field. */
+  visible?: boolean;
   // #endif
 }
 
@@ -2709,7 +2732,12 @@ function success(ep: ServerEndpoint, result: unknown, hooks: HandlerHooks): Veld
   return {
     status: ep.status,
     headers: { 'content-type': 'application/json' },
+    // #if visibility
+    body: JSON.stringify(toWire(ep.success, showSent(ep, ep.success, result, hooks))),
+    // #endif
+    // #if not_visibility
     body: JSON.stringify(toWire(ep.success, result)),
+    // #endif
   };
 }
 
@@ -2723,6 +2751,9 @@ function failure(err: unknown, ep: ServerEndpoint, ctx: RequestContext, std: Std
     // #if rules
     const refused = checkErrorRules(ep, declared, err.data, std, hooks);
     if (refused !== null) return refused;
+    // #endif
+    // #if visibility
+    (err as { data: unknown }).data = showSent(ep, declared.schema, err.data, hooks);
     // #endif
     // #if endpoint_rules
     if (err.violations.length > 0) {
@@ -2879,6 +2910,9 @@ async function runCore(
   // #if flags
   hooks = withFlagState(hooks);
   // #endif
+  // #if platform
+  hooks = platformOpen(hooks, ctx);
+  // #endif
   try {
     const bound = await guard(r, m, req, ctx, std, hooks, false);
     if (isResponse(bound)) return bound;
@@ -3012,7 +3046,143 @@ function statementOn(hooks: HandlerHooks, name: string, whenFailed: boolean): bo
   return reading === undefined ? false : reading === 'failed' ? whenFailed : reading === 'on';
 }
 // #endif
-// #if bounded
+// #if platform
+
+// ---------------------------------------------------------------------------
+// Platform phase P1: the caller, the clock and what a request keeps (spec/platform.md sections 2 to 5)
+// ---------------------------------------------------------------------------
+
+/** What the platform features keep of one request. The router core makes it; the application never sees it. */
+export interface PlatformState {
+  /** The one reading of the request's clock, taken when the request is matched. */
+  at?: Date;
+  /** The context of the request: the caller is `ctx.principal`. */
+  ctx?: RequestContext;
+  /** The wire paths `@visible` dropped from the answer, without the `$`. */
+  hidden: string[];
+  /** The parameters bound in step 4, in wire form. */
+  parameters?: Record<string, unknown>;
+  /** The facts loaded so far, in wire form. */
+  facts: Record<string, unknown>;
+}
+
+/** Who a response is for: the model of the caller (its signature) and the value the auth hook returned. */
+export interface Caller {
+  model: string;
+  value: unknown;
+}
+
+/** The caller of a request: only an endpoint with auth in a service with a principal has one. */
+function callerOf(ep: ServerEndpoint, ctx: RequestContext | undefined): Caller | undefined {
+  const who = ctx?.principal;
+  return ep.caller === undefined || who === undefined || who === null ? undefined : { model: ep.caller, value: who };
+}
+
+/** Keeps the context of the request and reads its clock, once: the first thing the pipeline does. */
+function platformOpen(hooks: HandlerHooks, ctx: RequestContext): HandlerHooks {
+  const state: PlatformState = hooks.platform ?? { hidden: [], facts: {} };
+  state.ctx = ctx;
+  try {
+    state.at = hooks.clock?.(ctx) ?? new Date();
+  } catch (err) {
+    state.at = new Date();
+    try {
+      hooks.onError?.(err, ctx);
+    } catch {
+      // A failing hook must not change the answer.
+    }
+  }
+  return hooks.platform === state ? hooks : { ...hooks, platform: state };
+}
+
+/** `a.b` and `[0]` paths without a `$`: the form of the `hidden` list of an audit event. */
+function joinPath(path: string, name: string): string {
+  return path === '' ? name : `${path}.${name}`;
+}
+// #endif
+// #if visibility
+
+// ---------------------------------------------------------------------------
+// Field visibility (spec/platform.md section 2)
+// ---------------------------------------------------------------------------
+
+/** A generated function: the source names of the `@visible` fields of one value that the caller may not see. */
+export type ShowFn = (self: never, caller: Caller | undefined, now: bigint) => string[];
+
+/**
+ * One `@visible` field: it is shown only to a caller of the model its expression was checked
+ * against, and only when `test` is true. A test that cannot be evaluated hides the field.
+ */
+export function visibleTo(caller: Caller | undefined, model: string, test: (user: never) => boolean): boolean {
+  if (caller === undefined || caller.model !== model) return false;
+  try {
+    return test(caller.value as never);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * A copy of `v` without the `@visible` fields the caller may not see, at any depth. Every field of
+ * a record is judged against the whole record, before any is dropped. A field the value does not
+ * have is not judged and not listed; one that is `null` is dropped and listed.
+ */
+function showNode(schema: Schema, v: unknown, path: string, caller: Caller | undefined, now: bigint, hidden: string[]): unknown {
+  const s = resolve(schema);
+  switch (s.k) {
+    case 'object': {
+      if (!isObject(v)) return v;
+      const drop = s.show === undefined ? [] : s.show(v as never, caller, now);
+      const out: Record<string, unknown> = { ...v };
+      for (const f of s.fields) {
+        const x = v[f.n];
+        if (x === undefined) continue;
+        const here = joinPath(path, f.w ?? f.n);
+        if (drop.includes(f.n)) {
+          delete out[f.n];
+          hidden.push(here);
+        } else {
+          out[f.n] = showNode(f.t, x, here, caller, now, hidden);
+        }
+      }
+      return out;
+    }
+    case 'union': {
+      const label = isObject(v) ? v[s.d] : undefined;
+      const arm = typeof label === 'string' && Object.prototype.hasOwnProperty.call(s.arms, label) ? s.arms[label] : undefined;
+      return arm === undefined ? v : showNode(arm, v, path, caller, now, hidden);
+    }
+    case 'list':
+      return Array.isArray(v) ? v.map((x, i) => showNode(s.of, x, `${path}[${i}]`, caller, now, hidden)) : v;
+    case 'map': {
+      if (!isObject(v)) return v;
+      const out: Record<string, unknown> = {};
+      for (const k of Object.keys(v)) out[k] = showNode(s.of, v[k], joinPath(path, k), caller, now, hidden);
+      return out;
+    }
+    case 'page':
+      return isObject(v) ? { ...v, items: showNode({ k: 'list', of: s.of }, v['items'], joinPath(path, 'items'), caller, now, hidden) } : v;
+    default:
+      return v;
+  }
+}
+
+/**
+ * What a caller is sent: `value`, an answer of type `schema` (a result, the data of a declared
+ * error, a stream item), without the fields the caller may not see. It runs after the output rules
+ * and after the tenant check, and the `ETag` was taken before. What it dropped is kept for the audit event.
+ */
+function showSent(ep: ServerEndpoint, schema: Schema | null, value: unknown, hooks: HandlerHooks): unknown {
+  if (ep.visible !== true || schema === null || value === undefined) return value;
+  const state = hooks.platform;
+  const hidden: string[] = [];
+  const now = BigInt((state?.at ?? new Date()).getTime());
+  const shown = showNode(schema, value, '', callerOf(ep, state?.ctx), now, hidden);
+  state?.hidden.push(...hidden);
+  return shown;
+}
+// #endif
+// #if run_fn
 type RunFn = (r: Route, m: RegExpExecArray, req: VeldRequest, std: StdSigs, hooks: HandlerHooks) => Promise<VeldResponse>;
 // #endif
 // #if timeouts
@@ -3723,7 +3893,12 @@ function sseItem(ep: ServerEndpoint, item: unknown, hooks: HandlerHooks): string
   // #if rules
   checkItemRules(ep, 'stream item', value, hooks);
   // #endif
+  // #if visibility
+  return sseFrame(canonicalOf(ep.success, showSent(ep, ep.success, value, hooks)), ev === null ? {} : ev.options);
+  // #endif
+  // #if not_visibility
   return sseFrame(canonicalOf(ep.success, value), ev === null ? {} : ev.options);
+  // #endif
 }
 
 async function* noFrames(): AsyncGenerator<string> {
@@ -3876,7 +4051,12 @@ function wsSession(
       // #if rules
       checkItemRules(ep, 'message', message, hooks);
       // #endif
+      // #if visibility
+      sock.send(`{"data":${canonicalOf(ep.success, showSent(ep, ep.success, message, hooks))}}`);
+      // #endif
+      // #if not_visibility
       sock.send(`{"data":${canonicalOf(ep.success, message)}}`);
+      // #endif
     },
     close: () => finish(1000, 'closed'),
   };
@@ -3894,6 +4074,9 @@ async function runWs(
   const ctx = contextOf(ep, req, wsHeaders(ep, req));
   // #if flags
   hooks = withFlagState(hooks);
+  // #endif
+  // #if platform
+  hooks = platformOpen(hooks, ctx);
   // #endif
   const incomingSchema = ep.params.find((p) => p.s === true)?.t;
   const inbox = new Queue<unknown>();

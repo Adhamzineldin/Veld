@@ -85,19 +85,44 @@ pub struct Gates {
     /// A flagged statement (`spec/platform.md` section 11): the `flags` regions and
     /// `runtime/flags.ts`.
     pub flags: bool,
+    /// A `@visible` field that a response of a server can reach (`spec/platform.md` section 2):
+    /// the `visibility` regions. They need the invariant helpers (`rules`), which the generated
+    /// `show` functions call.
+    pub visibility: bool,
+    /// A tenant-scoped value that a server loads or sends (`spec/platform.md` section 3): the
+    /// `tenancy` regions. The refusal is reported like an output violation, so they need `rules`.
+    pub tenancy: bool,
+    /// An audited endpoint of a server (`spec/platform.md` section 4): the `audit` regions.
+    pub audit: bool,
+    /// An endpoint with a `@limit` (`spec/platform.md` section 5): the client's wait on `429`.
+    pub limits: bool,
+    /// An endpoint of a server with a `@limit`: the limiter and its hooks.
+    pub limits_server: bool,
     /// The target has a typed runtime config (`spec/runtime-config.md`): a client takes its
     /// `baseUrl` from the options alone (no environment variable, no compiled-in address).
     pub runtime_config: bool,
 }
 
 impl Gates {
+    /// A server enforces at least one of the four features of platform phase P1: the `platform`
+    /// regions (the per-request state, the caller, the clock read once).
+    #[must_use]
+    pub fn platform(self) -> bool {
+        self.visibility || self.tenancy || self.audit || self.limits_server
+    }
+
     /// The same gates with everything they build on switched on.
     #[must_use]
     pub fn normalised(self) -> Self {
         let transitions = self.transitions || self.timed || self.outbox;
         let endpoint_rules = self.endpoint_rules || transitions || self.policies;
         Self {
-            rules: self.rules || endpoint_rules || self.rollout || self.derived,
+            rules: self.rules
+                || endpoint_rules
+                || self.rollout
+                || self.derived
+                || self.visibility
+                || self.tenancy,
             endpoint_rules,
             transitions,
             ..self
@@ -116,6 +141,11 @@ impl Gates {
             timeouts: self.timeouts || other.timeouts,
             slo: self.slo || other.slo,
             flags: self.flags || other.flags,
+            visibility: self.visibility || other.visibility,
+            tenancy: self.tenancy || other.tenancy,
+            audit: self.audit || other.audit,
+            limits: self.limits || other.limits,
+            limits_server: self.limits_server || other.limits_server,
             policies: self.policies || other.policies,
             rollout: self.rollout || other.rollout,
             version: self.version || other.version,
@@ -179,6 +209,31 @@ pub fn source_gated(gates: Gates) -> Result<String, GateError> {
         "not_flags_transitions" => g.transitions && !g.flags,
         "flags_endpoint_rules" => g.flags && g.endpoint_rules,
         "not_flags_endpoint_rules" => !g.flags && g.endpoint_rules,
+        // Platform phase P1 (`spec/platform.md` sections 2 to 5): each feature, the per-request state
+        // they share, and the places of the pipeline where a feature or two of them change a
+        // line that a build without them keeps.
+        "visibility" => g.visibility,
+        "not_visibility" => !g.visibility,
+        "tenancy" => g.tenancy,
+        "audit" => g.audit,
+        "limits" => g.limits,
+        "limits_server" => g.limits_server,
+        "platform" => g.platform(),
+        "not_platform" => !g.platform(),
+        // The clock of the hooks: endpoint rules read it, and so does every platform feature.
+        "clocked" => g.endpoint_rules || g.platform(),
+        "endpoint_platform" => g.endpoint_rules && g.platform(),
+        "endpoint_plain" => g.endpoint_rules && !g.platform(),
+        // `FactStep.schema`: the schema of a fact, for the derived fields, the tenant and the audit event.
+        "fact_schema" => g.endpoint_rules && (g.derived || g.tenancy || g.audit),
+        "facts_platform" => g.endpoint_rules && (g.tenancy || g.audit),
+        // What wraps `run` in the handler: a deadline, a metric, an audit event.
+        "run_fn" => g.timeouts || g.slo || g.audit,
+        "execs" => g.timeouts || g.slo || g.audit,
+        "not_execs" => !(g.timeouts || g.slo || g.audit),
+        "bounded_plain" => (g.timeouts || g.slo) && !g.audit,
+        "audit_unbounded" => g.audit && !(g.timeouts || g.slo),
+        "audit_bounded" => g.audit && (g.timeouts || g.slo),
         "timed_plain" => g.timed && !(g.timeouts || g.slo),
         "timed_bounded" => g.timed && (g.timeouts || g.slo),
         "policies" => g.policies,

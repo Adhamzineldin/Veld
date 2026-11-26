@@ -9,6 +9,7 @@ use veld_ir::{Const, Decl, DeclId, DeclKind, Enum, ErrorDecl, Model, Union};
 
 use crate::checks;
 use crate::derived;
+use crate::platform;
 use crate::tree::{FileCtx, Tree};
 use crate::types::ts_type;
 use crate::util::{add_file, doc_comment, literal, prop_key, ts_str, type_name};
@@ -166,6 +167,9 @@ fn write_model(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, m: &Model
     }
     derived::write_model_shapes(w, fc, d);
     w.blank();
+    if !d.is_event() && fc.tree.uses_visibility() && platform::has_visible(d) {
+        platform::write_show_fn(w, fc, d, &name);
+    }
     if checks::has_rules(d) || d.has_derived() {
         write_ruled_companion(w, fc, d, m);
         return;
@@ -180,6 +184,9 @@ fn write_model(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, m: &Model
         " {",
     );
     write_object_schema(w, fc, &m.fields);
+    if !d.is_event() {
+        platform::write_schema_members(w, fc, d);
+    }
     w.close_with("});");
 }
 
@@ -209,6 +216,9 @@ fn write_ruled_companion(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl,
         );
         write_object_schema(w, fc, &m.fields);
         w.line(format!("derive: {},", derived::fn_name(d)));
+        if !d.is_event() {
+            platform::write_schema_members(w, fc, d);
+        }
         w.close_with("});");
         return;
     }
@@ -222,6 +232,9 @@ fn write_ruled_companion(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl,
     w.line(format!("rules: {},", checks::fn_name(d)));
     if d.has_derived() {
         w.line(format!("derive: {},", derived::fn_name(d)));
+    }
+    if !d.is_event() {
+        platform::write_schema_members(w, fc, d);
     }
     w.close_with("}),");
     w.line(format!("ruleIds: {},", checks::ids_value(d)));
@@ -418,6 +431,9 @@ fn write_error(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, e: &Error
         derived::write_derive_fn(w, fc, d, &data);
         w.blank();
     }
+    if fc.tree.uses_visibility() && platform::has_visible(d) {
+        platform::write_show_fn(w, fc, d, &data);
+    }
     doc_comment(w, d.docs.as_deref(), d.deprecated.as_deref());
     let base = fc.rt("VeldError");
     let init = fc.rt("ErrorInit");
@@ -436,6 +452,7 @@ fn write_error(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, e: &Error
     if d.has_derived() {
         w.line(format!("derive: {},", derived::fn_name(d)));
     }
+    platform::write_schema_members(w, fc, d);
     w.close_with("};");
     w.blank();
     // What a handler raises: a derived field of the data is optional, the server computes it.

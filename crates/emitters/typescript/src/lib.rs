@@ -16,6 +16,7 @@ pub mod frameworks;
 pub mod machine;
 pub mod models;
 pub mod package;
+pub mod platform;
 pub mod policy;
 pub mod query;
 pub mod readme;

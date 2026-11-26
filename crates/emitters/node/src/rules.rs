@@ -47,8 +47,24 @@ pub fn service_is_idempotent(svc: &Service) -> bool {
 /// Whether the service gets an endpoints builder (and, with `testing`, a test handler): it has
 /// endpoint rules or an `@idempotent` endpoint.
 #[must_use]
-pub fn service_has_builder(svc: &Service) -> bool {
-    service_has_rules(svc) || service_is_idempotent(svc)
+pub fn service_has_builder(tree: &Tree<'_>, svc: &Service) -> bool {
+    service_has_rules(svc) || service_is_idempotent(svc) || service_uses_platform(tree, svc)
+}
+
+/// Whether the server enforces a feature of platform phase P1 (`spec/platform.md` sections 2 to
+/// 5) for an endpoint of the service: visibility, tenancy, the audit log or a limit.
+#[must_use]
+pub fn service_uses_platform(tree: &Tree<'_>, svc: &Service) -> bool {
+    svc.endpoints
+        .iter()
+        .any(|ep| veld_emit_typescript::platform::endpoint_uses_platform(tree, ep))
+}
+
+/// Whether the hooks of the service take a clock: endpoint rules read it, and so does every
+/// feature of platform phase P1.
+#[must_use]
+pub fn service_has_clock(tree: &Tree<'_>, svc: &Service) -> bool {
+    service_has_rules(svc) || service_uses_platform(tree, svc)
 }
 
 /// The flags an endpoint may touch (`spec/platform.md` section 11): those of its own `require` and

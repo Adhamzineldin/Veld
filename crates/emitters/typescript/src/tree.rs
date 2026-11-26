@@ -37,6 +37,11 @@ pub struct Tree<'a> {
     timeouts: bool,
     slo: bool,
     flags: bool,
+    visibility: bool,
+    tenancy: bool,
+    audit: bool,
+    limits: bool,
+    limits_server: bool,
     events: bool,
     runtime_config: bool,
     decls: Vec<DeclId>,
@@ -92,6 +97,7 @@ impl<'a> Tree<'a> {
         let idempotency = endpoints().any(|ep| ep.idempotency.is_some());
         let timeouts = endpoints().any(|ep| ep.timeout_ms.is_some());
         let flags = uses_flags(ir, &set, &services);
+        let limits = endpoints().any(|ep| ep.limit.is_some());
         Self {
             ir,
             root: root.to_string(),
@@ -112,6 +118,11 @@ impl<'a> Tree<'a> {
             timeouts,
             slo: false,
             flags,
+            visibility: false,
+            tenancy: false,
+            audit: false,
+            limits,
+            limits_server: false,
             events: false,
             runtime_config: false,
             decls: set.into_iter().collect(),
@@ -149,6 +160,7 @@ impl<'a> Tree<'a> {
                     .is_some_and(|t| !t.emits.is_empty())
             })
         });
+        self.platform_p1();
         self.derived = self.derived || set.iter().any(|id| ir.decl(*id).has_derived());
         self.rules =
             self.rules || self.derived || set.iter().any(|id| !ir.decl(*id).rules().is_empty());
@@ -159,6 +171,78 @@ impl<'a> Tree<'a> {
         self.flags = self.flags || uses_flags(ir, &set, &self.services);
         self.decls = set.into_iter().collect();
         self
+    }
+
+    /// The server-only gates of platform phase P1 (`spec/platform.md` sections 2 to 5): what the
+    /// answers of the endpoints reach, and which endpoints are audited or limited.
+    fn platform_p1(&mut self) {
+        let ir = self.ir;
+        let eps: Vec<&veld_ir::Endpoint> = self
+            .services
+            .iter()
+            .flat_map(|s| ir.service(*s).endpoints.iter())
+            .collect();
+        let answers = |ep: &veld_ir::Endpoint| -> Vec<veld_ir::Type> {
+            ep.success
+                .ty
+                .iter()
+                .cloned()
+                .chain(ep.errors.iter().map(|e| veld_ir::Type::Decl(e.decl)))
+                .collect()
+        };
+        self.visibility = eps
+            .iter()
+            .any(|ep| answers(ep).iter().any(|t| ir.type_reaches_visible(t)));
+        self.tenancy = eps
+            .iter()
+            .any(|ep| answers(ep).iter().any(|t| ir.type_reaches_tenant(t)))
+            || ir
+                .fact_type_decls(&self.services)
+                .into_iter()
+                .any(|id| ir.decl(id).tenant_field().is_some());
+        self.audit = eps.iter().any(|ep| ep.audited && !ep.success.stream);
+        self.limits_server = eps.iter().any(|ep| ep.limit.is_some());
+    }
+
+    /// Whether a response of a server tree can hold a `@visible` field (`spec/platform.md`
+    /// section 2): the `visibility` regions, the `show` functions of the models and the
+    /// `visible` member of the endpoint descriptions.
+    #[must_use]
+    pub fn uses_visibility(&self) -> bool {
+        self.visibility
+    }
+
+    /// Whether a response or a fact of a server tree can hold a tenant-scoped value
+    /// (`spec/platform.md` section 3): the `tenancy` regions.
+    #[must_use]
+    pub fn uses_tenancy(&self) -> bool {
+        self.tenancy
+    }
+
+    /// Whether a server tree has an audited endpoint (`spec/platform.md` section 4): the `audit`
+    /// regions.
+    #[must_use]
+    pub fn uses_audit(&self) -> bool {
+        self.audit
+    }
+
+    /// Whether an endpoint of the tree has a `@limit` (`spec/platform.md` section 5): the client
+    /// waits and sends again on `429`.
+    #[must_use]
+    pub fn uses_limits(&self) -> bool {
+        self.limits
+    }
+
+    /// Whether an endpoint of a server tree has a `@limit`: the limiter and its hooks.
+    #[must_use]
+    pub fn uses_limits_server(&self) -> bool {
+        self.limits_server
+    }
+
+    /// Whether any of the four features of platform phase P1 is enforced by this server tree.
+    #[must_use]
+    pub fn uses_platform(&self) -> bool {
+        self.visibility || self.tenancy || self.audit || self.limits_server
     }
 
     /// Whether a declaration or an endpoint of the tree has a flagged statement (`spec/platform.md`
@@ -232,6 +316,11 @@ impl<'a> Tree<'a> {
             timeouts: self.timeouts,
             slo: self.slo,
             flags: self.flags,
+            visibility: self.visibility,
+            tenancy: self.tenancy,
+            audit: self.audit,
+            limits: self.limits,
+            limits_server: self.limits_server,
             runtime_config: self.runtime_config,
         }
     }

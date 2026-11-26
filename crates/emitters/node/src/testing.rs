@@ -44,13 +44,13 @@ pub fn emit(files: &mut FileSet, tree: &Tree<'_>, testing: bool) -> Result<(), V
     }
     for sid in &tree.services {
         let svc = tree.ir.service(*sid);
-        if !service_has_builder(svc) && svc.subscriptions.is_empty() {
+        if !service_has_builder(tree, svc) && svc.subscriptions.is_empty() {
             continue;
         }
         let module = module(tree, svc);
         let mut fc = FileCtx::new(tree, &module);
         let mut w = CodeWriter::new();
-        if service_has_builder(svc) {
+        if service_has_builder(tree, svc) {
             write_handler(&mut w, &mut fc, svc);
         } else {
             write_events_only_handler(&mut w, &mut fc, svc);
@@ -66,7 +66,11 @@ pub fn emit(files: &mut FileSet, tree: &Tree<'_>, testing: bool) -> Result<(), V
 /// of the principal's model when the production hooks are typed that way (`spec/rules.md`
 /// section 11.1), the plain JSON otherwise.
 fn decoded_principal(fc: &mut FileCtx<'_, '_>, svc: &Service) -> String {
-    let Some(p) = svc.principal.as_ref().filter(|_| fc.tree.uses_policies()) else {
+    let Some(p) = svc
+        .principal
+        .as_ref()
+        .filter(|_| fc.tree.uses_policies() || fc.tree.uses_platform())
+    else {
         return "principal".to_string();
     };
     let schema = schema_expr(fc, &Type::Decl(p.decl), &Constraints::default());
@@ -378,7 +382,7 @@ fn inner_handler(
     completes: bool,
 ) -> String {
     let ctx = fc.rt("RequestContext");
-    let mut clock = if fc.tree.uses_endpoint_rules() {
+    let mut clock = if fc.tree.uses_endpoint_rules() || fc.tree.uses_platform() {
         format!(", clock: (ctx: {ctx}) => prime(ctx)")
     } else {
         String::new()
