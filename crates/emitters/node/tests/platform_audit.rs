@@ -6,15 +6,11 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod common;
 
-use std::collections::BTreeMap;
-
 use common::toolchain::*;
 use common::*;
 use serde_json::json;
 use veld_codegen::{DynGenerator, GenRequest, Role};
-use veld_compiler::{CompileInput, PackageInput, SourceFile, compile};
 use veld_emit_node::Node;
-use veld_ir::PackageKind;
 
 const CONTRACT: &str = "tests/toolchain/contract/platform_p1/audit.veld";
 const GOLDEN_CONTRACT: &str = "tests/wire/audit/contract.veld";
@@ -22,31 +18,12 @@ const GOLDEN_CASES: &str = "tests/wire/audit/cases.json";
 const REDACTION_CONTRACT: &str = "tests/wire/redaction/contract.veld";
 const REDACTION_CASES: &str = "tests/wire/redaction/cases.json";
 
-/// Compiles `text` as the file `t.veld` of the package `bookings`: the contract of the audit
-/// goldens, whose operation signatures the expected events hold.
-fn compile_golden(text: String) -> veld_ir::Ir {
-    let out = compile(&CompileInput {
-        packages: vec![PackageInput {
-            name: "bookings".into(),
-            kind: PackageKind::Service,
-            files: vec![SourceFile {
-                path: "t.veld".into(),
-                text,
-            }],
-            base_url: None,
-        }],
-        consumes: BTreeMap::new(),
-    });
-    assert!(out.ir.is_some(), "{}", out.render());
-    out.ir.unwrap()
-}
-
 /// The 17 cases of `tests/wire/audit/cases.json` through the production handler with the stubs of
 /// each case; the case of the limiter is not run (the contract has no `@limit`).
 #[test]
 fn every_case_of_the_audit_goldens_gives_the_event_of_the_reference() {
     let Some(tsc) = tsc_path() else { return };
-    let ir = compile_golden(std::fs::read_to_string(repo_root().join(GOLDEN_CONTRACT)).unwrap());
+    let ir = compile_as_t(std::fs::read_to_string(repo_root().join(GOLDEN_CONTRACT)).unwrap());
     for (edition, _) in TARGETS {
         let guard = scratch("audit-goldens-");
         let work = guard.path();

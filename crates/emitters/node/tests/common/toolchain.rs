@@ -43,6 +43,29 @@ pub fn compile_text(text: String) -> Ir {
     out.ir.unwrap_or_else(|| unreachable!())
 }
 
+/// Compiles `text` as the file `t.veld` of the package `bookings`: the way the wire goldens of
+/// the audit and the limits are compiled, whose operation signatures they hold.
+pub fn compile_as_t(text: String) -> Ir {
+    let out = compile(&CompileInput {
+        packages: vec![PackageInput {
+            name: "bookings".into(),
+            kind: PackageKind::Service,
+            files: vec![SourceFile {
+                path: "t.veld".into(),
+                text,
+            }],
+            base_url: None,
+        }],
+        consumes: BTreeMap::new(),
+    });
+    assert!(
+        out.ir.is_some(),
+        "the contract failed to compile:\n{}",
+        out.render()
+    );
+    out.ir.unwrap_or_else(|| unreachable!())
+}
+
 pub fn toolchain_dir() -> PathBuf {
     repo_root().join("tests/toolchain/ts")
 }
