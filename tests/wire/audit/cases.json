@@ -572,14 +572,14 @@
             "private": "x"
           }
         ],
-        "total": 1,
+        "total": "1",
         "page": 1,
         "size": 1
       },
       "limiter": null,
       "status": 200,
       "error": null,
-      "event": "{\"facts\":{},\"hidden\":[\"items[0].guest.phone\",\"items[0].private\"],\"operation\":\"veld:bookings/Bookings.pageBookings@ce55ca719ce5fce6\",\"outcome\":{\"status\":200},\"parameters\":{},\"principal\":{\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"roles\":[]},\"redacted\":[\"principal.email\",\"result.items[0].guest.name\"],\"result\":{\"items\":[{\"guest\":{\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000002\"},\"id\":\"5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e22\",\"status\":\"pending\",\"total\":\"120.00\",\"version\":3}],\"page\":1,\"size\":1,\"total\":1},\"time\":\"2026-06-10T12:00:00Z\"}"
+      "event": "{\"facts\":{},\"hidden\":[\"items[0].guest.phone\",\"items[0].private\"],\"operation\":\"veld:bookings/Bookings.pageBookings@ce55ca719ce5fce6\",\"outcome\":{\"status\":200},\"parameters\":{},\"principal\":{\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"roles\":[]},\"redacted\":[\"principal.email\",\"result.items[0].guest.name\"],\"result\":{\"items\":[{\"guest\":{\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000002\"},\"id\":\"5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e22\",\"status\":\"pending\",\"total\":\"120.00\",\"version\":3}],\"page\":1,\"size\":1,\"total\":\"1\"},\"time\":\"2026-06-10T12:00:00Z\"}"
     },
     {
       "name": "a created booking",
