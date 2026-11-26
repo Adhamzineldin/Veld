@@ -187,6 +187,22 @@ Built as drafted; each point below fills a gap or fixes a form the draft could n
 - **`veld diff`.** `@tenant` added, removed or moved to another field: possibly breaking (`tenant_added`, `tenant_removed`, `tenant_changed`). Removing it is possibly breaking because a consumer may rely on the isolation the old contract promised.
 - **Clients.** The gate does not ask a client about `tenancy`.
 
+**The audit log (section 4)**
+
+- **Where it stands.** On an endpoint, or on a service for its endpoints. It takes no argument and is written once (`E0602`). A service's `@audited` skips an endpoint that streams (`sse`, `ws`); an endpoint's own `@audited` is kept in the IR whatever the endpoint is, so that a generator can refuse it: **a generator that declares `audit` MUST answer `E0801` for an audited endpoint that streams or is a `ws` endpoint**, at the endpoint.
+- **The clock.** The clock is read once per request, when the request is matched. The audit event's `time`, the `now` of the rules and the clock of visibility are that one reading, so a `401` has a time too.
+- **What an event holds when a request ends early.** Every member is there in every event except `principal` and `result`:
+  - `parameters` is an object: the parameters bound in step 4, by name, with their defaults; `{}` for a request that ended before step 4 had passed (`401`, `429`, a body or a header of the wrong shape). A `422` from an invariant of step 5 has them.
+  - `facts` is an object: the facts loaded when the request ended, in wire form with their defaults and derived fields; an optional fact that was absent, and a fact of another tenant (not found), are not there. `{}` before the first.
+  - `hidden` and `redacted` are arrays, empty when there is nothing to list, sorted by their bytes, without duplicates.
+  - `principal` is absent when authentication failed and for an endpoint with no auth; otherwise it is what the auth hook returned, with its `@pii` and `@secret` fields left out.
+  - `result` is the body of the answer as it was sent: the success value (absent for a `204`), or the data of an error that the contract declares itself. An error of the prelude (`NotFound`, `ValidationError`, `Forbidden`, `InvalidTransition`, `PreconditionFailed`, `TooManyRequests`, `Internal`, …) has no `result`: its detail is not for a log. A `500` that replaced a success has none either.
+  - `outcome` is `{ "status": n }`, with `"error": "<name>"` when the answer is an error of any kind.
+- **Paths.** `hidden` is written without the `$`, from the result: `guestPhone`, `items[0].guestPhone`, `[1].guestPhone` for a result that is a list. `redacted` is written from the member of the event: `principal.email`, `parameters.body.card`, `facts.booking.guest.name`, `result.items[0].phone`, `result[1].name`. A field that is both hidden and `@pii` is dropped by visibility first and is not in `redacted`. The redaction is `veld_rules::redact_type_at`; nothing else removes a value.
+- **Reference.** `veld_rules::audit::event` builds the event from what a request came to (`Ended`), for the endings the pipeline never sees (`401`, `429`); `Pipeline::audit_event` builds it from a `Reported` for every other ending. `Reported.trail` holds what the request had reached (`parameters`, `facts`). The goldens are `tests/wire/audit`.
+- **`veld diff`.** An endpoint that becomes audited: compatible (`audit_added`). One that stops being audited: possibly breaking (`audit_removed`): an operator may rely on the record.
+- **Clients.** The gate does not ask a client about `audit`. The OpenAPI export has nothing for it.
+
 ---
 
 # Phase P2: time, flags and service levels
