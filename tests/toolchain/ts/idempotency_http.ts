@@ -403,7 +403,7 @@ async function main(): Promise<void> {
   const failing = await mine('carol', 't-9');
   assert.equal(failing.status, 500);
   assert.deepEqual(calls, []);
-  assert.deepEqual(spy.log, []);
+  assert.equal(spy.log.length, 0);
   assert.equal(errors.length, 1);
 
   // An answer without a body (204) is stored and replayed too.
@@ -443,9 +443,9 @@ async function main(): Promise<void> {
   // key runs again instead of answering `409 still running`.
   assert.deepEqual(spy.log.filter((e) => e.key === 'f-2').map((e) => e.op), ['begin', 'complete', 'release']);
   spy.failComplete = false;
-  const again = await book(url, 'f-2', 2);
-  assert.equal(again.status, 201, 'the released key is free');
-  assert.notEqual(again.replay, 'true');
+  const freed = await book(url, 'f-2', 2);
+  assert.equal(freed.status, 201, 'the released key is free');
+  assert.notEqual(freed.replay, 'true');
   assert.deepEqual(calls, ['book', 'book']);
   spy.failRelease = true;
   failures = 1;
