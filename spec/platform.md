@@ -209,6 +209,22 @@ The contract does not keep timers. The row that holds the state is the only sour
 - **Examples** need nothing new: `given booking = { status: .pending, pendingSince: "2026-06-10T12:00:00Z" }`, `at "2026-06-11T11:00:00Z"`, and the call with its outcome.
 - **IR.** A flow gains `"after_ms": "86400000"` and a transition `"since": [ step ]`, each omitted when absent. The feature is `rules_timed`, opt-in.
 
+### 10.2 What the implementation chose where the text was silent
+
+- **Constant durations.** The constant fragment of `after` is: whole numbers, `days`, `hours`, `minutes`, `seconds` and `ms` of a constant whole number, and `+`, `-` (two durations) and `*` (a duration and a whole number), with checked 64-bit arithmetic. Anything else, including a name, is `E0935`. The same fragment, without operators, is what `@timeout` and `@slo` take (sections 12 and 13).
+- **A second declaration of an edge.** `flow a -> b after d` for an edge that is already declared is `E0935`, whichever of the two has the `after`. A plain `flow a -> b` repeated after a timed one stays `W0930`, and the first declaration decides.
+- **`W0933` is a workspace check.** It is not reported while the workspace has errors: a transition that failed its checks would make every edge look untaken.
+- **The due check** is part of the guard of §10.2 of `spec/rules.md`, after the state check, and uses the clock of the request: `now - since >= d`, in milliseconds, so a value that has waited exactly `d` is due and one that has waited one millisecond less is not. A `since` that is not a readable datetime is not due. The reference evaluator reads the clock only once, as for every other rule.
+- **Reference functions.** `veld_rules::timed_endpoints(ir)` lists the endpoints that take a timed edge, in service and endpoint order, with the fact, the wire path of `since`, the source and target wire values and the milliseconds; `veld_rules::timed_moves(machine)` lists `(from, to, ms)` for a machine, which is what `timedMoves()` returns. A runner asks the loader for facts that entered the source state at or before `now - after_ms`.
+- **`veld diff`.** What a caller built against the old contract sees is whether its call to the endpoint that takes the edge is still accepted.
+
+  | Change | Judged |
+  |---|---|
+  | an edge becomes timed, or its duration grows | breaking: a call that was accepted is refused |
+  | an edge stops being timed, or its duration shrinks | compatible |
+  | the `since` field of a timed transition changes | possibly breaking: the clock is another |
+  | a timed edge is removed or added | as any edge: removed is breaking, added is compatible |
+
 ## 11. Flags: `when flag("name")`
 
 ```veld
