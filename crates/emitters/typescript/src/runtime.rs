@@ -222,6 +222,8 @@ pub fn source_gated(gates: Gates) -> Result<String, GateError> {
         // line that a build without them keeps.
         "visibility" => g.visibility,
         "not_visibility" => !g.visibility,
+        "endpoint_visibility" => g.endpoint_rules && g.visibility,
+        "endpoint_not_visibility" => g.endpoint_rules && !g.visibility,
         "tenancy" => g.tenancy,
         "tenant_fields" => g.tenant_fields,
         "not_tenant_fields" => !g.tenant_fields,

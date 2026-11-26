@@ -2812,15 +2812,27 @@ function failure(err: unknown, ep: ServerEndpoint, ctx: RequestContext, std: Std
     if (foreign !== null) return foreign;
     // #endif
     // #if visibility
-    (err as { data: unknown }).data = showSent(ep, declared.schema, err.data, hooks);
+    const sent = showSent(ep, declared.schema, err.data, hooks);
     // #endif
     // #if endpoint_rules
     if (err.violations.length > 0) {
+      // #endif
+      // #if endpoint_visibility
+      const data = toWire(declared.schema, sent);
+      // #endif
+      // #if endpoint_not_visibility
       const data = toWire(declared.schema, err.data);
+      // #endif
+      // #if endpoint_rules
       return problemWithViolations(declared.sig, err.title, declared.status, ep.sig, data, err.violations);
     }
     // #endif
+    // #if visibility
+    return problem(declared.sig, err.title, declared.status, ep.sig, toWire(declared.schema, sent));
+    // #endif
+    // #if not_visibility
     return problem(declared.sig, err.title, declared.status, ep.sig, toWire(declared.schema, err.data));
+    // #endif
   }
   try {
     hooks.onError?.(err, ctx);
