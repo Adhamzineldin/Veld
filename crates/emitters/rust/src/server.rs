@@ -168,7 +168,7 @@ fn service_trait(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service) {
             let (incoming, outgoing) = endpoints::ws_types(ctx, ep);
             w.line(format!("fn {}(&self, request: {}, ctx: {}, ws: veld::server::WsSession<{incoming}, {outgoing}>) -> impl std::future::Future<Output = Result<(), veld::Error>> + Send;", method(&ep.name), request_name(ep), context_type()));
         } else {
-            w.line(format!("fn {}(&self, request: {}{}{}{}, ctx: {}) -> impl std::future::Future<Output = Result<{}, veld::Error>> + Send;", method(&ep.name), request_name(ep), block::facts_param(ep), block::transition_param(ctx, ep), crate::conditional::version_param(ctx, ep), context_type(), success_type(ctx, ep)));
+            w.line(format!("fn {}(&self, request: {}{}{}{}, ctx: {}) -> impl std::future::Future<Output = Result<{}, veld::Error>> + Send;", method(&ep.name), request_name(ep), block::facts_param(ep), crate::conditional::version_param(ctx, ep), block::transition_param(ctx, ep), context_type(), success_type(ctx, ep)));
         }
         w.blank();
     }
@@ -501,9 +501,9 @@ fn decode_request(w: &mut CodeWriter, ep: &Endpoint) -> &'static str {
         w.line("let request = veld::server::decode_args(args.clone())?;");
         w.line("let facts = veld::server::decode_args(args.clone())?;");
         if ep.rules.transition.is_some() {
-            w.line("let transition = veld::server::decode_key(&args, \"transition\")?;");
             w.line("let version = veld::server::decode_key(&args, \"version\")?;");
-            "request, facts, transition, version"
+            w.line("let transition = veld::server::decode_key(&args, \"transition\")?;");
+            "request, facts, version, transition"
         } else {
             w.line("let version = veld::server::decode_key(&args, \"version\")?;");
             "request, facts, version"

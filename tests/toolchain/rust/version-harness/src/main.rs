@@ -124,8 +124,8 @@ impl OrdersService for Impl {
         &self,
         _request: PayOrderRequest,
         facts: PayOrderFacts,
-        transition: Transition<Status>,
         version: Option<i64>,
+        transition: Transition<Status>,
         _ctx: &RequestContext,
     ) -> Result<Order, Error> {
         note(&self.0, format!("pay:{version:?}"));

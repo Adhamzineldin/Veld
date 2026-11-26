@@ -144,7 +144,7 @@ fn is_int(ir: &Ir, ep: &Endpoint) -> bool {
 }
 
 /// `, version: Option<i64>` for the service method of an endpoint with a guard: it follows the
-/// facts and the transition (`spec/rules.md` section 11.9).
+/// facts and comes before the transition (`spec/rules.md` section 11.12).
 pub fn version_param(ctx: &Ctx<'_, '_>, ep: &Endpoint) -> String {
     let Some(ty) = version_field_type(ctx.tree.ir, ep) else {
         return String::new();

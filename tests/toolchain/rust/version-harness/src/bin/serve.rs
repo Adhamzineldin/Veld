@@ -64,8 +64,8 @@ impl OrdersService for Stub {
         &self,
         _request: PayOrderRequest,
         _facts: PayOrderFacts,
-        _transition: Transition<Status>,
         _version: Option<i64>,
+        _transition: Transition<Status>,
         _ctx: &RequestContext,
     ) -> Result<Order, Error> {
         reached()
