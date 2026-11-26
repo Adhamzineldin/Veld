@@ -51,6 +51,41 @@ pub fn visible_in(ix: &Index, file: FileId) -> BTreeMap<String, usize> {
     map
 }
 
+/// The declaration that `name` stands for in `file`: an import, then a declaration of the file,
+/// then the prelude. The same answer as `visible_in(..).get(name)` without building the map.
+#[must_use]
+pub fn lookup_decl(ix: &Index, file: FileId, name: &str) -> Option<usize> {
+    if let Some(f) = ix.file(file) {
+        for u in &f.ast.uses {
+            let pkg = u
+                .package
+                .as_ref()
+                .map_or(f.package.as_str(), |p| p.name.as_str());
+            let module = u.module_path();
+            for imp in u
+                .imports
+                .iter()
+                .filter(|i| i.alias.as_ref().unwrap_or(&i.name).name == name)
+            {
+                let hit = ix.decls.iter().position(|d| {
+                    d.package == pkg && d.module == module && d.name == imp.name.name
+                });
+                if hit.is_some() {
+                    return hit;
+                }
+            }
+        }
+    }
+    ix.decls
+        .iter()
+        .position(|d| d.name == name && d.file == file)
+        .or_else(|| {
+            ix.decls
+                .iter()
+                .position(|d| d.name == name && d.is_prelude())
+        })
+}
+
 /// The type of a value, as far as the editor can tell.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Ty {
@@ -156,9 +191,7 @@ pub fn resolve_type(ix: &Index, file: FileId, t: &TypeExpr) -> Ty {
             match n {
                 "Page" => Ty::Page(Box::new(arg(0))),
                 "Map" => Ty::Map(Box::new(arg(args.len().saturating_sub(1)))),
-                _ => visible_in(ix, file)
-                    .get(n)
-                    .map_or(Ty::Unknown, |&d| Ty::Decl(d)),
+                _ => lookup_decl(ix, file, n).map_or(Ty::Unknown, Ty::Decl),
             }
         }
     }
@@ -508,8 +541,7 @@ pub fn lookup(ix: &Index, scope: &Scope, lams: &[Lambda], name: &str) -> Option<
         return Some(l.val.clone());
     }
     let file = scope.file?;
-    let d = *visible_in(ix, file).get(name)?;
-    let e = ix.decls.get(d)?;
+    let e = ix.decls.get(lookup_decl(ix, file, name)?)?;
     (e.kind == DKind::Const)
         .then(|| Val::new(e.const_ty.as_deref().map_or(Ty::Unknown, scalar_named)))
 }
@@ -628,7 +660,7 @@ pub fn only_enum_with(ix: &Index, file: FileId, name: &str) -> Option<usize> {
         .collect::<Vec<_>>();
     found.sort_unstable();
     found.dedup();
-    (found.len() == 1).then(|| found[0])
+    found.first().copied().filter(|_| found.len() == 1)
 }
 
 #[cfg(test)]

@@ -137,7 +137,7 @@ pub fn find(a: &Analysis, file: FileId, offset: u32) -> Option<Found> {
     collect(a, file, Some(offset))
         .into_iter()
         .filter(|f| f.span.start <= offset && offset <= f.span.end)
-        .min_by_key(|f| f.span.end - f.span.start)
+        .min_by_key(|f| f.span.end.saturating_sub(f.span.start))
 }
 
 /// Every word of a file. With `only`, the items that do not cover that offset are skipped.
