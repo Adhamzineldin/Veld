@@ -241,7 +241,13 @@ pub fn judge(ir: &Ir, filled: &FilledExample, dry_run: bool, answer: &Answer) ->
                 answer,
                 outcome: outcome.clone(),
             };
-            let dry = dry_run && filled.request.result.is_none();
+            // A stored answer is sent again before step 6, so a dry run does not stop it.
+            let replay = filled
+                .request
+                .key
+                .as_ref()
+                .is_some_and(|k| matches!(k.store, veld_rules::StoreState::Stored(_)));
+            let dry = dry_run && filled.request.result.is_none() && !replay;
             match &filled.expected {
                 Expected::Ok(p) => j.ok(p.as_ref(), dry),
                 Expected::Error { decl, pattern } => j.error(*decl, pattern.as_ref()),
