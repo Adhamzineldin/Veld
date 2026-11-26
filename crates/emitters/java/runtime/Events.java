@@ -838,7 +838,7 @@ public final class Events {
     }
     String contentType = text(o, "datacontenttype");
     if (contentType != null && !contentType.equals("application/json")) {
-      return malformed("`datacontenttype` is `" + contentType + "`");
+      return malformed("`datacontenttype` is not `application/json`");
     }
     if (o.has("data_base64")) {
       return malformed("`data_base64` is not allowed");
