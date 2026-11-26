@@ -123,7 +123,7 @@ final class WsConnection implements WsSession<Json, Json> {
       }
     }
     // #endif
-    inbox.add(Wire.prepare(incomingSchema, raw, Wire.Mode.REQUEST));
+    inbox.add(Wire.fillReadonly(incomingSchema, Wire.prepare(incomingSchema, raw, Wire.Mode.REQUEST)));
   }
 
   private void invalid(Issue issue) {

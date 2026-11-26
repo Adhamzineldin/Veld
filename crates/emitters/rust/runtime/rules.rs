@@ -17,7 +17,7 @@ use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
 
 use super::regex::Regex;
-use super::schema::{Field, ModelSchema, Scalar, Schema};
+use super::schema::{ModelSchema, Schema, placeholder};
 
 pub use decimal::Decimal;
 pub use num::EvalError;
@@ -276,9 +276,6 @@ fn walk_model(m: &ModelSchema, v: &Value, path: &str, mode: Mode, out: &mut Vec<
 // Request position: `@readonly` fields are absent
 // ---------------------------------------------------------------------------
 
-/// How deep a placeholder for a required read-only field may nest.
-const PLACEHOLDER_DEPTH: usize = 6;
-
 /// A request body has no `@readonly` fields, but a generated struct has them. The rules that read
 /// them are skipped in request mode, so a placeholder of the right shape stands in for each absent
 /// one while the value is read; no evaluated rule can see it.
@@ -319,47 +316,6 @@ fn fill_readonly(schema: &Schema, v: &Value, depth: usize) -> Value {
         }
         _ => v.clone(),
     }
-}
-
-/// A value of the shape of `schema` that stands for an absent required field.
-fn placeholder(schema: &Schema, depth: usize) -> Value {
-    match schema {
-        Schema::Scalar(k, _) => match k {
-            Scalar::String | Scalar::Bytes => Value::String(String::new()),
-            Scalar::Int | Scalar::Float => Value::from(0),
-            Scalar::Long | Scalar::Decimal => Value::String("0".into()),
-            Scalar::Bool => Value::Bool(false),
-            Scalar::Date => Value::String("1970-01-01".into()),
-            Scalar::Datetime => Value::String("1970-01-01T00:00:00Z".into()),
-            Scalar::Time => Value::String("00:00:00".into()),
-            Scalar::Uuid => Value::String("00000000-0000-0000-0000-000000000000".into()),
-            Scalar::Json => Value::Null,
-        },
-        Schema::Enum(variants) => variants.first().map_or(Value::Null, |v| Value::String((*v).to_string())),
-        Schema::List(..) => Value::Array(Vec::new()),
-        Schema::Map(..) => Value::Object(Map::new()),
-        Schema::Page(_) => serde_json::json!({ "items": [], "total": "0", "page": 0, "size": 0 }),
-        Schema::Model(m) if depth < PLACEHOLDER_DEPTH => Value::Object(required_fields(m.fields, depth + 1)),
-        Schema::Union(u) if depth < PLACEHOLDER_DEPTH => match u.arms.first() {
-            Some((label, arm)) => match placeholder(arm, depth + 1) {
-                Value::Object(mut o) => {
-                    o.insert(u.discriminator.to_string(), Value::String((*label).to_string()));
-                    Value::Object(o)
-                }
-                other => other,
-            },
-            None => Value::Null,
-        },
-        Schema::Model(_) | Schema::Union(_) => Value::Null,
-    }
-}
-
-fn required_fields(fields: &[Field], depth: usize) -> Map<String, Value> {
-    fields
-        .iter()
-        .filter(|f| !f.optional && f.default.is_none())
-        .map(|f| (f.wire.to_string(), placeholder(f.schema, depth)))
-        .collect()
 }
 
 // ---------------------------------------------------------------------------

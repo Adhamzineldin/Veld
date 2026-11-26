@@ -247,15 +247,7 @@ fn judge(stem: &str, line: &serde_json::Value, case: &Case) -> Result<(), String
     compare_produced(case, &produced("violations")).map_err(|m| m.to_string())?;
     compare_produced_audited(case, &produced("audited")).map_err(|m| m.to_string())?;
     let status = line["status"].as_u64().unwrap_or(0);
-    // A request that no rule rejects is past step 5 whatever the decoding of its typed value does
-    // next (a model with a required `@readonly` field cannot be decoded from a request, which
-    // answers `422` with an issue of the shape and no violation): no violation must come with it.
-    // Every other case has the one status its `expect` implies.
-    let past_step_five = case.request && case.expect.is_empty();
-    let body = line["body"].as_str().unwrap_or("");
-    if (past_step_five && status == 422 && body.contains("\"violations\""))
-        || (!past_step_five && status != wanted_status(case))
-    {
+    if status != wanted_status(case) {
         return Err(format!(
             "case `{}` of {stem}: the answer is HTTP {status} {}, wanted {}",
             case.name,

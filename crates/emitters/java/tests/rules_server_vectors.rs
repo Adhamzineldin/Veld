@@ -91,13 +91,7 @@ fn judge(name: &str, line: &serde_json::Value, case: &Case) -> Result<(), String
     compare_produced(case, &produced("violations")).map_err(|m| m.to_string())?;
     compare_produced_audited(case, &produced("audited")).map_err(|m| m.to_string())?;
     let status = line["status"].as_u64().unwrap_or(0);
-    // A request that no rule rejects is past step 5 whatever the handler does next: a model with a
-    // required `@readonly` field cannot be decoded by the endpoint's request type (the field is
-    // absent in a request), so the answer is not `204` for such a case. It must not be `422`.
-    let past_step_five = case.request && case.expect.is_empty();
-    if (past_step_five && status == 422)
-        || (!past_step_five && status != u64::from(wanted_status(case)))
-    {
+    if status != u64::from(wanted_status(case)) {
         return Err(format!(
             "case `{}` of {name}: the answer is HTTP {status} {}, wanted {}",
             case.name,

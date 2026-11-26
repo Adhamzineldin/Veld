@@ -58,7 +58,7 @@ The runtime package is `<base>.runtime`. Packages named `adapters`, `clients`, `
 | `enum` | a Java `enum`, constants in UPPER_SNAKE; `wire()` is the contract value | string |
 | `union` | a `sealed interface` whose arms are the records of its member models; static `fromWire`/`toWire` use the discriminator | object with the discriminator field |
 
-Optional fields and absent optional parameters are `null` (boxed types for scalars). Schema defaults are applied when decoding and when computing canonical bytes. `readonly` fields are dropped from request bodies. Each declaration has a static `SCHEMA` (validation, defaults, canonical bytes), `codec()`, `fromWire(Json)` and `toWire()`, and `veldCanonical()`.
+Optional fields and absent optional parameters are `null` (boxed types for scalars). Schema defaults are applied when decoding and when computing canonical bytes. `readonly` fields are dropped from request bodies (a request that lacks a required one still decodes: `Wire.fillReadonly` gives the record a placeholder, which no code reads). Each declaration has a static `SCHEMA` (validation, defaults, canonical bytes), `codec()`, `fromWire(Json)` and `toWire()`, and `veldCanonical()`.
 
 ## 3. Errors
 
