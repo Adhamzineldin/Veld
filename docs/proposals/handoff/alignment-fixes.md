@@ -125,3 +125,11 @@ The Node agent added to `tests/toolchain/contract/platform_p2/flags.veld` an end
 - **Java**: the stubs and drivers that implement these two contracts (`tests/toolchain/java/platform_p2/Flags*`, `tests/toolchain/java/derived/DerivedShop*`) no longer implement every endpoint and will not compile. Add `resizeRoom` and `saveDraft`, and the cases the Node drivers have for them (`flags_http.ts`, `derived_http.ts`).
 - **Rust**: the same for its harness crates, where they use these contracts.
 - From now on a target that needs another endpoint in a shared contract adds it for all three, or uses a contract of its own.
+
+# Platform P2 in Rust: gaps (26 Nov)
+
+The Rust target declares `rules_flags` but:
+- **Flags on events are not built**: the publisher and the subscriber take no provider, so a flagged invariant of an event is never evaluated (Node and Java evaluate it with a context without a principal). Either build it or withdraw the capability for a service whose events have a flagged invariant (`E0801`).
+- A flagged invariant on a WebSocket message or an SSE item is not evaluated (no flag view there). Java has the same gap for incoming WebSocket messages.
+- A service whose only rules are flagged invariants gets no test handler, so `Veld-Test-Flags` cannot reach it.
+- No test for the metric of a panicking handler.
