@@ -136,7 +136,7 @@ The Rust target declares `rules_flags` but:
 
 # Platform P1 in Java: what differs from Node and 9.2 (26 Nov)
 
-- **A `Page`'s `total` in the audit event.** The golden (and the wire) has it as a JSON number; the Java audit event writes it as a string of digits, and the driver `AuditGoldens.java` converts it for `pageBookings` so the case passes. The event must carry the result as it is sent: fix the event, then remove the conversion from the driver.
+- ~~A `Page`'s `total` in the audit event~~ **This item was wrong, and the main session's mistake.** `Page.total` is a `long`: a string of digits on the wire and therefore in the audit event. The golden had it as a number and is corrected (`tests/wire/audit/cases.json`, the case "a page names its items under items"). See the section below for what Java now owes.
 - **The client's retry on `429`** does not sit inside the call's timeout (each of the two requests has its own): 9.2 says inside.
 - The test handler takes the caller from `Veld-Test-Principal` also for an `@auth(none)` endpoint.
 - Not tested: the limiter's start-up notice; a `@tenant` member of a query object; the examples on Spring.
@@ -146,3 +146,9 @@ The Rust target declares `rules_flags` but:
 The Node agent found one message that repeats a value outside its own crates:
 - **The reference and Rust**: the consumer's step-1 message for a wrong `datacontenttype` quotes the value (`crates/veld-rules/src/envelope/consume.rs` near line 125; `crates/emitters/rust/runtime/events.rs` near line 1824). Node now says `is not application/json`. Make the reference and Rust say the same fixed text (and Java, if it quotes it), and update any golden that holds the old text.
 - Capture option: Node compiles the capture in only with the generator option `capture-violations` (so existing output keeps its bytes) and has a hooks member to turn it off. `spec/rules.md` 17.3 calls it "a server option, off by default": Java and Rust use the same option name and the same two levels.
+
+# A page total in the audit event: Java must go back (26 Nov)
+
+On a wrong instruction of the main session, the Java target was changed to write a `Page`'s `total` as a JSON number in the audit event (commit "fix(java): the total of a page is a JSON number in the audit event", `Platform.numberTotals`). The wire form is a string of digits, the audit event carries the result as it is sent, and the golden now says `"total":"1"`.
+- **Java**: remove `Platform.numberTotals` and its call, so the event has the string again; keep the driver `AuditGoldens.java` without any conversion; correct the sentence in `spec/targets/java.md` 17.
+- **Node, Rust**: write what is sent (a string); no conversion anywhere.
