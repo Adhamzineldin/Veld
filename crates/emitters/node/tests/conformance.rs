@@ -111,13 +111,13 @@ fn node_and_typescript_generate_audited_rules() {
     veld_emit_conformance::check_rollout_is_generated(&TypeScript).unwrap();
 }
 
-/// Derived fields (`spec/rules.md` section 17.2): until a generator implements them, the Node
-/// server and the TypeScript client both refuse a contract with one with `E0801`, at the first
-/// derived field, and make no files.
+/// Derived fields (`spec/rules.md` section 17.2): the Node server and the TypeScript client both
+/// declare `rules_derived`, so the gate lets a contract with one through (a body, an error, and a
+/// fact that only the server loads) and `generate` makes files.
 #[test]
-fn node_and_typescript_refuse_derived_fields() {
-    veld_emit_conformance::check_derived_is_refused(&Node).unwrap();
-    veld_emit_conformance::check_derived_is_refused(&TypeScript).unwrap();
+fn node_and_typescript_generate_derived_fields() {
+    veld_emit_conformance::check_derived_is_generated(&Node).unwrap();
+    veld_emit_conformance::check_derived_is_generated(&TypeScript).unwrap();
 }
 
 /// `@version` and `@idempotent` (`spec/rules.md` sections 11.7 to 11.12): the Node server and the

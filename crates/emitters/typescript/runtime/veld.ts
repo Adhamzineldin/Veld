@@ -41,6 +41,10 @@ interface Bounds {
   /** The check function of a declaration with invariants (see `checkValue`). */
   rules?: RuleCheck;
   // #endif
+  // #if derived
+  /** The compute function of a declaration with derived fields (see `deriveNode`). */
+  derive?: DeriveFn;
+  // #endif
 }
 
 export interface FieldSchema {
@@ -55,6 +59,10 @@ export interface FieldSchema {
   d?: Json;
   /** Read-only: ignored in request bodies. */
   ro?: boolean;
+  // #if derived
+  /** Derived (`spec/rules.md` section 17.2): computed, never supplied, never required of a value. */
+  dv?: boolean;
+  // #endif
 }
 
 export type Schema = Bounds &
@@ -430,6 +438,9 @@ function checkObject(s: Schema & { k: 'object' }, v: unknown, path: string, out:
     return;
   }
   for (const f of s.fields) {
+    // #if derived
+    if ((o.request || o.wire) && f.dv === true) continue;
+    // #endif
     const key = o.wire ? (f.w ?? f.n) : f.n;
     const x = v[key];
     const at = `${path}.${key}`;
@@ -513,6 +524,9 @@ function mapObject(s: Schema & { k: 'object' }, v: unknown, o: MapOpts): unknown
 function mapFields(s: Schema & { k: 'object' }, v: Record<string, unknown>, o: MapOpts): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const f of s.fields) {
+    // #if derived
+    if (o.request && f.dv === true) continue;
+    // #endif
     if (o.dir === 'from' && o.request && f.ro) continue;
     const [from, to] = o.dir === 'to' ? [f.n, f.w ?? f.n] : [f.w ?? f.n, f.n];
     let x = v[from];
@@ -576,6 +590,150 @@ export function fromWire(schema: Schema, wire: unknown, opts: { request?: boolea
 export function canonicalOf(schema: Schema, value: unknown): string {
   return canonical(mapValue(schema, value, { dir: 'to', request: false, normalize: true }));
 }
+// #if derived
+
+// ---------------------------------------------------------------------------
+// Derived fields (spec/rules.md section 17.2)
+// ---------------------------------------------------------------------------
+
+/** A generated function: computes the derived fields of one declaration on one value, in order. */
+export type DeriveFn = (self: never, path: string, out: Violation[]) => void;
+
+/**
+ * The value with its derived fields computed, in the order of the reference evaluator: what was
+ * supplied for a derived field is dropped, the defaults of the other fields are applied, the
+ * values nested in the value are computed first, then its own derived fields in dependency order.
+ * A field whose expression fails stays absent and there is a violation in `out`; one that reads
+ * an absent field stays absent without one. `copy` leaves `v` as it is (a value the application
+ * handed over); without it the value is changed in place, which keeps the declaration identity
+ * of a decoded value.
+ */
+function deriveNode(schema: Schema, v: unknown, path: string, out: Violation[], copy: boolean): unknown {
+  const s = resolve(schema);
+  switch (s.k) {
+    case 'object': {
+      if (!isObject(v)) return v;
+      const o = copy ? { ...v } : v;
+      for (const f of s.fields) {
+        if (f.dv === true) {
+          delete o[f.n];
+          continue;
+        }
+        let x = o[f.n];
+        if (x === undefined && f.d !== undefined) {
+          x = cloneDefault(f.d);
+          o[f.n] = x;
+        }
+        if (x !== undefined) o[f.n] = deriveNode(f.t, x, `${path}.${f.w ?? f.n}`, out, copy);
+      }
+      s.derive?.(o as never, path, out);
+      return o;
+    }
+    case 'union': {
+      const label = isObject(v) ? v[s.d] : undefined;
+      const arm = typeof label === 'string' && Object.prototype.hasOwnProperty.call(s.arms, label) ? s.arms[label] : undefined;
+      return arm === undefined ? v : deriveNode(arm, v, path, out, copy);
+    }
+    case 'list':
+      return Array.isArray(v) ? v.map((x, i) => deriveNode(s.of, x, `${path}[${i}]`, out, copy)) : v;
+    case 'map': {
+      if (!isObject(v)) return v;
+      const m: Record<string, unknown> = {};
+      for (const k of Object.keys(v)) m[k] = deriveNode(s.of, v[k], `${path}.${k}`, out, copy);
+      return m;
+    }
+    case 'page':
+      return isObject(v) ? { ...v, items: deriveNode({ k: 'list', of: s.of }, v['items'], `${path}.items`, out, copy) } : v;
+    default:
+      return v;
+  }
+}
+
+/** `Companion.compute`: a copy of `draft` with its derived fields computed. The failures go to `out`. */
+export function deriveValue(schema: Schema, draft: unknown, path = '$', out: Violation[] = []): unknown {
+  return deriveNode(schema, draft, path, out, true);
+}
+
+/** A value of a client as its local check sees it: defaults applied, derived fields computed. */
+function withDerived(schema: Schema, value: unknown, path: string, out: Violation[]): unknown {
+  return deriveNode(schema, withDefaults(schema, value), path, out, false);
+}
+
+/** What the wire carries from a client: the value as `toWire` gives it, without the derived fields. */
+export function toWireSend(schema: Schema, value: unknown): unknown {
+  return mapValue(schema, value, { dir: 'to', request: true, normalize: false });
+}
+
+/** The canonical text of a message a client sends, without the derived fields. */
+function canonicalSend(schema: Schema, value: unknown): string {
+  return canonical(mapValue(schema, value, { dir: 'to', request: true, normalize: true }));
+}
+
+const DERIVE_FAILED = new WeakMap<object, Violation[]>();
+
+/**
+ * A value the server sends (a result, a declared error, a stream item), with its derived fields
+ * computed on a copy: what the handler put into one is replaced. The failures wait for the output
+ * check, which reports them by the output mode.
+ */
+function deriveSent(schema: Schema | null, value: unknown): unknown {
+  if (schema === null || value === undefined) return value;
+  const out: Violation[] = [];
+  const derived = deriveNode(schema, value, '$', out, true);
+  if (out.length > 0 && typeof derived === 'object' && derived !== null) DERIVE_FAILED.set(derived, out);
+  return derived;
+}
+
+function derivedFailures(value: unknown): Violation[] {
+  return typeof value === 'object' && value !== null ? (DERIVE_FAILED.get(value) ?? []) : [];
+}
+
+/** Step 4, after the values are bound: the derived fields of the body and the query object. */
+function deriveInput(ep: EndpointSpec, bound: Bound): void {
+  const out: Violation[] = [];
+  for (const p of ep.params) {
+    if (p.s || (p.binding !== 'body' && p.binding !== 'query_object')) continue;
+    const v = bound.value[p.name];
+    if (v !== undefined) bound.value[p.name] = deriveNode(p.t, v, paramLoc(p), out, false);
+  }
+  bound.derived = out;
+}
+
+// #endif
+// #if derived_early
+/** What the test handler and the idempotency settlement hand back in place of a result: sent as it is. */
+function isEarly(v: unknown): boolean {
+  return v instanceof EarlyResponse;
+}
+// #endif
+// #if derived_plain
+function isEarly(_v: unknown): boolean {
+  return false;
+}
+// #endif
+// #if derived
+/**
+ * What the handler returned, with the derived fields of the result computed. A stream is not a
+ * value (its items are computed one by one), and an early response is sent as it is.
+ */
+function deriveResult(ep: { stream?: boolean; success: Schema | null }, called: unknown): unknown {
+  return ep.stream === true || isEarly(called) ? called : deriveSent(ep.success, called);
+}
+
+/** The data of a declared error the handler raised, with its derived fields computed. */
+function deriveError(err: VeldError, declared: ErrorSpec): void {
+  (err as { data: unknown }).data = deriveSent(declared.schema, err.data);
+}
+
+/**
+ * A fact or the principal that cannot be given its derived fields is the application's mistake,
+ * not the caller's: `500 Internal`, reported to the hook like a violation of an output.
+ */
+function loadedFailed(ep: EndpointSpec, violations: readonly Violation[], std: StdSigs, hooks: HandlerHooks, started: number): VeldResponse {
+  ruleEvent(hooks, ep, 'output', 'rejected', violations, started);
+  return problem(std.internal, 'Internal', 500, ep.sig, {});
+}
+// #endif
 // #if rules
 
 // ---------------------------------------------------------------------------
@@ -766,6 +924,9 @@ function checkInputRules(ep: EndpointSpec, bound: Bound, std: StdSigs, hooks: Ha
   const started = nowMicros();
   const violations: Violation[] = [];
   // #endif
+  // #if derived
+  violations.push(...(bound.derived ?? []));
+  // #endif
   // #if rollout
   beginAudit();
   // #endif
@@ -799,7 +960,12 @@ function checkMessageRules(
   // #if rollout
   beginAudit();
   // #endif
-  // #if rules
+  // #if derived
+  const failed: Violation[] = [];
+  const decoded = deriveNode(schema, fromWire(schema, raw, { request: true }), 'message', failed, false);
+  const violations = [...failed, ...checkValue(schema, decoded, 'message', 'request')];
+  // #endif
+  // #if rules_not_derived
   const violations = checkValue(schema, fromWire(schema, raw, { request: true }), 'message', 'request');
   // #endif
   // #if rollout
@@ -819,7 +985,14 @@ function reachesRulesFrom(schema: Schema, seen: Set<Schema>): boolean {
   seen.add(s);
   switch (s.k) {
     case 'object':
+      // #endif
+      // #if derived
+      return s.rules !== undefined || s.derive !== undefined || s.fields.some((f) => reachesRulesFrom(f.t, seen));
+      // #endif
+      // #if rules_not_derived
       return s.rules !== undefined || s.fields.some((f) => reachesRulesFrom(f.t, seen));
+      // #endif
+      // #if rules
     case 'union':
       return Object.keys(s.arms).some((k) => reachesRulesFrom(s.arms[k] as Schema, seen));
     case 'list':
@@ -865,6 +1038,9 @@ function scanOutput(schema: Schema, value: unknown, hooks: HandlerHooks): Output
   // #endif
   // #if rules
   const violations = checkValue(schema, value);
+  // #endif
+  // #if derived
+  violations.unshift(...derivedFailures(value));
   // #endif
   // #if rollout
   stashAudited(endAudit(), started);
@@ -974,6 +1150,12 @@ export interface FactStep {
   key?: (p: never, f: never, now: bigint) => unknown;
   /** Calls the application's loader. It resolves to `null` or `undefined` when nothing is found. */
   load: (key: never, ctx: RequestContext) => Promise<unknown>;
+  // #endif
+  // #if endpoint_rules_derived
+  /** The schema of the fact's type, when a value of it has derived fields (`spec/rules.md` section 17.2). */
+  schema?: Schema;
+  // #endif
+  // #if endpoint_rules
 }
 
 /** What a failed `require` or `ensure` reports. */
@@ -1047,6 +1229,8 @@ function stepViolation(step: StatementInfo, verdict: Verdict): Violation {
   return v;
 }
 
+// #endif
+// #if text_forms
 /** The wire text of a decimal of the rule representation (`n * 10^-s`). */
 export function decimalText(d: { readonly n: bigint; readonly s: number }): string {
   const digits = (d.n < 0n ? -d.n : d.n).toString().padStart(d.s + 1, '0');
@@ -1071,6 +1255,8 @@ export function timeText(ms: bigint): string {
 export function datetimeText(ms: bigint): string {
   return new Date(Number(ms)).toISOString().replace('.000Z', 'Z');
 }
+// #endif
+// #if endpoint_rules
 
 /** A copy of a saved `old(...)` value that a handler cannot change in place. */
 function snapshot(v: unknown): unknown {
@@ -1142,8 +1328,16 @@ async function prepare(
   const p = bound.value;
   const f: Record<string, unknown> = {};
   // #endif
-  // #if policies
+  // #if policies_plain
   if (rules.principal !== undefined) f[rules.principal] = ctx.principal;
+  // #endif
+  // #if policies_derived
+  if (rules.principal !== undefined) {
+    const bad: Violation[] = [];
+    f[rules.principal] =
+      rules.principalSchema === undefined ? ctx.principal : deriveNode(rules.principalSchema, ctx.principal, '$', bad, true);
+    if (bad.length > 0) return loadedFailed(ep, bad, std, hooks, started);
+  }
   // #endif
   // #if endpoint_rules
   for (const step of rules.facts) {
@@ -1152,7 +1346,16 @@ async function prepare(
     if (step.optional && step.key !== undefined && key === undefined) continue;
     const loaded = await step.load(key as never, ctx);
     if (loaded !== undefined && loaded !== null) {
+      // #endif
+      // #if endpoint_rules_derived
+      const bad: Violation[] = [];
+      f[step.name] = step.schema === undefined ? loaded : deriveNode(step.schema, loaded, '$', bad, true);
+      if (bad.length > 0) return loadedFailed(ep, bad, std, hooks, started);
+      // #endif
+      // #if endpoint_rules_plain
       f[step.name] = loaded;
+      // #endif
+      // #if endpoint_rules
     } else if (!step.optional) {
       return problem(std.notFound ?? 'about:blank', 'NotFound', 404, ep.sig, { resource: step.name });
     }
@@ -1352,6 +1555,12 @@ export interface EndpointRuleSet {
    * rules read (`f`) under this name, and taken out again before the handler gets the facts.
    */
   principal?: string;
+  // #endif
+  // #if policies_derived
+  /** The schema of the principal's type, when a value of it has derived fields (`spec/rules.md` section 17.2). */
+  principalSchema?: Schema;
+  // #endif
+  // #if policies
   /** The `allow` lines, in source order. */
   allows?: readonly AllowStep[];
 }
@@ -1491,6 +1700,15 @@ export interface Companion<T> {
   /** The partial check for forms: a rule that needs an absent required field is skipped; defaults are applied. */
   partial(draft: DeepPartial<T>): Violation[];
   // #endif
+  // #if derived
+  /**
+   * A copy of `draft` with its derived fields computed, in the order and by the code the server
+   * runs (`spec/rules.md` section 17.2): what the draft holds for a derived field is replaced,
+   * defaults are applied, and a derived field whose inputs are missing stays absent. The
+   * failures of expressions are added to `out`.
+   */
+  compute(draft: DeepPartial<T>, out?: Violation[]): DeepPartial<T>;
+  // #endif
 }
 
 export function companion<T>(sig: string, base: Schema): Companion<T> {
@@ -1510,6 +1728,16 @@ export function companion<T>(sig: string, base: Schema): Companion<T> {
     of: (value) => stamp(isObject(value) ? ({ ...value } as T) : value, sig, schema),
     // #if rules
     check: (value, path = '$') => checkValue(schema, value, path),
+    // #endif
+    // #if derived
+    partial: (draft) => {
+      const failed: Violation[] = [];
+      const full = withDerived(schema, draft, '$', failed);
+      return [...failed, ...checkValue(schema, full, '$', 'partial')];
+    },
+    compute: (draft, out = []) => deriveValue(schema, draft, '$', out) as never,
+    // #endif
+    // #if rules_not_derived
     partial: (draft) => checkValue(schema, withDefaults(schema, draft), '$', 'partial'),
     // #endif
   };
@@ -1809,6 +2037,10 @@ interface Bound {
   issues: Issue[];
   /** False when the handler runs with `validateRequests: false`. */
   check: boolean;
+  // #if derived
+  /** The derived fields that could not be computed (step 4): reported with the invariants of step 5. */
+  derived?: Violation[];
+  // #endif
 }
 
 function bindSimple(p: ParamSpec, raw: string[] | undefined, b: Bound): void {
@@ -1989,6 +2221,9 @@ function failure(err: unknown, ep: ServerEndpoint, ctx: RequestContext, std: Std
   const declared = isVeldError(err) ? ep.errors.find((d) => d.sig === err.sig) : undefined;
   if (isVeldError(err) && declared) {
     err.op = ep.sig;
+    // #if derived
+    deriveError(err, declared);
+    // #endif
     // #if rules
     const refused = checkErrorRules(ep, declared, err.data, std, hooks);
     if (refused !== null) return refused;
@@ -2036,6 +2271,9 @@ async function guard(
   // #if headers
   const lead = headerIssues(ep, ctx.headers);
   if (lead.length > 0) return headerRefusal(ep, bound, lead, std, hooks);
+  // #endif
+  // #if derived
+  deriveInput(ep, bound);
   // #endif
   // #if rules
   const refused = checkInputRules(ep, bound, std, hooks);
@@ -2104,7 +2342,12 @@ async function runCore(
     const prepared = await prepare(ep, bound, ctx, std, hooks);
     if (prepared !== null && 'status' in prepared) return prepared;
     // #endif
+    // #if not_derived
     const result = await ep.call(bound.value, ctx);
+    // #endif
+    // #if derived
+    const result = deriveResult(ep, await ep.call(bound.value, ctx));
+    // #endif
     // #if endpoint_rules
     if (result instanceof EarlyResponse) return result.response;
     // #endif
@@ -2642,7 +2885,12 @@ export function sseFrame(data: string, o: SseOptions = {}): string {
 
 function sseItem(ep: ServerEndpoint, item: unknown, hooks: HandlerHooks): string {
   const ev = isSseEvent(item) ? item : null;
+  // #if not_derived
   const value = ev === null ? item : ev.data;
+  // #endif
+  // #if derived
+  const value = deriveSent(ep.success, ev === null ? item : ev.data);
+  // #endif
   if (ep.success === null) throw new Error(`${ep.name}: a stream needs an item type`);
   if (hooks.validateResponses) {
     const issues = validate(ep.success, value);
@@ -2794,6 +3042,9 @@ function wsSession(
     send(message) {
       if (state.closed) throw new Error(`${ep.name}: the WebSocket is closed`);
       if (ep.success === null) throw new Error(`${ep.name}: this endpoint sends no messages`);
+      // #if derived
+      message = deriveSent(ep.success, message) as typeof message;
+      // #endif
       if (hooks.validateResponses) {
         const issues = validate(ep.success, message);
         if (issues.length > 0) throw new Error(`${ep.name}: message failed validation: ${JSON.stringify(issues)}`);
@@ -2851,7 +3102,12 @@ async function runWs(
     const refused = checkMessageRules(ep, incomingSchema, raw, std, hooks);
     if (refused !== null) return fail(refused);
     // #endif
+    // #if not_derived
     inbox.push(fromWire(incomingSchema, raw, { request: true }));
+    // #endif
+    // #if derived
+    inbox.push(deriveNode(incomingSchema, fromWire(incomingSchema, raw, { request: true }), 'message', [], false));
+    // #endif
   };
   // Frames that arrive while auth and middleware run are held back, so they are never read by an
   // unauthenticated session and never lost.
@@ -3162,7 +3418,12 @@ function queryPairs(ep: EndpointSpec, req: Record<string, unknown>): [string, st
     const v = req[p.name];
     if (p.binding === 'query') add(p.name, v);
     if (p.binding === 'query_object' && v !== undefined) {
+      // #if not_derived
       const wire = toWire(p.t, v);
+      // #endif
+      // #if derived
+      const wire = toWireSend(p.t, v);
+      // #endif
       if (isObject(wire)) for (const k of Object.keys(wire)) add(k, wire[k]);
     }
   }
@@ -3299,7 +3560,14 @@ export class ClientCore {
     for (const p of ep.params) {
       if (p.s || (p.binding !== 'body' && p.binding !== 'query_object')) continue;
       const v = req[p.name];
+      // #endif
+      // #if derived
+      if (v !== undefined) walkRules(p.t, withDerived(p.t, v, paramLoc(p), out), paramLoc(p), 'request', out);
+      // #endif
+      // #if rules_not_derived
       if (v !== undefined) walkRules(p.t, withDefaults(p.t, v), paramLoc(p), 'request', out);
+      // #endif
+      // #if rules
     }
     this.rejectLocally(ep, out);
   }
@@ -3308,7 +3576,14 @@ export class ClientCore {
   private checkMessageRules(ep: EndpointSpec, schema: Schema, message: unknown): void {
     if (this.opts.rules === false) return;
     const out: Violation[] = [];
+    // #endif
+    // #if derived
+    walkRules(schema, withDerived(schema, message, 'message', out), 'message', 'request', out);
+    // #endif
+    // #if rules_not_derived
     walkRules(schema, withDefaults(schema, message), 'message', 'request', out);
+    // #endif
+    // #if rules
     this.rejectLocally(ep, out);
   }
 
@@ -3571,7 +3846,12 @@ export class ClientCore {
           this.checkMessageRules(ep, outgoing, message);
           // #endif
         }
+        // #if not_derived
         const text = canonicalOf(outgoing, message);
+        // #endif
+        // #if derived
+        const text = canonicalSend(outgoing, message);
+        // #endif
         if (socket !== undefined && socket.readyState === 1) socket.send(text);
         else outbox.push(text);
       },
@@ -3638,7 +3918,12 @@ export class ClientCore {
     const fetchInit: FetchInit = { method: ep.method, headers };
     if (bodyParam && bodyValue !== undefined) {
       headers['content-type'] = 'application/json';
+      // #if not_derived
       fetchInit.body = JSON.stringify(toWire(bodyParam.t, bodyValue));
+      // #endif
+      // #if derived
+      fetchInit.body = JSON.stringify(toWireSend(bodyParam.t, bodyValue));
+      // #endif
     }
     if (init.signal) fetchInit.signal = init.signal;
     try {

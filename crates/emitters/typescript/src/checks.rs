@@ -90,8 +90,16 @@ fn write_rule(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, rule: &Rul
     w.close();
     w.close_with("} catch (e) {");
     w.indent();
+    // A rule of a value that has derived fields (or reaches one) meets an absent one whenever a
+    // derived field could not be computed: the cause is reported already, so the rule is skipped
+    // in every mode (`spec/rules.md` section 17.2).
+    let mode = if fc.tree.ir.type_reaches_derived(&veld_ir::Type::Decl(d.id)) {
+        format!("e instanceof {ns}.AbsentField ? 'partial' : mode")
+    } else {
+        "mode".to_string()
+    };
     w.line(format!(
-        "{ns}.failed(e, mode, {sink}, {id}, {}, path, {fields});",
+        "{ns}.failed(e, {mode}, {sink}, {id}, {}, path, {fields});",
         ts_str(&rule.name)
     ));
     w.close();

@@ -31,6 +31,7 @@ pub struct Tree<'a> {
     rollout: bool,
     version: bool,
     idempotency: bool,
+    derived: bool,
     events: bool,
     runtime_config: bool,
     decls: Vec<DeclId>,
@@ -70,7 +71,9 @@ impl<'a> Tree<'a> {
         };
         let transitions = endpoints().any(|ep| ep.rules.transition.is_some());
         let policies = endpoints().any(|ep| ep.rules.first_policy_origin().is_some());
-        let rules = endpoint_rules || set.iter().any(|id| !ir.decl(*id).rules().is_empty());
+        let derived = set.iter().any(|id| ir.decl(*id).has_derived());
+        let rules =
+            endpoint_rules || derived || set.iter().any(|id| !ir.decl(*id).rules().is_empty());
         let rollout = set
             .iter()
             .any(|id| ir.decl(*id).rules().iter().any(veld_ir::Rule::is_audited))
@@ -92,6 +95,7 @@ impl<'a> Tree<'a> {
             rollout,
             version,
             idempotency,
+            derived,
             events: false,
             runtime_config: false,
             decls: set.into_iter().collect(),
@@ -109,7 +113,9 @@ impl<'a> Tree<'a> {
         set.extend(ir.events_of(&self.services));
         set.extend(ir.event_reachable_decls(&self.services));
         self.events = self.services.iter().any(|s| ir.service(*s).uses_events());
-        self.rules = self.rules || set.iter().any(|id| !ir.decl(*id).rules().is_empty());
+        self.derived = self.derived || set.iter().any(|id| ir.decl(*id).has_derived());
+        self.rules =
+            self.rules || self.derived || set.iter().any(|id| !ir.decl(*id).rules().is_empty());
         self.rollout = self.rollout
             || set
                 .iter()
@@ -176,6 +182,7 @@ impl<'a> Tree<'a> {
             rollout: self.rollout,
             version: self.version,
             idempotency: self.idempotency,
+            derived: self.derived,
             runtime_config: self.runtime_config,
         }
     }
@@ -206,6 +213,14 @@ impl<'a> Tree<'a> {
     #[must_use]
     pub fn uses_idempotency(&self) -> bool {
         self.idempotency
+    }
+
+    /// Whether an emitted declaration has a derived field (`spec/rules.md` section 17.2): the
+    /// `derived` regions of the runtime, the compute functions and the output types. It switches
+    /// `uses_rules` on too.
+    #[must_use]
+    pub fn uses_derived(&self) -> bool {
+        self.derived
     }
 
     /// Module path of the audit sink: next to the runtime module, without extension.

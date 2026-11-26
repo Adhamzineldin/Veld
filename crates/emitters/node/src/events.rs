@@ -30,6 +30,10 @@ pub fn runtime_source(tree: &Tree<'_>) -> Result<String, GateError> {
     gate_regions(RAW, &|name| match name {
         "rules" => gates.rules,
         "rollout" => gates.rollout,
+        // Derived fields (`spec/rules.md` section 17.2) and what a build without them has.
+        "derived" => gates.derived,
+        "not_derived" => !gates.derived,
+        "rules_not_derived" => gates.rules && !gates.derived,
         _ => false,
     })
 }

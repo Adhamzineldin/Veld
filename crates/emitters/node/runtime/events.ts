@@ -7,6 +7,9 @@ import type { Issue, Schema } from './veld';
 // #if rules
 import { checkValue } from './veld';
 // #endif
+// #if derived
+import { deriveValue } from './veld';
+// #endif
 // #if rollout
 import { beginAudit, endAudit } from './rollout';
 // #endif
@@ -415,12 +418,21 @@ function runRules(
   position: 'input' | 'output',
 ): EventViolation[] {
   const started = nowMicros();
+  // #endif
+  // #if derived
+  const failed: EventViolation[] = [];
+  const typed = deriveValue(def.schema, fromWire(def.schema, wire), '$', failed);
+  // #endif
+  // #if rules_not_derived
   const typed = fromWire(def.schema, wire);
   // #endif
   // #if rollout
   beginAudit();
   // #endif
-  // #if rules
+  // #if derived
+  const violations = [...failed, ...checkValue(def.schema, typed, '$', 'full')];
+  // #endif
+  // #if rules_not_derived
   const violations = checkValue(def.schema, typed, '$', 'full');
   // #endif
   // #if rollout
@@ -485,7 +497,12 @@ export async function publishEvent(
   def: EventDef,
   value: unknown,
 ): Promise<PublishedEvent> {
+  // #if not_derived
   const wire = canonScalars(def.schema, toWire(def.schema, value));
+  // #endif
+  // #if derived
+  const wire = canonScalars(def.schema, toWire(def.schema, deriveValue(def.schema, value)));
+  // #endif
   const issues = validate(def.schema, wire, '$', { wire: true });
   if (issues.length > 0) throw ctx.validation(issues, []);
   // #if rules
@@ -845,7 +862,12 @@ function retryWait(c: Consumer, retry: RetryPolicy, k: number): number {
 /** Steps 5 and 6 of one run: the inbox, then the handler. */
 async function runOnce(c: Consumer, binding: EventBinding, env: Envelope, meta: EventMeta): Promise<void> {
   const call = async (): Promise<void> => {
+    // #if not_derived
     await binding.run(fromWire(binding.def.schema, env.data), meta);
+    // #endif
+    // #if derived
+    await binding.run(deriveValue(binding.def.schema, fromWire(binding.def.schema, env.data)), meta);
+    // #endif
   };
   const inbox = c.options.inbox;
   if (inbox === undefined) await call();

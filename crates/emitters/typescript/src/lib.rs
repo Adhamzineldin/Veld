@@ -10,6 +10,7 @@ pub mod can;
 pub mod checks;
 pub mod client;
 pub mod clients;
+pub mod derived;
 pub mod expr;
 pub mod frameworks;
 pub mod machine;
@@ -194,6 +195,7 @@ impl Generator for TypeScript {
             .with(veld_ir::Feature::RulesRollout)
             .with(veld_ir::Feature::RulesVersion)
             .with(veld_ir::Feature::Idempotency)
+            .with(veld_ir::Feature::RulesDerived)
     }
 
     fn warnings(&self, req: &GenRequest<'_>, opts: &Options) -> Vec<GenDiagnostic> {

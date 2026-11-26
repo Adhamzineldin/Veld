@@ -11,7 +11,8 @@ use veld_emit_typescript::policy::{Plan, verdict_call};
 use veld_emit_typescript::tree::FileCtx;
 use veld_emit_typescript::types::ts_type;
 use veld_emit_typescript::util::{doc_comment, prop_key, ts_str};
-use veld_ir::{Endpoint, EndpointAllow};
+use veld_emit_typescript::validate::schema_expr;
+use veld_ir::{Constraints, Endpoint, EndpointAllow};
 
 use crate::rules::{Sig, Site, unsupported};
 
@@ -223,6 +224,10 @@ pub fn write_members(
 ) {
     if let Some(caller) = caller {
         w.line(format!("principal: {},", ts_str(&caller.name)));
+        if fc.tree.ir.type_reaches_derived(&caller.ty) {
+            let schema = schema_expr(fc, &caller.ty, &Constraints::default());
+            w.line(format!("principalSchema: {schema},"));
+        }
     }
     if !site.ep.rules.allows.is_empty() {
         let plan = Plan::new(fc.tree);

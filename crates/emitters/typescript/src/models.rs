@@ -8,6 +8,7 @@ use veld_codegen::{CodeWriter, FileSet, GenDiagnostic};
 use veld_ir::{Const, Decl, DeclId, DeclKind, Enum, ErrorDecl, Model, Union};
 
 use crate::checks;
+use crate::derived;
 use crate::tree::{FileCtx, Tree};
 use crate::types::ts_type;
 use crate::util::{add_file, doc_comment, literal, prop_key, ts_str, type_name};
@@ -129,8 +130,9 @@ fn write_model(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, m: &Model
         write_fields(w, fc, &m.fields, true);
         w.close();
     }
+    derived::write_model_shapes(w, fc, d);
     w.blank();
-    if checks::has_rules(d) {
+    if checks::has_rules(d) || d.has_derived() {
         write_ruled_companion(w, fc, d, m);
         return;
     }
@@ -147,14 +149,35 @@ fn write_model(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, m: &Model
     w.close_with("});");
 }
 
-/// The companion of a model with invariants: the plain companion plus `ruleIds`, and a schema
-/// that carries the check function.
+/// The companion of a model with invariants or derived fields: the plain companion plus
+/// `ruleIds` (invariants), and a schema that carries the check function (`rules`) and the compute
+/// function (`derive`).
 fn write_ruled_companion(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, m: &Model) {
     let name = type_name(d);
-    checks::write_check_fn(w, fc, d, &name);
-    w.blank();
+    let rules = checks::has_rules(d);
+    if rules {
+        checks::write_check_fn(w, fc, d, &name);
+        w.blank();
+    }
+    if d.has_derived() {
+        derived::write_compute_fn(w, fc, d, &name);
+        w.blank();
+    }
     let companion = fc.rt("Companion");
     let make = fc.rt("companion");
+    if !rules {
+        w.open_with(
+            format!(
+                "export const {name}: {companion}<{name}> = {make}<{name}>({},",
+                ts_str(&d.sig)
+            ),
+            " {",
+        );
+        write_object_schema(w, fc, &m.fields);
+        w.line(format!("derive: {},", derived::fn_name(d)));
+        w.close_with("});");
+        return;
+    }
     let ids = checks::ids_type(d);
     w.open_with(
         format!("export const {name}: {companion}<{name}> & {{ readonly ruleIds: {ids} }} ="),
@@ -163,6 +186,9 @@ fn write_ruled_companion(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl,
     w.open_with(format!("...{make}<{name}>({},", ts_str(&d.sig)), " {");
     write_object_schema(w, fc, &m.fields);
     w.line(format!("rules: {},", checks::fn_name(d)));
+    if d.has_derived() {
+        w.line(format!("derive: {},", derived::fn_name(d)));
+    }
     w.close_with("}),");
     w.line(format!("ruleIds: {},", checks::ids_value(d)));
     w.close_with("};");
@@ -276,6 +302,7 @@ fn write_union(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, u: &Union
             arms.join(" | ")
         }
     ));
+    derived::write_union_shapes(w, fc, d, u);
     w.blank();
     let companion = fc.rt("Companion");
     let make = fc.rt("companion");
@@ -321,9 +348,14 @@ fn write_error(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, e: &Error
         write_fields(w, fc, &e.fields.fields, false);
         w.close();
     }
+    derived::write_error_shape(w, fc, d, &data);
     w.blank();
     if checks::has_rules(d) {
         checks::write_check_fn(w, fc, d, &data);
+        w.blank();
+    }
+    if d.has_derived() {
+        derived::write_compute_fn(w, fc, d, &data);
         w.blank();
     }
     doc_comment(w, d.docs.as_deref(), d.deprecated.as_deref());
@@ -341,15 +373,27 @@ fn write_error(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, e: &Error
     if checks::has_rules(d) {
         w.line(format!("rules: {},", checks::fn_name(d)));
     }
+    if d.has_derived() {
+        w.line(format!("derive: {},", derived::fn_name(d)));
+    }
     w.close_with("};");
     w.blank();
-    w.open(format!("constructor(data: {data}, init: {init} = {{}})"));
+    // What a handler raises: a derived field of the data is optional, the server computes it.
+    let (param, cast) = if derived::has_shapes(fc, d) {
+        (
+            derived::shape_name(d, derived::Shape::Output),
+            format!(" as {data}"),
+        )
+    } else {
+        (data.clone(), String::new())
+    };
+    w.open(format!("constructor(data: {param}, init: {init} = {{}})"));
     let default = e
         .default_status
         .map(|s| format!(", {s}"))
         .unwrap_or_default();
     w.line(format!(
-        "super({name}.sig, {}, data, init{default});",
+        "super({name}.sig, {}, data{cast}, init{default});",
         ts_str(&d.name)
     ));
     w.close();
@@ -362,6 +406,24 @@ fn write_error(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, e: &Error
     if checks::has_rules(d) {
         write_error_rules_members(w, fc, d, &name, &data);
     }
+    if d.has_derived() {
+        write_error_compute(w, fc, &name, &data);
+    }
+    w.close();
+}
+
+/// `static compute(data)` of an error with derived fields: the data with them computed.
+fn write_error_compute(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, name: &str, data: &str) {
+    let violation = fc.rt("Violation");
+    let partial = fc.rt("DeepPartial");
+    let compute = fc.rt("deriveValue");
+    w.blank();
+    w.open(format!(
+        "static compute(data: {partial}<{data}>, out: {violation}[] = []): {partial}<{data}>"
+    ));
+    w.line(format!(
+        "return {compute}({name}.schema, data, '$', out) as {partial}<{data}>;"
+    ));
     w.close();
 }
 

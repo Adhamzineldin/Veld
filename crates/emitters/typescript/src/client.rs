@@ -10,6 +10,7 @@ use veld_codegen::{CodeWriter, FileSet, GenDiagnostic};
 use veld_ir::{AuthKind, Binding, Endpoint, Ir, Method, Param, Service, ServiceId};
 
 use crate::can;
+use crate::derived;
 use crate::policy::Plan;
 use crate::tree::{FileCtx, Tree};
 use crate::types::ts_type;
@@ -71,6 +72,25 @@ pub fn op_const(svc: &Service, ep: &Endpoint) -> String {
 /// `export interface GetOrderRequest { ... }`: path params, `body`, `query`, single
 /// query params and headers, all by parameter name.
 pub fn write_request_type(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, name: &str, ep: &Endpoint) {
+    write_request_type_for(w, fc, name, (ep, false));
+}
+
+/// The type of one parameter of a request. A client sends a body and a query object without
+/// their derived fields (`spec/rules.md` section 17.2), so there they have the `Input` type.
+fn param_type(fc: &mut FileCtx<'_, '_>, p: &Param, client: bool) -> String {
+    if client && matches!(p.binding, Binding::Body | Binding::QueryObject) {
+        derived::shaped_type(fc, &p.ty, derived::Shape::Input)
+    } else {
+        ts_type(fc, &p.ty)
+    }
+}
+
+fn write_request_type_for(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    name: &str,
+    (ep, client): (&Endpoint, bool),
+) {
     // `body: stream T` on a `ws` endpoint is the client's message type, not part of the request.
     let params: Vec<&Param> = ep.params.iter().filter(|p| !p.stream).collect();
     if params.is_empty() {
@@ -80,7 +100,7 @@ pub fn write_request_type(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, name: &s
     w.open(format!("export interface {name}"));
     for p in params {
         let opt = if p.optional { "?" } else { "" };
-        let ty = ts_type(fc, &p.ty);
+        let ty = param_type(fc, p, client);
         w.line(format!("{}{opt}: {ty};", prop_key(&p.name)));
     }
     w.close();
@@ -96,13 +116,13 @@ fn write_client_request_type(
 ) {
     let extras = version::client_members(fc, ep);
     if extras.is_empty() {
-        write_request_type(w, fc, name, ep);
+        write_request_type_for(w, fc, name, (ep, true));
         return;
     }
     w.open(format!("export interface {name}"));
     for p in ep.params.iter().filter(|p| !p.stream) {
         let opt = if p.optional { "?" } else { "" };
-        let ty = ts_type(fc, &p.ty);
+        let ty = param_type(fc, p, true);
         w.line(format!("{}{opt}: {ty};", prop_key(&p.name)));
     }
     for line in extras {

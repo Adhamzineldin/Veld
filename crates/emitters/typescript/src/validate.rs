@@ -75,6 +75,16 @@ fn field_expr(fc: &mut FileCtx<'_, '_>, f: &Field) -> String {
     if f.wire != f.name {
         parts.push(format!("w: {}", ts_str(&f.wire)));
     }
+    if f.derived.is_some() {
+        // A derived field is computed, never supplied: no constraint is checked, it is never
+        // required of a value, and the runtime drops what a request carries for it
+        // (`spec/rules.md` section 17.2).
+        let t = schema_expr(fc, &f.ty, &Constraints::default());
+        parts.push(format!("t: {t}"));
+        parts.push("o: true".to_string());
+        parts.push("dv: true".to_string());
+        return format!("{{ {} }},", parts.join(", "));
+    }
     parts.push(format!("t: {}", schema_expr(fc, &f.ty, &f.constraints)));
     if f.optional {
         parts.push("o: true".to_string());
