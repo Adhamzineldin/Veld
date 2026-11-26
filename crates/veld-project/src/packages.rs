@@ -248,6 +248,7 @@ impl Project {
                 base_url: None,
                 consumes: Vec::new(),
                 prefix: String::new(),
+                messages: None,
             };
             out.push(RegistryPackage {
                 name: p.name,

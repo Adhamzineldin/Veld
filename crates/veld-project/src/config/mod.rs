@@ -26,7 +26,7 @@ pub use paths::{CONFIG_FILE, find_config};
 pub use raw::{FileConfig, OneOrMany, Role};
 pub use resolve::resolve;
 pub use select::{Affected, SelectBy, Selection, affected, dependents, select, selection_of};
-pub use sources::collect_sources;
+pub use sources::{CatalogSet, collect_catalogs, collect_sources};
 
 /// What a member is (section 5 of `spec/workspace.md`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -83,6 +83,21 @@ pub struct PackageSpec {
     /// Route prefix prepended to every service prefix of this package (`[workspace].prefix`
     /// then `[service].prefix`); empty when none.
     pub prefix: String,
+    /// The message catalogs of a service member (`spec/platform.md` section 22); `None` for a
+    /// library or a registry package, which have none.
+    pub messages: Option<MessagesSpec>,
+}
+
+/// Where a member's message catalogs are: `[service] messages`, default `messages`, next to the
+/// member's `veld.toml` (relative to the member, as `contracts` is).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MessagesSpec {
+    /// The absolute directory. It need not exist unless `explicit`.
+    pub dir: PathBuf,
+    /// The name as the contracts and the IR write it: relative to the member, `/` separators.
+    pub name: String,
+    /// True when `[service] messages` was written: a directory that is not there is an error.
+    pub explicit: bool,
 }
 
 /// Who an emitter id refers to.

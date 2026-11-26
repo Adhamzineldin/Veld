@@ -13,8 +13,8 @@ use super::paths::normalize;
 use super::raw::{FileConfig, OneOrMany, PluginSection, Role, TargetSection, WorkspaceSection};
 use super::suggest::{closest, hint};
 use super::{
-    DefaultSpec, EmitterRef, Hooks, MemberKind, MemberSpec, PackageSpec, PluginSpec, Project,
-    TargetSpec,
+    DefaultSpec, EmitterRef, Hooks, MemberKind, MemberSpec, MessagesSpec, PackageSpec, PluginSpec,
+    Project, TargetSpec,
 };
 
 #[cfg(test)]
@@ -302,6 +302,7 @@ fn library_package(m: &Member, dir: &Path) -> PackageSpec {
         base_url: None,
         consumes: Vec::new(),
         prefix: String::new(),
+        messages: None,
     }
 }
 
@@ -320,6 +321,23 @@ fn service_package(
         base_url: svc.base_url.clone(),
         consumes: resolve_consumes(&m.name, &svc.consumes, services, warnings)?,
         prefix: join_prefix(ws.and_then(|w| w.prefix.as_deref()), svc.prefix.as_deref())?,
+        messages: Some(messages_spec(dir, svc.messages.as_deref())?),
+    })
+}
+
+/// The catalog directory of a service member: `[service] messages`, default `messages`.
+fn messages_spec(dir: &Path, messages: Option<&str>) -> Result<MessagesSpec, ConfigError> {
+    let written = messages.unwrap_or("messages");
+    let name = written.trim_start_matches("./").trim_end_matches('/');
+    if name.is_empty() || Path::new(name).is_absolute() {
+        return Err(ConfigError::invalid(format!(
+            "`[service] messages` must be a directory relative to the member, found `{written}`"
+        )));
+    }
+    Ok(MessagesSpec {
+        dir: normalize(&dir.join(name)),
+        name: name.replace('\\', "/"),
+        explicit: messages.is_some(),
     })
 }
 

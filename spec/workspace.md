@@ -182,6 +182,7 @@ name = "bookings"            # default: the directory name
 contracts = "contracts"      # default
 consumes = ["payments"]      # default: none; cycles are legal; "*" is every other service
 prefix = "/v1"               # optional
+messages = "messages"        # default: the message catalogs, see below
 base-url = "http://bookings:3001"   # optional; see below
 owners = ["team-bookings"]
 package = "@shop/bookings"   # publishing, with `version` and `description`, as today
@@ -190,6 +191,7 @@ version = "1.0.0"
 
 - The name is the package name of the service: what `use bookings:...` and `consumes` refer to.
 - `consumes` entries MUST name services of the workspace (`E0702`). Listing the service itself is a warning (`W0701`).
+- `messages` names the directory of the member's message catalogs (`spec/platform.md` §22), relative to the member like `contracts`. The default `messages` need not exist. A directory that was named and is not there is `E0700`. Only the `*.toml` files directly in it count; it is read for a service, never for a library or an app.
 - `base-url` keeps today's meaning in this change. The runtime config change removes it.
 - A service member may hold `[server]` and `[client]` targets (section 6).
 

@@ -104,6 +104,7 @@ fn service() -> Value {
             "name": name_of("service"),
             "contracts": contracts(),
             "prefix": string("Route prefix such as `/v1`, prepended to this service's prefixes after `[workspace].prefix`. Must start with `/`."),
+            "messages": string("Directory of the message catalogs, relative to the member, one `<language>.toml` per language (default `messages`)."),
             "base-url": string("Default base URL of the service for generated clients (lower priority than the constructor argument and `VELD_<SERVICE>_URL`)."),
             "consumes": {
                 "type": "array", "items": { "type": "string" }, "uniqueItems": true,
