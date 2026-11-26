@@ -94,3 +94,14 @@ Settled in `spec/platform.md` after the Node work: every flag an endpoint can re
 
 ## Node (owed)
 - The operands of `old(...)` that only a flagged `ensure` uses are still evaluated when the flag is off; the reference removes the statement. It shows only when the operand raises an evaluation error.
+
+# Still open after the Rust alignment pass (26 Nov)
+
+## Rust
+- `require`, `allow`, `ensure` and `old(...)` of an endpoint block that read a request parameter's derived field without a value still read the stand-in (step 6 receives the arguments after the stand-ins are filled). To fix: step 5 carries the absent patterns of each parameter to step 6, and the reach analysis handles parameter roots in the guards of `block.rs`.
+- The skip of a read of an absent derived field is by pattern, not by item: one absent item skips the whole read, where the reference can still fail an earlier item (written in `spec/targets/rust.md` 16).
+- A derived field inside the items of a `Page` is not skipped when absent.
+- A derived field that is absent in a request is a stand-in in the handler's struct (kept on purpose: an `Option` would have to be threaded through every site that reads a field by its IR path).
+
+## The compiler, for all three targets
+- An IR key that marks a derived field which can be absent in a request (it reaches a `@readonly` field), so that the three generators can type it and guard it without each working it out.
