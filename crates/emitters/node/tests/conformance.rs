@@ -192,12 +192,13 @@ fn node_generates_audit_and_typescript_is_not_asked() {
     veld_emit_conformance::check_audit_is_generated(&TypeScript).unwrap();
 }
 
-/// `limits` is opt-in (`spec/platform.md` section 5): the Node server and the TypeScript client,
-/// which waits when it is refused, both refuse an endpoint with `@limit`.
+/// `limits` is opt-in (`spec/platform.md` section 5): the Node server, which counts, and the
+/// TypeScript client, which waits when it is refused, both declare it and generate an endpoint
+/// with `@limit`.
 #[test]
-fn node_and_typescript_refuse_limits() {
-    veld_emit_conformance::check_limits_are_refused(&Node).unwrap();
-    veld_emit_conformance::check_limits_are_refused(&TypeScript).unwrap();
+fn node_and_typescript_generate_limits() {
+    veld_emit_conformance::check_limits_are_generated(&Node).unwrap();
+    veld_emit_conformance::check_limits_are_generated(&TypeScript).unwrap();
 }
 
 /// Message catalogs (`spec/platform.md` section 22): until a generator implements them, the Node

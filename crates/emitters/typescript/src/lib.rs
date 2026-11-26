@@ -202,6 +202,7 @@ impl Generator for TypeScript {
             .with(veld_ir::Feature::Timeouts)
             .with(veld_ir::Feature::Slo)
             .with(veld_ir::Feature::Tenancy)
+            .with(veld_ir::Feature::Limits)
     }
 
     fn warnings(&self, req: &GenRequest<'_>, opts: &Options) -> Vec<GenDiagnostic> {

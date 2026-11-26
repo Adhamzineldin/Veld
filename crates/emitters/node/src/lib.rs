@@ -85,6 +85,7 @@ impl Generator for Node {
             .with(veld_ir::Feature::Visibility)
             .with(veld_ir::Feature::Tenancy)
             .with(veld_ir::Feature::Audit)
+            .with(veld_ir::Feature::Limits)
     }
 
     fn warnings(&self, req: &GenRequest<'_>, opts: &Options) -> Vec<GenDiagnostic> {
