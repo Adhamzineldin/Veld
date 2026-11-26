@@ -55,7 +55,7 @@ fn a_long_step_puts_its_compensation_on_the_next_line() {
     let out = stable(src);
     assert!(
         out.contains(
-            "    step reserveTheWholeEvening = Reservations.reserveTheWholeEvening(body: { roomId: body.roomId, guests: body.guests })\n      compensate Reservations.cancelTheWholeEvening(id: reserveTheWholeEvening.id)\n"
+            "    step reserveTheWholeEvening = Reservations.reserveTheWholeEvening(\n      body: { roomId: body.roomId, guests: body.guests }\n    )\n      compensate Reservations.cancelTheWholeEvening(id: reserveTheWholeEvening.id)\n"
         ),
         "{out}"
     );

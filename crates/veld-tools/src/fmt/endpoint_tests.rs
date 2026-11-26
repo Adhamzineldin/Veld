@@ -149,7 +149,9 @@ example "a full room is rejected" {
   given room = { capacity: 2, closed: false }
   given gone = absent
   at "2026-03-01T09:00:00Z"
-  createBooking(body: { roomId: room.id, guests: 3, tags: ["a", .b, -1, 2.50] }) -> RoomFull { capacity: 2 }
+  createBooking(body: { roomId: room.id, guests: 3, tags: ["a", .b, -1, 2.50] }) -> RoomFull {
+    capacity: 2
+  }
 }
 
 example "with returns" {

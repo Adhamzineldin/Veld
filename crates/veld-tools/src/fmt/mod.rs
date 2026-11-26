@@ -8,6 +8,7 @@ mod print;
 mod saga;
 mod stmt;
 pub(crate) mod text;
+mod wrap;
 
 use veld_compiler::{Diagnostic, FileId, parse_file};
 
@@ -62,3 +63,6 @@ mod saga_tests;
 mod timed_tests;
 #[cfg(test)]
 mod version_tests;
+
+#[cfg(test)]
+mod wrap_tests;

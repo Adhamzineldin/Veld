@@ -536,13 +536,13 @@ impl Printer<'_> {
         self.docs(&x.docs, 0);
         self.block(key, &stmt::example_head(x), 0, false, |p| {
             for g in &x.givens {
-                p.example_line(g.span.start, &stmt::given_line(g));
+                p.example_lines(g.span.start, &stmt::given_lines(g, 2));
             }
             for g in x.saga.iter().flat_map(|s| &s.givens) {
-                p.example_line(g.span.start, &saga::given_line(g));
+                p.example_lines(g.span.start, &saga::given_lines(g, 2));
             }
             if let Some(a) = &x.principal {
-                p.example_line(a.span.start, &format!("as {}", stmt::value_text(&a.value)));
+                p.example_lines(a.span.start, &stmt::principal_lines(&a.value, 2));
             }
             if let Some(a) = &x.at {
                 p.example_line(a.span.start, &format!("at {}", quote(&a.time.value)));
@@ -596,6 +596,13 @@ impl Printer<'_> {
     fn example_line(&mut self, key: u32, text: &str) {
         self.leading(key, 2);
         self.line_no_newline(2, text);
+        self.end_line(key, 2);
+    }
+
+    /// Lines that carry their own indentation, the first of them at 2.
+    fn example_lines(&mut self, key: u32, lines: &[String]) {
+        self.leading(key, 2);
+        self.out.push_str(&lines.join("\n"));
         self.end_line(key, 2);
     }
 

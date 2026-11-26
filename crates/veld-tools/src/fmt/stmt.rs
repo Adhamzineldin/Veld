@@ -11,6 +11,7 @@ use veld_compiler::syntax::ast::{
 
 use super::expr::expr_text;
 use super::text::{quote, type_expr};
+use super::wrap::{Node, expr_lines, node_flat_fits, render, value_node};
 
 fn pad(n: usize) -> String {
     " ".repeat(n)
@@ -53,12 +54,13 @@ pub(super) fn stmt_lines(s: &Stmt, ind: usize) -> Vec<String> {
                 .name
                 .as_ref()
                 .map_or(String::new(), |n| format!("{}: ", n.name));
-            let mut line = format!("{p}require {name}{}", expr_text(&r.expr));
-            if let Some(o) = &r.otherwise {
-                line.push_str(&format!(" else {}", payload_text(o)));
-            }
+            let tail = r
+                .otherwise
+                .as_ref()
+                .map_or_else(String::new, |o| format!(" else {}", payload_text(o)));
+            let lines = expr_lines(&format!("require {name}"), &r.expr, &tail, ind);
             with_flag(
-                with_message(line, r.message.as_ref().map(|m| m.value.as_str()), &p),
+                with_message(lines, r.message.as_ref().map(|m| m.value.as_str()), &p),
                 r.flag.as_ref(),
             )
         }
@@ -67,9 +69,9 @@ pub(super) fn stmt_lines(s: &Stmt, ind: usize) -> Vec<String> {
                 .name
                 .as_ref()
                 .map_or(String::new(), |n| format!("{}: ", n.name));
-            let line = format!("{p}ensure {name}{}", expr_text(&e.expr));
+            let lines = expr_lines(&format!("ensure {name}"), &e.expr, "", ind);
             with_flag(
-                with_message(line, e.message.as_ref().map(|m| m.value.as_str()), &p),
+                with_message(lines, e.message.as_ref().map(|m| m.value.as_str()), &p),
                 e.flag.as_ref(),
             )
         }
@@ -93,8 +95,7 @@ pub(super) fn flag_text(f: &FlagSuffix) -> String {
     format!(" when flag({})", quote(&f.name))
 }
 
-fn with_message(line: String, message: Option<&str>, p: &str) -> Vec<String> {
-    let mut lines = vec![line];
+fn with_message(mut lines: Vec<String>, message: Option<&str>, p: &str) -> Vec<String> {
     if let Some(m) = message {
         lines.push(format!("{p}  message {}", quote(m)));
     }
@@ -105,9 +106,9 @@ fn with_message(line: String, message: Option<&str>, p: &str) -> Vec<String> {
 pub(super) fn clause_lines(c: &PolicyClause, ind: usize) -> Vec<String> {
     let p = pad(ind);
     let word = if c.forbid { "forbid" } else { "permit" };
-    let line = format!("{p}{word} when {}", expr_text(&c.expr));
+    let lines = expr_lines(&format!("{word} when "), &c.expr, "", ind);
     with_flag(
-        with_message(line, c.message.as_ref().map(|m| m.value.as_str()), &p),
+        with_message(lines, c.message.as_ref().map(|m| m.value.as_str()), &p),
         c.flag.as_ref(),
     )
 }
@@ -202,21 +203,40 @@ pub(super) fn value_text(v: &Value) -> String {
     }
 }
 
-pub(super) fn given_line(g: &Given) -> String {
+/// The lines of a `given`, the first at `ind`; a record that is too wide goes one member per line.
+pub(super) fn given_lines(g: &Given, ind: usize) -> Vec<String> {
     if let Some(on) = g.flag {
-        return format!(
-            "given flag {}{}",
-            quote(&g.name.name),
-            if on { "" } else { " off" }
-        );
+        let off = if on { "" } else { " off" };
+        return vec![format!(
+            "{}given flag {}{off}",
+            pad(ind),
+            quote(&g.name.name)
+        )];
     }
-    let value = g.value.as_ref().map_or("absent".to_string(), value_text);
-    format!("given {} = {value}", g.name.name)
+    let prefix = format!("given {} = ", g.name.name);
+    match &g.value {
+        Some(v) => render(&prefix, &value_node(v), ind, ""),
+        None => vec![format!("{}{prefix}absent", pad(ind))],
+    }
 }
 
-/// An outcome as written: `ok`, or an error name, and a value.
-pub(super) fn value_text_of_outcome(o: &Outcome) -> String {
-    outcome_text(o)
+/// `as value`, the caller of an example.
+pub(super) fn principal_lines(v: &Value, ind: usize) -> Vec<String> {
+    render("as ", &value_node(v), ind, "")
+}
+
+/// The words of an outcome before its value: `ok` or the error type.
+pub(super) fn outcome_word(o: &Outcome) -> String {
+    o.error.as_ref().map_or_else(|| "ok".to_string(), type_expr)
+}
+
+/// An outcome after `before`, its record broken like any other value when it is too wide.
+pub(super) fn outcome_lines(before: &str, o: &Outcome, ind: usize) -> Vec<String> {
+    let word = format!("{before}{}", outcome_word(o));
+    match &o.value {
+        Some(v) => render(&format!("{word} "), &value_node(v), ind, ""),
+        None => vec![format!("{}{word}", pad(ind))],
+    }
 }
 
 fn outcome_text(o: &Outcome) -> String {
@@ -247,28 +267,60 @@ pub(super) fn key_line(k: &KeyLine) -> String {
     }
 }
 
-/// The call of an example, indented by `ind`.
-pub(super) fn call_lines(c: &ExampleCall, ind: usize) -> Vec<String> {
-    let p = pad(ind);
+fn call_node(c: &ExampleCall) -> Node {
     let service = c
         .service
         .as_ref()
         .map_or(String::new(), |s| format!("{}.", s.name));
-    let args: Vec<String> = c
+    let args = c
         .args
         .iter()
-        .map(|a| format!("{}: {}", a.name.name, value_text(&a.value)))
+        .map(|a| (Some(a.name.name.clone()), value_node(&a.value)))
         .collect();
-    let head = format!("{p}{service}{}({})", c.endpoint.name, args.join(", "));
+    Node::call(format!("{service}{}", c.endpoint.name), args)
+}
+
+/// The call of an example, indented by `ind`. On one line when that fits (with `returns`, the
+/// call, `returns` and the outcome take a line each); otherwise the arguments go one per line
+/// and the outcome follows on its own line, or hangs on the call when the call fits.
+pub(super) fn call_lines(c: &ExampleCall, ind: usize) -> Vec<String> {
+    let node = call_node(c);
     let outcome = outcome_text(&c.outcome);
-    match &c.returns {
-        None => vec![format!("{head} -> {outcome}")],
-        Some(r) => vec![
-            head,
-            format!("{p}  returns {}", value_text(r)),
-            format!("{p}  -> {outcome}"),
-        ],
+    let Some(r) = &c.returns else {
+        return call_and_outcome(c, &node, &outcome, ind);
+    };
+    let mut lines = render("", &node, ind, "");
+    lines.extend(render("returns ", &value_node(r), ind + 2, ""));
+    lines.extend(outcome_lines("-> ", &c.outcome, ind + 2));
+    lines
+}
+
+fn call_and_outcome(c: &ExampleCall, node: &Node, outcome: &str, ind: usize) -> Vec<String> {
+    let flat = format!("{}{} -> {outcome}", pad(ind), node.flat_text());
+    if flat.chars().count() <= super::WIDTH {
+        return vec![flat];
     }
+    let hang = format!("{} -> ", node.flat_text());
+    let hung = outcome_lines(&hang, &c.outcome, ind);
+    if node_flat_fits(node, ind)
+        && hung
+            .first()
+            .is_some_and(|l| l.chars().count() <= super::WIDTH)
+    {
+        return hung;
+    }
+    if !node_flat_fits(node, ind) {
+        let closed = render("", node, ind, &format!(" -> {outcome}"));
+        if closed
+            .last()
+            .is_some_and(|l| l.chars().count() <= super::WIDTH)
+        {
+            return closed;
+        }
+    }
+    let mut lines = render("", node, ind, "");
+    lines.extend(outcome_lines("-> ", &c.outcome, ind + 2));
+    lines
 }
 
 /// `expect emitted E` or `expect not emitted`, after the call of an example.

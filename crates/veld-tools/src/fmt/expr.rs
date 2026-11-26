@@ -16,7 +16,7 @@ const P_MUL: u8 = 6;
 const P_UNARY: u8 = 7;
 const P_ATOM: u8 = 8;
 
-fn bin_prec(op: BinOp) -> u8 {
+pub(super) fn bin_prec(op: BinOp) -> u8 {
     match op {
         BinOp::Implies => P_IMPLIES,
         BinOp::Or => P_OR,
@@ -44,13 +44,13 @@ fn prec(e: &Expr) -> u8 {
 }
 
 /// `e`, in parentheses when it binds looser than `min`.
-fn child(e: &Expr, min: u8) -> String {
+pub(super) fn child(e: &Expr, min: u8) -> String {
     let s = expr_text(e);
     if prec(e) < min { format!("({s})") } else { s }
 }
 
 /// The minimum precedence of the (left, right) operand of a binary operator.
-fn operand_levels(op: BinOp) -> (u8, u8) {
+pub(super) fn operand_levels(op: BinOp) -> (u8, u8) {
     let p = bin_prec(op);
     match op {
         BinOp::Implies => (p + 1, p),
@@ -133,7 +133,7 @@ pub(super) fn derived_text(e: &Expr) -> String {
 /// `rule name: expr`, then the message on a continuation line.
 pub(super) fn rule_lines(r: &Rule, ind: usize) -> Vec<String> {
     let pad = " ".repeat(ind);
-    let mut lines = vec![format!("{pad}rule {}: {}", r.name.name, expr_text(&r.expr))];
+    let mut lines = super::wrap::expr_lines(&format!("rule {}: ", r.name.name), &r.expr, "", ind);
     if let Some(m) = &r.message {
         lines.push(format!("{pad}  message {}", quote(&m.value)));
     }
