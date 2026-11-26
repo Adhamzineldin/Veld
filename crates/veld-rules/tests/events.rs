@@ -252,7 +252,9 @@ fn limited(given: &str, expect: &str) -> Verdict {
 fn skipped(v: Verdict) -> String {
     match v {
         Verdict::Skipped(why) => why,
-        other => panic!("expected a skip, found {other:?}"),
+        other @ (Verdict::Passed | Verdict::Failed(_)) => {
+            panic!("expected a skip, found {other:?}")
+        }
     }
 }
 

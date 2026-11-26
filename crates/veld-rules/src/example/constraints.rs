@@ -87,7 +87,7 @@ fn number(value: &Json) -> Option<f64> {
     match value {
         Json::Number(n) => n.as_f64(),
         Json::String(s) => s.parse::<f64>().ok(),
-        _ => None,
+        Json::Null | Json::Bool(_) | Json::Array(_) | Json::Object(_) => None,
     }
 }
 
@@ -96,7 +96,7 @@ fn size(value: &Json) -> Option<u64> {
         Json::String(s) => s.chars().count(),
         Json::Array(a) => a.len(),
         Json::Object(o) => o.len(),
-        _ => return None,
+        Json::Null | Json::Bool(_) | Json::Number(_) => return None,
     };
     u64::try_from(n).ok()
 }

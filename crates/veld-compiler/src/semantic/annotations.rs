@@ -468,7 +468,12 @@ fn retry_max(kind: &LitKind) -> Result<u32, String> {
             u32::try_from(*n).map_err(|_| "`max` is out of range".to_string())
         }
         LitKind::Int(n) => Err(format!("`max: {n}` is out of range; use 0 to {RETRY_MAX}")),
-        _ => Err("`max` must be an integer from 0 to 100".to_string()),
+        LitKind::Str(_)
+        | LitKind::Float(_)
+        | LitKind::Bool(_)
+        | LitKind::Null
+        | LitKind::Variant(_)
+        | LitKind::EmptyList => Err("`max` must be an integer from 0 to 100".to_string()),
     }
 }
 
