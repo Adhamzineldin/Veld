@@ -279,7 +279,7 @@ impl Generator for Java {
         let conditional_server =
             req.role == Role::Server && conditional::services_use(req.ir, &req.services);
         let flags = runtime::Flags {
-            rules: rules || policies || rollout || output_mode || derived || p1.tenancy,
+            rules: rules || policies || rollout || output_mode || derived || p1.any(),
             visibility: p1.visibility,
             tenancy: p1.tenancy,
             audit: p1.audit,

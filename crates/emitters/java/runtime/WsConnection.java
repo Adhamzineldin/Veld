@@ -35,6 +35,10 @@ final class WsConnection implements WsSession<Json, Json> {
   // #if flags
   private volatile Flags.View flagView;
   // #endif
+  // #if shapes
+  private HandlerHooks shapeHooks;
+  private volatile Platform.State platformState;
+  // #endif
 
   WsConnection(
       EndpointSpec spec,
@@ -60,6 +64,14 @@ final class WsConnection implements WsSession<Json, Json> {
   /** Gives the connection the hooks that carry the rule output mode and the violation hook. */
   void rules(HandlerHooks hooks) {
     this.rulesHooks = hooks;
+  }
+
+  // #endif
+  // #if shapes
+  /** Gives the connection what shapes its messages: the hooks and the state of the request (the caller and the clock). */
+  void platform(HandlerHooks hooks, Platform.State state) {
+    this.shapeHooks = hooks;
+    this.platformState = state;
   }
 
   // #endif
@@ -274,6 +286,21 @@ final class WsConnection implements WsSession<Json, Json> {
         fail(Router.problem(std.internal(), "Internal", 500, spec.sig(), Json.object().build()));
         throw rejected;
       }
+    }
+    // #endif
+    // #if tenancy
+    if (platformState != null) {
+      try {
+        Platform.tenantItem(shapeHooks, spec, wire, platformState.ctx());
+      } catch (RuleWalk.Rejected rejected) {
+        fail(Router.problem(std.internal(), "Internal", 500, spec.sig(), Json.object().build()));
+        throw rejected;
+      }
+    }
+    // #endif
+    // #if visibility
+    if (platformState != null) {
+      wire = Platform.shown(spec.success(), wire, platformState.ctx());
     }
     // #endif
     socket.send("{\"data\":" + Wire.canonicalOf(spec.success(), wire) + "}");

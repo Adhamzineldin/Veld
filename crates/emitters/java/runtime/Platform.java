@@ -939,7 +939,7 @@ public final class Platform {
     }
     Json result = resultOf(spec, info, response.status(), body, problem, redacted);
     // #endif
-    // #if visibility
+    // #if audit_visibility
     List<String> hidden = state.hidden();
     // #endif
     // #if audit_not_visibility

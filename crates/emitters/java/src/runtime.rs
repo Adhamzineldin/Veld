@@ -444,6 +444,7 @@ pub fn emit_with(
         "audit_plain" => flags.audit && !flags.timed,
         "audit_derived" => flags.audit && flags.derived,
         "audit_plain_values" => flags.audit && !flags.derived,
+        "audit_visibility" => flags.audit && flags.visibility,
         "audit_not_visibility" => flags.audit && !flags.visibility,
         "platform_only" => flags.platform() && !flags.audit,
         "tenant_events" => flags.tenant_events,

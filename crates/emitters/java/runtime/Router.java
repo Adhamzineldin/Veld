@@ -785,6 +785,10 @@ public final class Router implements VeldHandler {
     // #if flags
     Flags.View enclosing = Flags.current();
     // #endif
+    // #if platform
+    Platform.State enclosingState = Platform.current();
+    Platform.open(hooks, ctx, null);
+    // #endif
     try {
       Guarded guarded = guard(route, match, request, ctx, true);
       if (guarded.failure != null) {
@@ -794,14 +798,26 @@ public final class Router implements VeldHandler {
       // #if flags
       conn.flags(Flags.current());
       // #endif
+      // #if shapes
+      conn.platform(hooks, ctx.platform());
+      // #endif
       conn.ready();
       ep.ws().call(new Json.Obj(guarded.bound.values), ctx, conn);
       conn.finish(1000, "done");
     } catch (Exception | StackOverflowError err) {
       conn.fail(failure(err, spec, ctx));
-      // #if flags
+      // #if fin_flags
     } finally {
       Flags.restore(enclosing);
+      // #endif
+      // #if fin_platform_flags
+    } finally {
+      Flags.restore(enclosing);
+      Platform.install(enclosingState);
+      // #endif
+      // #if fin_platform
+    } finally {
+      Platform.install(enclosingState);
       // #endif
     }
   }
