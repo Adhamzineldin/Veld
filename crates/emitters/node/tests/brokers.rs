@@ -177,3 +177,27 @@ fn the_broker_programs_exist_and_name_the_variables_the_readme_documents() {
         assert!(readme.contains(word), "the README does not mention {word}");
     }
 }
+
+/// No broker needed: a stand-in connection whose confirm channel never answers.
+#[test]
+fn a_rabbitmq_publish_that_is_never_confirmed_fails_after_the_timeout() {
+    let Some(tsc) = tsc_path() else {
+        return;
+    };
+    for (edition, _) in TARGETS {
+        let guard = scratch("events-rabbitmq-timeout-");
+        let work = guard.path();
+        build(work, &tsc, &["events_rabbitmq_timeout.ts"], edition);
+        let out = Command::new("node")
+            .arg("out/events_rabbitmq_timeout.js")
+            .current_dir(work)
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            out.status.success() && stdout.contains("events rabbitmq timeout ok"),
+            "events_rabbitmq_timeout ({edition}) failed\nstdout:\n{stdout}\nstderr:\n{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+}

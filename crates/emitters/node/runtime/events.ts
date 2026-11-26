@@ -890,7 +890,7 @@ function noteMismatch(c: Consumer, def: EventDef, env: Envelope): void {
   });
 }
 
-/** Steps 3 and 4: the shape, then the invariants when the digests agree. `null`: the message goes on. */
+/** Steps 3 and 4: the shape and the decoding, then the invariants when the digests agree. `null`: the message goes on. */
 // #if flags
 function decode(
   c: Consumer,
@@ -907,6 +907,14 @@ function decode(c: Consumer, message: TransportMessage, def: EventDef, env: Enve
   if (issues.length > 0) {
     const text = issues.map((i) => `${i.path} ${i.message}`).join('; ');
     return reject(c, message, 'shape', { message: text, event: def.name, issues });
+  }
+  // A value that cannot be decoded can never succeed either: it is a rejection (step 3), not a
+  // handler failure that would be retried. The handler decodes again for every run.
+  try {
+    fromWire(def.schema, env.data);
+  } catch (error) {
+    const text = error instanceof Error ? error.message : 'the value cannot be decoded';
+    return reject(c, message, 'shape', { message: text, event: def.name });
   }
   // #if flags_rules
   if ((env.veldrules ?? null) === def.digest) {

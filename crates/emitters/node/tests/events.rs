@@ -1219,6 +1219,30 @@ fn every_event_example_passes_live_against_the_generated_test_handlers() {
     matrix(live_examples_of_both_contracts);
 }
 
+/// The event endpoint answers `400` with `{ "error": ... }` for a missing or empty topic and for a
+/// number of deliveries that is neither 1 nor 2.
+fn test_handler_errors(tsc_path: &Path, edition: &str, _target: &str) {
+    let ir = compile_text(read(DELIVERY));
+    let guard = scratch("events-test-handler-errors-");
+    let work = guard.path();
+    let names: Vec<&str> = ir.services.iter().map(|s| s.name.as_str()).collect();
+    build_with(
+        work,
+        tsc_path,
+        &ir,
+        &names,
+        &["events_test_handler_errors.ts"],
+        edition,
+        &json!({ "typescript": edition, "testing": true }),
+    );
+    assert!(node(work, "events_test_handler_errors").contains("events test handler errors ok"));
+}
+
+#[test]
+fn the_event_endpoint_of_a_test_handler_answers_400_with_an_error_object() {
+    matrix(test_handler_errors);
+}
+
 // ---- phase E2: the generated files -----------------------------------------------------------
 
 fn delivery_files(options: &Value) -> veld_codegen::FileSet {
@@ -1400,6 +1424,14 @@ fn an_unknown_broker_and_a_wrong_value_are_e0802() {
     }
     let err = generate_with(&ir, &names, &json!({ "messaging": "pulsar" })).unwrap_err();
     assert!(err[0].message.contains("pulsar"), "{}", err[0].message);
+    // Like every other option error of this emitter.
+    assert!(
+        err[0]
+            .message
+            .starts_with("invalid options for generator `node`: "),
+        "{}",
+        err[0].message
+    );
 }
 
 #[test]
@@ -1407,6 +1439,13 @@ fn messaging_on_a_target_without_events_is_e0802() {
     let ir = standard_ir();
     let err = generate_with(&ir, &["Orders"], &json!({ "messaging": "kafka" })).unwrap_err();
     assert_eq!(err[0].code, "E0802");
+    assert!(
+        err[0]
+            .message
+            .starts_with("invalid options for generator `node`: "),
+        "{}",
+        err[0].message
+    );
     assert!(
         err[0].message.contains("publishes or subscribes"),
         "{}",

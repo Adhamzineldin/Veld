@@ -55,6 +55,8 @@ export interface RabbitMqRedelivery {
 
 export interface RabbitMqTransportOptions {
   redelivery?: RabbitMqRedelivery;
+  /** The longest `publish` waits for the broker's confirm, in milliseconds. Default 30000. */
+  publishTimeoutMs?: number;
 }
 
 /** One running subscription. */
@@ -72,7 +74,7 @@ interface Running {
  * `Transport` over RabbitMQ. A topic is a durable `fanout` exchange; a group is the durable queue
  * `<topic>.<group>`, bound to it, whose consumers share it; the key is the routing key (empty
  * when there is none). `publish` completes when the broker confirmed the message, which is
- * persistent. `@ordered` declares the queue with `x-single-active-consumer`, so the order holds
+ * persistent, or fails after `publishTimeoutMs`. `@ordered` declares the queue with `x-single-active-consumer`, so the order holds
  * while one consumer is active. With `@deadLetter` the consumer also declares the durable
  * exchange `<topic>.dlq` and a durable queue of the same name, so a copy is kept. A message
  * answered `again` stays unacknowledged and is delivered again by the same consumer after a delay
@@ -97,8 +99,13 @@ export class RabbitMqTransport implements Transport {
     if (this.#closed) throw new Error('veld rabbitmq: the transport is closed');
     await this.#declareExchange(topic);
     const channel = await this.#publishChannel();
+    const limit = this.#options.publishTimeoutMs ?? 30000;
     await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(new Error(`veld rabbitmq: the broker did not confirm the message to \`${topic}\` within ${String(limit)} ms`));
+      }, limit);
       channel.publish(topic, key ?? '', Buffer.from(bytes), { persistent: true, contentType: CONTENT_TYPE }, (error) => {
+        clearTimeout(timer);
         if (error) reject(error instanceof Error ? error : new Error(String(error)));
         else resolve();
       });

@@ -10,7 +10,9 @@ import { createOrdersPublisher } from './server/server/orders-events';
 import { subscribeBillingEvents } from './server/server/billing-events';
 import { subscribeFulfilmentEvents } from './server/server/fulfilment-events';
 import type { ChannelOptions, HandlerFailure, Outcome, Transport, TransportMessage } from './server/runtime/events';
-import { MemoryInbox, MemoryTransport } from './server/runtime/events';
+import { MemoryInbox, MemoryTransport, subscribeEvents } from './server/runtime/events';
+import type { EventRejected } from './server/runtime/events';
+import type { Schema } from './server/runtime/veld';
 
 const TOPIC = 'shop.orders.v1';
 const ORDER = '5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21';
@@ -273,6 +275,71 @@ async function aFailedRunIsNotRecorded(): Promise<void> {
   assert.equal(inbox.size, 1);
 }
 
+/**
+ * A value that passes the shape check and then cannot be decoded (`spec/events.md` section 8, step
+ * 3) is rejected as `shape`, once, and the handler never runs: it is not a handler failure that
+ * would be retried. The schema is hand-made: its `ref` can be resolved by `validate` but not by
+ * `fromWire`.
+ */
+async function aValueThatCannotBeDecodedIsRejectedAsShape(): Promise<void> {
+  const transport = new Spy();
+  const schema: Schema = {
+    k: 'object',
+    fields: [
+      {
+        n: 'a',
+        t: {
+          k: 'ref',
+          to: (): Schema => {
+            if ((new Error().stack ?? '').includes('fromWire')) throw new Error('cannot decode a');
+            return { k: 'int' } as Schema;
+          },
+        },
+      },
+    ],
+  } as Schema;
+  const def = { name: 'Odd', sig: 'veld:bookings/Odd@0000000000000000', schema, digest: null };
+  const rejected: EventRejected[] = [];
+  const failures: HandlerFailure[] = [];
+  const waits: number[] = [];
+  let runs = 0;
+  await subscribeEvents(
+    transport,
+    [
+      {
+        topic: 'odd.v1',
+        group: 'g',
+        on: [{ def, run: () => void (runs += 1) }],
+        retry: { max: 3, backoff: 'fixed' },
+      },
+    ],
+    {
+      onEventRejected: (e) => rejected.push(e),
+      onHandlerError: (e) => failures.push(e),
+      sleep: (ms) => {
+        waits.push(ms);
+        return Promise.resolve();
+      },
+    },
+  );
+  const envelope = {
+    specversion: '1.0',
+    id: 'odd-1',
+    source: 'veld:bookings/Odd',
+    type: def.sig,
+    data: { a: 1 },
+  };
+  await transport.publish('odd.v1', null, new TextEncoder().encode(JSON.stringify(envelope)));
+  await transport.idle();
+  assert.equal(runs, 0, 'the handler never ran');
+  assert.equal(rejected.length, 1);
+  assert.equal(rejected[0]?.reason, 'shape');
+  assert.equal(rejected[0]?.event, 'Odd');
+  assert.match(rejected[0]?.message ?? '', /cannot decode a/);
+  assert.equal(failures.length, 0, 'it is not a handler failure');
+  assert.deepEqual(waits, [], 'and it is not retried');
+}
+
 async function main(): Promise<void> {
   await retriesWaitAndTheLastRunIsCopied();
   await aCopyThatIsPublishedAgainIsAValidMessage();
@@ -281,6 +348,7 @@ async function main(): Promise<void> {
   await theInboxSkipsASecondDelivery();
   await everyRunGoesThroughTheInboxAgain();
   await aFailedRunIsNotRecorded();
+  await aValueThatCannotBeDecodedIsRejectedAsShape();
   console.log('events delivery process ok');
 }
 

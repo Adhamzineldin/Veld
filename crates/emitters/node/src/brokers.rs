@@ -88,7 +88,7 @@ pub fn choose(
     for name in messaging.names() {
         let broker = Broker::parse(name).ok_or_else(|| {
             e0802(format!(
-                "option `messaging` = `{name}` is not a broker with an adapter (`kafka`, `rabbitmq`)"
+                "invalid options for generator `node`: `messaging` = `{name}` is not a broker with an adapter (`kafka`, `rabbitmq`)"
             ))
         })?;
         chosen.push(broker);
@@ -97,7 +97,7 @@ pub fn choose(
     chosen.dedup();
     if !chosen.is_empty() && !tree.uses_events() {
         return Err(e0802(
-            "option `messaging` needs a service that publishes or subscribes: none of the services of this target does"
+            "invalid options for generator `node`: `messaging` needs a service that publishes or subscribes: none of the services of this target does"
                 .to_owned(),
         ));
     }

@@ -628,9 +628,13 @@ async function testEvent(req: {request}): Promise<{response}> {{
     body: JSON.stringify(value),
   }});
   const topic = eventHeader(req, 'veld-test-topic');
-  if (topic === undefined) return reply(400, {{ error: 'Veld-Test-Topic is missing' }});
+  if (topic === undefined || topic === '') return reply(400, {{ error: 'Veld-Test-Topic is missing or empty' }});
   const key = eventHeader(req, 'veld-test-key') ?? null;
-  const deliveries = eventHeader(req, 'veld-test-deliveries') === '2' ? 2 : 1;
+  const given = eventHeader(req, 'veld-test-deliveries');
+  if (given !== undefined && given !== '1' && given !== '2') {{
+    return reply(400, {{ error: 'Veld-Test-Deliveries must be 1 or 2' }});
+  }}
+  const deliveries = given === '2' ? 2 : 1;
   const bytes = await eventBytes(req);
   const called: Record<string, number> = {{}};
   for (const n of handlerNames) called[n] = 0;
