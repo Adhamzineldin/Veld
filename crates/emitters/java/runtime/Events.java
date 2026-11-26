@@ -1081,7 +1081,7 @@ public final class Events {
       try {
         typed = def.codec().decode(prepared);
       } catch (RuntimeException e) {
-        return reject(message, Reason.SHAPE, String.valueOf(e.getMessage()), def.name(), List.of(), List.of());
+        return reject(message, Reason.SHAPE, "`data` could not be read as the event's type", def.name(), List.of(), List.of());
       }
       noteMismatch(def, env);
       return handle(binding, typed, message, env);

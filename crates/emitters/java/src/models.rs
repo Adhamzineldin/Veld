@@ -332,7 +332,7 @@ fn write_enum(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, e: &Enum) 
     w.close();
     w.close();
     w.line(format!(
-        "throw new IllegalArgumentException(\"unknown {name}: \" + value);"
+        "throw new IllegalArgumentException(\"unknown {name}\");"
     ));
     w.close();
     w.blank();
@@ -512,7 +512,7 @@ fn write_union_methods(
         w.close();
     }
     w.line(format!(
-        "throw new IllegalArgumentException(\"unknown {name} arm: \" + value);"
+        "throw new IllegalArgumentException(\"unknown {name} arm\");"
     ));
     w.close();
     w.blank();
@@ -528,7 +528,7 @@ fn write_union_methods(
     }
     w.line("default:");
     w.line(format!(
-        "  throw new IllegalArgumentException(\"unknown {name} arm: \" + label);"
+        "  throw new IllegalArgumentException(\"unknown {name} arm\");"
     ));
     w.close();
     w.close();

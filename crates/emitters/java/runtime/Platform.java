@@ -909,7 +909,7 @@ public final class Platform {
     try {
       event = build(hooks, spec, info, state, response);
     } catch (RuntimeException | StackOverflowError err) {
-      report(hooks, state.ctx(), new AuditFailure("the audit event could not be built: " + err.getMessage(), null, err));
+      report(hooks, state.ctx(), new AuditFailure("the audit event could not be built", null, err));
       return;
     }
     try {
@@ -918,7 +918,7 @@ public final class Platform {
       Thread.currentThread().interrupt();
       report(hooks, state.ctx(), new AuditFailure("the audit hook was interrupted", event, err));
     } catch (Exception | StackOverflowError err) {
-      report(hooks, state.ctx(), new AuditFailure("the audit hook failed: " + err.getMessage(), event, err));
+      report(hooks, state.ctx(), new AuditFailure("the audit hook failed", event, err));
     }
   }
 

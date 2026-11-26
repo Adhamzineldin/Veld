@@ -2,6 +2,7 @@
 #![allow(dead_code)]
 
 pub mod live;
+pub mod p4;
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;

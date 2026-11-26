@@ -366,13 +366,13 @@ public final class ClientCore {
       // #if timeouts
       if (e instanceof java.net.http.HttpTimeoutException) {
         throw new VeldTransportError(
-            ep.method() + " " + request.uri().getRawPath() + " timed out after " + timeoutOf(ep).toMillis() + " ms", e);
+            ep.method() + " " + ep.path() + " timed out after " + timeoutOf(ep).toMillis() + " ms", e);
       }
       // #endif
-      throw new VeldTransportError(ep.method() + " " + request.uri().getRawPath() + " failed", e);
+      throw new VeldTransportError(ep.method() + " " + ep.path() + " failed", e);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
-      throw new VeldTransportError(ep.method() + " " + request.uri().getRawPath() + " was interrupted", e);
+      throw new VeldTransportError(ep.method() + " " + ep.path() + " was interrupted", e);
     }
   }
   // #if limits
@@ -407,17 +407,17 @@ public final class ClientCore {
     long budget = request.timeout().map(java.time.Duration::toMillis).orElse(Long.MAX_VALUE);
     long wait = seconds >= Long.MAX_VALUE / 1000L ? Long.MAX_VALUE : seconds * 1000L;
     if (budget - elapsedMillis(start) <= wait) {
-      throw timedOut(request, budget);
+      throw timedOut(ep, budget);
     }
     try {
       options.sleeper().sleep(wait);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
-      throw new VeldTransportError(ep.method() + " " + request.uri().getRawPath() + " was interrupted", e);
+      throw new VeldTransportError(ep.method() + " " + ep.path() + " was interrupted", e);
     }
     long left = budget - elapsedMillis(start);
     if (left <= 0) {
-      throw timedOut(request, budget);
+      throw timedOut(ep, budget);
     }
     // The same request, so the same idempotency key, with the time that is left.
     HttpRequest again = HttpRequest.newBuilder(request, (name, value) -> true)
@@ -430,9 +430,9 @@ public final class ClientCore {
     return (System.nanoTime() - startNanos) / 1_000_000L;
   }
 
-  private static VeldTransportError timedOut(HttpRequest request, long budget) {
+  private static VeldTransportError timedOut(EndpointSpec ep, long budget) {
     return new VeldTransportError(
-        request.method() + " " + request.uri().getRawPath() + " timed out after " + budget + " ms",
+        ep.method() + " " + ep.path() + " timed out after " + budget + " ms",
         new java.net.http.HttpTimeoutException("the wait of a 429 does not fit in the timeout"));
   }
 
@@ -477,7 +477,7 @@ public final class ClientCore {
     try {
       return URI.create(base + pathAndQuery);
     } catch (IllegalArgumentException e) {
-      throw new VeldTransportError("invalid request URL " + base + pathAndQuery, e);
+      throw new VeldTransportError("invalid request URL", e);
     }
   }
 
