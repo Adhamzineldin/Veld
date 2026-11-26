@@ -37,7 +37,8 @@ One runtime config per target, named `<Target>Runtime`: the target's name in Pas
 |---|---|---|---|
 | The type | an interface in `runtime.ts` | an immutable class with a builder | a struct that derives `serde::Deserialize` |
 | The check | `checkRuntime(value: unknown): <Target>Runtime` | `build()` of the builder, and `fromMap` | `check(&self)` and the deserializer |
-| From a flat map of paths | `fromEnv(names, env?)` | `fromMap(Map<String, String>)`, `fromEnv(Map<String, String> names)` | `from_env(names)`, `from_map(map)` |
+| From a nested value | `checkRuntime(value)` | `fromValue(Object)` | `from_value(serde_json::Value)`, or any `serde` source followed by `check` |
+| From a flat map of paths | `fromEnv(names, env?)` (there is no reader of a flat map: a nested object is what a TypeScript program has) | `fromMap(Map<String, String>)`, `fromEnv(Map<String, String> names)` | `from_env(names)`, `from_map(map)` |
 | Every client of the target | `createClients(runtime, options?)` | `<Target>Clients.create(runtime, options)` | `clients(&runtime, options)` |
 
 The generated type has no dependency beyond what the target already has.
@@ -70,7 +71,7 @@ export function createClients(runtime: BookingsRuntime, options?: ClientOptions)
 BookingsRuntime runtime = BookingsRuntime.builder()
     .iamUrl("http://iam:3001")
     .paymentsUrl("http://payments:3002")
-    .rulesOutput(RuleOutputMode.AUDIT)
+    .rulesOutput(RuleWalk.OutputMode.AUDIT)
     .build();
 ```
 
@@ -87,7 +88,7 @@ BookingsRuntime runtime = BookingsRuntime.builder()
 pub struct BookingsRuntime {
     pub services: BookingsServices,
     #[serde(default)]
-    pub rules: RulesRuntime,
+    pub rules: RulesSettings,
 }
 ```
 
@@ -113,12 +114,18 @@ The error's text is `invalid runtime config: ` followed by the problems in path 
 
 An unknown key is a problem and is not ignored, so that a misspelt `rules.ouput` cannot leave a server in a mode nobody chose.
 
+Two readers go through a library before they reach the check, and that library answers first for what it refuses: plain `serde` in Rust (`unknown field`, one problem at a time; `from_value`, `from_map` and `from_env` give the texts above) and Spring's binder for `<Target>RuntimeProperties` (an unknown key fails the binding; a service name with `-` cannot be written as an environment variable there, because relaxed binding drops the dash: use properties or YAML).
+
+**The test handler takes no runtime config.** The test handler of a server (`testing = true`, `rules.md` 12.4) calls no consumed service and must start without an address for one, so `veld test --live` needs nothing but the handler. Its output mode is a member of its own hooks (`rules.output`), the one place outside the runtime config where a mode is set, and it is checked like the setting.
+
 ## 5. What is removed
 
 - **The environment fallback.** A generated client no longer reads `VELD_<SERVICE>_URL`.
 - **The compiled-in URL.** `base-url` no longer reaches generated code.
 - **A client without a URL.** The `baseUrl` option of a client is required: a TypeScript client constructor requires the property, the Java client has no constructor without options, and the Rust client constructor takes the options. A client built directly, without the runtime config, keeps working as long as it passes `baseUrl`, which every client that passes one today already does.
-- **`rules: { output }` in the hooks object.** The mode is `rules.output` of the runtime config, and there is one place to set it. `rules.md` 5.3 already says the hooks field is temporary.
+- **`rules: { output }` in the hooks object.** The mode is `rules.output` of the runtime config, and there is one place to set it. `rules.md` 5.3 already says the hooks field is temporary. No production server keeps the hooks member: a server that has rules only through the services it consumes has no output mode at all, because the mode governs what the server itself answers.
+
+A target without settings keeps its bytes (section 2), and with them the client core it always had. In TypeScript and Java that core still contains the environment fallback; nothing such a target exports can reach it.
 
 `base-url` stays a key of `[service]` in `veld.toml` with one meaning left: the `servers` entry of the OpenAPI export. The IR keeps the field, so no IR snapshot and no lock file changes.
 

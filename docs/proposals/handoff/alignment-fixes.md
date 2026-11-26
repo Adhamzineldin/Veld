@@ -19,3 +19,22 @@ Found by comparing the three targets' reports for `@version` and `@idempotent` (
 
 ## Every target, every later three-target feature
 - After the three agents of a feature report, compare their target-spec sections side by side (argument order, option names, what gets a test handler, what happens on failure) before the next feature starts, and settle each difference in the shared spec.
+
+# Runtime config (compared 26 Nov; `spec/runtime-config.md` sections 3 to 5 now say the rule)
+
+## Java
+- **The test handler takes no runtime config** (section 4). Today `<Service>TestHandler.create` takes it like the handler and requires it when a URL is required. Remove the runtime argument from the test handler's entry; its output mode is a member of its own hooks.
+- **No production server keeps `rulesOutput` in its hooks** (section 5). Today a server that has rules only through consumed services keeps it. Remove it there; such a server has no output mode.
+- `spec/targets/java.md` 14.3 says a server with only policies or only `@rollout` has no `rules.output`. That is wrong: `contract_has_rules` counts an `allow` (a statement) and a rule with `@rollout`. Only a server whose rules are all in consumed services differs. Correct the text.
+- `<Target>Clients` is derived by trimming `Runtime` from the type name repeatedly, so the target `runtime` gives `Clients`. Use the shared `pascal_target`.
+
+## Rust
+- **The test handler takes no runtime config** (section 4): today its `create` and `plain` take it. Remove it; the output mode is a member of the test handler's own hooks.
+- **No production server keeps `rules_output` in its hooks** (section 5): remove it for a server that has rules only through consumed services.
+- `spec/targets/rust.md` 15 lists policies and `@rollout` among what makes the emitter's flag broader than the shared predicate. Only consumed services do. Correct the text.
+
+## Node
+- Nothing: the Node test handler already takes no runtime config.
+
+## Low priority, all targets
+- Two consumed services whose client names collide in `createClients`: TypeScript qualifies with the package, Java appends `_`, Rust reports `E0801`. Pick one (qualifying is the useful one) when someone meets it.
