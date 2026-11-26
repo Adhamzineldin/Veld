@@ -320,7 +320,7 @@ fn prepare(w: &mut CodeWriter, svc: &Service) {
         w.line("_ => Prepared::none(),");
         w.close_with("};");
     } else {
-        w.line("let _ = (endpoint, enforce, &args);");
+        w.line("let _ = (endpoint, enforce, now, &args);");
         w.line("let prepared = Prepared::none();");
     }
     w.open("if ctx.header(\"veld-test-dry-run\") == Some(\"1\")");

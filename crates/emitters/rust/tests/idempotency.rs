@@ -147,3 +147,36 @@ fn idempotency_builds_behaves_over_http_and_passes_every_example() {
         );
     }
 }
+
+/// A service that is idempotent and has no endpoint rule still gets a test handler: it runs the
+/// pipeline with no steps of its own and no clock hook (the production hooks have none).
+#[test]
+fn an_idempotent_service_without_rules_has_a_test_handler() {
+    let ir = compile_text(
+        "model B { id: uuid }\nservice S at \"/s\" {\n  @idempotent\n  post \"/\" make(body: B) -> 201 B\n}\n",
+        "plain",
+    );
+    let server = run(
+        &ir,
+        Role::Server,
+        vec![service_id(&ir, "S")],
+        vec![],
+        None,
+        json!({ "crate-name": "plain-server", "testing": true }),
+    );
+    let test = text(&server, "src/plain/s_test_server.rs");
+    assert!(test.contains("let prepared = Prepared::none();"));
+    assert!(test.contains("veld::rules::clock_ms(std::time::SystemTime::now())"));
+    assert!(!test.contains("hooks.clock"));
+    // Without the option there is no test handler and no rules runtime.
+    let plain = run(
+        &ir,
+        Role::Server,
+        vec![service_id(&ir, "S")],
+        vec![],
+        None,
+        json!({ "crate-name": "plain-server" }),
+    );
+    assert!(plain.get("src/plain/s_test_server.rs").is_none());
+    assert!(plain.get("src/veld/rules/mod.rs").is_none());
+}
