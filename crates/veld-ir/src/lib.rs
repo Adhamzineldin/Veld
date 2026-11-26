@@ -15,9 +15,9 @@ pub mod suggest;
 
 pub use endpoint_rules::{
     ElseError, ElseField, EndpointAllow, EndpointEnsure, EndpointFact, EndpointRequire,
-    EndpointRules, EndpointTransition, EventExpect, Example, ExampleArg, ExampleErrorOutcome,
-    ExampleEvent, ExampleField, ExampleGiven, ExampleOutcome, ExampleRef, ExampleValue,
-    ExpectedCall, Policy, PolicyClause, PolicyEffect, PolicyParam, ServiceFact, ServicePrincipal,
+    EndpointRules, EndpointTransition, EndpointVersion, EventExpect, Example, ExampleArg,
+    ExampleErrorOutcome, ExampleEvent, ExampleField, ExampleGiven, ExampleIfMatch, ExampleKey,
+    ExampleOutcome, ExampleRef, ExampleValue, ExpectedCall, KeyStore, Policy, PolicyClause, PolicyEffect, PolicyParam, ServiceFact, ServicePrincipal,
 };
 pub use rules::{
     Always, BinExpr, Builtin, CallExpr, EnumLit, Expr, ExprKind, ExprLit, ExprType, Op, PathRef,
@@ -267,6 +267,27 @@ impl Ir {
         }
     }
 
+    /// The version field of the model an endpoint answers with: the field whose value is the
+    /// `ETag` of a success response (`spec/rules.md` section 11.7). `None` when the success is no
+    /// stream and no model with a `@version` field.
+    #[must_use]
+    pub fn etag_field(&self, ep: &Endpoint) -> Option<&Field> {
+        if ep.success.stream {
+            return None;
+        }
+        let Some(Type::Decl(id)) = &ep.success.ty else {
+            return None;
+        };
+        match &self.decls.get(id.index())?.kind {
+            DeclKind::Model(m) => m.fields.iter().find(|f| f.version),
+            DeclKind::Error(_)
+            | DeclKind::Event(_)
+            | DeclKind::Enum(_)
+            | DeclKind::Union(_)
+            | DeclKind::Const(_) => None,
+        }
+    }
+
     /// Features of the endpoints of the services and the declarations they reach, without what
     /// only events use. A server that merely calls a service (`consumes`) uses these.
     #[must_use]
@@ -284,8 +305,14 @@ impl Ir {
                 if !ep.middleware.is_empty() {
                     f.insert(Feature::Middleware);
                 }
-                if !ep.rules.is_empty() {
+                if ep.rules.has_statements() {
                     f.insert(Feature::RulesEndpoint);
+                }
+                if ep.rules.version.is_some() || self.etag_field(ep).is_some() {
+                    f.insert(Feature::RulesVersion);
+                }
+                if ep.idempotency.is_some() {
+                    f.insert(Feature::Idempotency);
                 }
                 if ep.rules.transition.is_some() {
                     f.insert(Feature::RulesTransitions);
@@ -596,6 +623,10 @@ pub struct Field {
     pub optional: bool,
     pub default: Option<Literal>,
     pub readonly: bool,
+    /// `@version` (`spec/rules.md` section 11.7): the version of the model. Omitted from the JSON
+    /// when false, so the IR of a contract without the annotation is unchanged.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub version: bool,
     pub inherited_from: Option<DeclId>,
     pub constraints: Constraints,
     pub example: Option<Literal>,
@@ -908,6 +939,24 @@ pub struct Endpoint {
     /// The statements of the endpoint block. Omitted from the JSON when empty.
     #[serde(default, skip_serializing_if = "EndpointRules::is_empty")]
     pub rules: EndpointRules,
+    /// `@idempotent` (`spec/rules.md` section 11.8). Omitted from the JSON when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub idempotency: Option<Idempotency>,
+    pub origin: Origin,
+}
+
+/// `@idempotent` on an endpoint (`spec/rules.md` sections 11.8 and 11.9).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Idempotency {
+    /// The request header that carries the key, `Idempotency-Key` unless the annotation names
+    /// another.
+    pub header: String,
+    /// `required: true`: a request without the header is `422 ValidationError`.
+    pub required: bool,
+    /// True when the scope of a key includes the caller, that is when the endpoint's effective
+    /// auth is not `none`.
+    pub caller: bool,
+    /// The annotation.
     pub origin: Origin,
 }
 
@@ -1068,6 +1117,11 @@ pub enum Feature {
     /// `@rollout(audit)` on a rule (`spec/rules.md` section 17.1). A generator that does not
     /// know it would enforce a rule that must not reject.
     RulesRollout,
+    /// `@version`: the `If-Match` guard of a fact and the `ETag` of a response
+    /// (`spec/rules.md` section 11.7).
+    RulesVersion,
+    /// `@idempotent` (`spec/rules.md` section 11.8).
+    Idempotency,
     /// `publishes` or `subscribes` (`spec/events.md` section 13).
     Events,
 }
@@ -1082,8 +1136,12 @@ impl Feature {
     ];
     /// Features no generator supports unless it says so: [`Feature::ALL`] minus these is what
     /// `all_except` hands out. A feature that changes what a rule means must be opted into.
-    pub const OPT_IN: [Feature; 1] = [Feature::RulesRollout];
-    pub const ALL: [Feature; 16] = [
+    pub const OPT_IN: [Feature; 3] = [
+        Feature::RulesRollout,
+        Feature::RulesVersion,
+        Feature::Idempotency,
+    ];
+    pub const ALL: [Feature; 18] = [
         Feature::Unions,
         Feature::Constraints,
         Feature::Auth,
@@ -1099,6 +1157,8 @@ impl Feature {
         Feature::RulesTransitions,
         Feature::RulesPolicies,
         Feature::RulesRollout,
+        Feature::RulesVersion,
+        Feature::Idempotency,
         Feature::Events,
     ];
     #[must_use]
@@ -1119,6 +1179,8 @@ impl Feature {
             Feature::RulesTransitions => "rules_transitions",
             Feature::RulesPolicies => "rules_policies",
             Feature::RulesRollout => "rules_rollout",
+            Feature::RulesVersion => "rules_version",
+            Feature::Idempotency => "idempotency",
             Feature::Events => "events",
         }
     }

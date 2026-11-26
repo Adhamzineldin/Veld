@@ -66,6 +66,6 @@ fn the_feature_has_a_name_and_is_opt_in() {
         Some(Feature::RulesRollout)
     );
     assert!(Feature::ALL.contains(&Feature::RulesRollout));
-    assert_eq!(Feature::OPT_IN, [Feature::RulesRollout]);
+    assert!(Feature::OPT_IN.contains(&Feature::RulesRollout));
     assert!(!Feature::RULES.contains(&Feature::RulesRollout));
 }

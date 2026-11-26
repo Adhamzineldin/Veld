@@ -197,6 +197,7 @@ fn field(name: &str, ty: Type) -> Field {
         optional: false,
         default: None,
         readonly: false,
+        version: false,
         inherited_from: None,
         constraints: Constraints::default(),
         example: None,

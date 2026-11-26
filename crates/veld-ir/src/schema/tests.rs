@@ -243,6 +243,7 @@ fn field(name: &str, ty: Type, lit: Literal) -> Field {
         optional: true,
         default: Some(lit.clone()),
         readonly: false,
+        version: true,
         inherited_from: Some(DeclId(0)),
         constraints: Constraints {
             min: Some(0.0),
@@ -399,6 +400,12 @@ fn endpoint(method: Method, binding: Binding, auth: AuthKind) -> Endpoint {
             allows: crate::endpoint_rules::tests::sample_allows(),
             ..crate::endpoint_rules::tests::sample_rules()
         },
+        idempotency: Some(Idempotency {
+            header: "Idempotency-Key".into(),
+            required: true,
+            caller: true,
+            origin: origin(),
+        }),
         origin: origin(),
     }
 }

@@ -220,6 +220,7 @@ impl Lowerer<'_, '_> {
             optional: f.optional,
             default: f.default.clone(),
             readonly: f.readonly,
+            version: false,
             inherited_from: f.inherited_from.map(|d| self.decl_id(d)),
             constraints: f.constraints.clone(),
             example: f.example.clone(),
@@ -401,6 +402,7 @@ impl Lowerer<'_, '_> {
             },
             errors,
             rules: self.endpoint_rules(e, s, pkg, decls),
+            idempotency: None,
             origin: self.origin(e.span, s.module),
         }
     }

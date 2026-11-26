@@ -131,6 +131,7 @@ pub fn endpoint(
             })
             .collect(),
         rules,
+        idempotency: None,
         origin: Origin::default(),
     }
 }
@@ -199,6 +200,8 @@ pub fn example(name: &str, endpoint: &str, outcome: ExampleOutcome) -> Example {
         now: None,
         args: Vec::new(),
         returns: None,
+        if_match: None,
+        key: None,
         outcome: Some(outcome),
         docs: None,
         event: None,

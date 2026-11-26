@@ -27,17 +27,30 @@ pub struct EndpointRules {
     /// when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub allows: Vec<EndpointAllow>,
+    /// The `If-Match` guard of a fact whose model has a `@version` field (`spec/rules.md`
+    /// section 11.7), after the policies and before the transition. Omitted from the JSON when
+    /// absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<EndpointVersion>,
 }
 
 impl EndpointRules {
-    /// True when the endpoint has no statement at all.
+    /// True when the endpoint has no statement and no version guard.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.facts.is_empty()
+        self.version.is_none() && !self.has_statements()
+    }
+
+    /// True when the endpoint block has a statement: a fact, `allow`, `transition`, `require` or
+    /// `ensure`. A version guard is not a statement: it needs a fact, and the feature it uses is
+    /// `rules_version`.
+    #[must_use]
+    pub fn has_statements(&self) -> bool {
+        !(self.facts.is_empty()
             && self.transition.is_none()
             && self.allows.is_empty()
             && self.requires.is_empty()
-            && self.ensures.is_empty()
+            && self.ensures.is_empty())
     }
 
     /// The origin of the first statement: facts, then requires, then ensures.
@@ -96,6 +109,22 @@ impl EndpointRules {
                     .map(|e| &e.origin)
             })
     }
+}
+
+/// The version guard of an endpoint (`spec/rules.md` sections 11.7 and 11.9): the first fact whose
+/// model has a `@version` field.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EndpointVersion {
+    /// Stable identity of the rule, `veld:<package>/<Service>.<endpoint>.version@<hex16>`.
+    pub id: String,
+    /// The fact that is checked.
+    pub fact: String,
+    /// The version field of the fact's model, by its source name.
+    pub field: String,
+    /// The same field, by its wire name.
+    pub wire: String,
+    /// The fact line.
+    pub origin: Origin,
 }
 
 /// `allow Policy(args)` (`spec/rules.md` section 11.3).
@@ -267,6 +296,12 @@ pub struct Example {
     pub now: Option<String>,
     pub args: Vec<ExampleArg>,
     pub returns: Option<ExampleValue>,
+    /// `ifMatch 3` or `ifMatch any` (`spec/rules.md` section 11.9). Omitted when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub if_match: Option<ExampleIfMatch>,
+    /// The `key` line (`spec/rules.md` section 11.9). Omitted when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<ExampleKey>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub outcome: Option<ExampleOutcome>,
     pub docs: Option<String>,
@@ -277,6 +312,47 @@ pub struct Example {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expect: Option<EventExpect>,
     pub origin: Origin,
+}
+
+/// `ifMatch 3` or `ifMatch any`: `"any"`, or `{ "version": "3" }` with the version in decimal.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExampleIfMatch {
+    Any,
+    Version(String),
+}
+
+/// `key "k" [stored outcome | other | running]`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExampleKey {
+    /// The value of the idempotency header.
+    pub value: String,
+    /// What the store holds for it. Omitted from the JSON when it holds nothing.
+    #[serde(default, skip_serializing_if = "KeyStore::is_new")]
+    pub store: KeyStore,
+}
+
+/// What the idempotency store holds for the key of an example (`spec/rules.md` section 11.9).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum KeyStore {
+    /// A key the store does not know.
+    #[default]
+    New,
+    /// An answer for these parameters: `stored ok [value]` or `stored Error [pattern]`.
+    Stored(ExampleOutcome),
+    /// The key is held with another fingerprint.
+    Other,
+    /// The first request has not finished.
+    Running,
+}
+
+impl KeyStore {
+    /// True when the store knows nothing of the key.
+    #[must_use]
+    pub fn is_new(&self) -> bool {
+        matches!(self, KeyStore::New)
+    }
 }
 
 /// `given event E { .. } on C`.

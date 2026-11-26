@@ -55,6 +55,7 @@ impl Lowerer<'_, '_> {
             facts: facts.collect(),
             requires: requires.collect(),
             ensures: ensures.collect(),
+            version: None,
         }
     }
 

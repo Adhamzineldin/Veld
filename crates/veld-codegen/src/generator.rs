@@ -325,7 +325,11 @@ fn first_use(
                     .params
                     .iter()
                     .any(|p| p.binding == veld_ir::Binding::Header),
-                Feature::RulesEndpoint => !ep.rules.is_empty(),
+                Feature::RulesEndpoint => ep.rules.has_statements(),
+                Feature::RulesVersion => {
+                    ep.rules.version.is_some() || ir.etag_field(ep).is_some()
+                }
+                Feature::Idempotency => ep.idempotency.is_some(),
                 Feature::RulesTransitions => ep.rules.transition.is_some(),
                 Feature::RulesPolicies => ep.rules.first_policy_origin().is_some(),
                 Feature::Unions
@@ -340,6 +344,12 @@ fn first_use(
             if hit {
                 if feature == Feature::RulesEndpoint {
                     return ep.rules.first_origin().cloned();
+                }
+                if feature == Feature::RulesVersion {
+                    return Some(ep.rules.version.as_ref().map_or(&ep.origin, |v| &v.origin).clone());
+                }
+                if feature == Feature::Idempotency {
+                    return ep.idempotency.as_ref().map(|i| i.origin.clone());
                 }
                 if feature == Feature::RulesTransitions {
                     return ep.rules.transition.as_ref().map(|t| t.origin.clone());
@@ -460,6 +470,7 @@ mod tests {
             },
             errors: vec![],
             rules: EndpointRules::default(),
+            idempotency: None,
             origin: Origin {
                 file: "a.veld".into(),
                 line: 3,

@@ -138,6 +138,7 @@ const FIELD: Fields = &[
     ("optional", T::Bool),
     ("default", T::Nullable(&T::Ref("Literal"))),
     ("readonly", T::Bool),
+    ("version", T::Optional(&T::Bool)),
     ("inherited_from", T::Nullable(&DECL_ID)),
     ("constraints", T::Ref("Constraints")),
     ("example", T::Nullable(&T::Ref("Literal"))),
@@ -159,6 +160,7 @@ const ENDPOINT: Fields = &[
     ("success", T::Ref("Success")),
     ("errors", T::List(&T::Ref("ErrorResponse"))),
     ("rules", T::Optional(&T::Ref("EndpointRules"))),
+    ("idempotency", T::Optional(&T::Ref("Idempotency"))),
     ("origin", ORIGIN),
 ];
 
@@ -410,6 +412,26 @@ pub const DEFS: &[Def] = &[
             ("ensures", T::List(&T::Ref("EndpointEnsure"))),
             ("transition", T::Optional(&T::Ref("EndpointTransition"))),
             ("allows", T::Optional(&T::List(&T::Ref("EndpointAllow")))),
+            ("version", T::Optional(&T::Ref("EndpointVersion"))),
+        ],
+    ),
+    Def::Object(
+        "EndpointVersion",
+        &[
+            ("id", T::Str),
+            ("fact", T::Str),
+            ("field", T::Str),
+            ("wire", T::Str),
+            ("origin", ORIGIN),
+        ],
+    ),
+    Def::Object(
+        "Idempotency",
+        &[
+            ("header", T::Str),
+            ("required", T::Bool),
+            ("caller", T::Bool),
+            ("origin", ORIGIN),
         ],
     ),
     Def::Object(
@@ -529,6 +551,8 @@ pub const DEFS: &[Def] = &[
             ("now", OPT_STR),
             ("args", T::List(&T::Ref("ExampleArg"))),
             ("returns", T::Nullable(&T::Ref("ExampleValue"))),
+            ("if_match", T::Optional(&T::Ref("ExampleIfMatch"))),
+            ("key", T::Optional(&T::Ref("ExampleKey"))),
             ("outcome", T::Optional(&T::Ref("ExampleOutcome"))),
             ("event", T::Optional(&T::Ref("ExampleEvent"))),
             ("expect", T::Optional(&T::Ref("EventExpect"))),
@@ -582,6 +606,23 @@ pub const DEFS: &[Def] = &[
             ("value", T::Ref("ExampleValue")),
         ],
     ),
+    Def::Alias(
+        "ExampleIfMatch",
+        T::Union(&[T::Lit("any"), T::Ref("IfMatchVersion")]),
+    ),
+    Def::Object("IfMatchVersion", &[("version", T::Str)]),
+    Def::Object(
+        "ExampleKey",
+        &[
+            ("value", T::Str),
+            ("store", T::Optional(&T::Ref("KeyStore"))),
+        ],
+    ),
+    Def::Alias(
+        "KeyStore",
+        T::Union(&[T::Lit("other"), T::Lit("running"), T::Ref("KeyStored")]),
+    ),
+    Def::Object("KeyStored", &[("stored", T::Ref("ExampleOutcome"))]),
     Def::Object(
         "ExampleEvent",
         &[
@@ -697,6 +738,8 @@ pub const DEFS: &[Def] = &[
             "rules_transitions",
             "rules_policies",
             "rules_rollout",
+            "rules_version",
+            "idempotency",
             "events",
         ],
     ),

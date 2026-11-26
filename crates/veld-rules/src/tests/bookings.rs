@@ -216,6 +216,7 @@ fn create_rules(
         requires,
         ensures,
         allows: Vec::new(),
+        version: None,
     }
 }
 

@@ -47,6 +47,13 @@ pub(crate) fn sample_rules() -> EndpointRules {
     let capacity = path(Root::Fact("room".into()), vec![step("capacity")], int_ty());
     EndpointRules {
         allows: vec![],
+        version: Some(EndpointVersion {
+            id: "veld:bookings/Bookings.book.version@0123456789abcdef".into(),
+            fact: "room".into(),
+            field: "revision".into(),
+            wire: "rev".into(),
+            origin: origin(10),
+        }),
         transition: Some(sample_transition()),
         facts: vec![EndpointFact {
             name: "room".into(),
@@ -185,6 +192,8 @@ pub(crate) fn sample_examples() -> Vec<Example> {
             value: body,
         }],
         returns: Some(ExampleValue::Json(json!({"status": "PENDING"}))),
+        if_match: None,
+        key: None,
         outcome: Some(ExampleOutcome::Error(ExampleErrorOutcome {
             decl: DeclId(2),
             pattern: Some(capacity),
@@ -200,16 +209,35 @@ pub(crate) fn sample_examples() -> Vec<Example> {
         principal: None,
         now: None,
         returns: None,
+        if_match: Some(ExampleIfMatch::Any),
+        key: Some(ExampleKey {
+            value: "k-2".into(),
+            store: KeyStore::Other,
+        }),
         outcome: Some(ExampleOutcome::Ok(None)),
         docs: None,
         ..full.clone()
     };
     let ok_value = Example {
         name: "it answers a value".into(),
+        if_match: Some(ExampleIfMatch::Version("3".into())),
+        key: Some(ExampleKey {
+            value: "k-1".into(),
+            store: KeyStore::Stored(ExampleOutcome::Ok(None)),
+        }),
         outcome: Some(ExampleOutcome::Ok(Some(ExampleValue::List(vec![])))),
         ..ok.clone()
     };
-    vec![full, ok, ok_value]
+    let fresh = Example {
+        name: "a key nobody used".into(),
+        key: Some(ExampleKey {
+            value: "k-4".into(),
+            store: KeyStore::Running,
+        }),
+        if_match: None,
+        ..ok.clone()
+    };
+    vec![full, ok, ok_value, fresh]
 }
 
 /// One event example per expectation form.
@@ -224,6 +252,8 @@ pub(crate) fn sample_event_examples() -> Vec<Example> {
         now: None,
         args: vec![],
         returns: None,
+        if_match: None,
+        key: None,
         outcome: None,
         docs: None,
         event: Some(ExampleEvent {
@@ -348,6 +378,7 @@ fn endpoint_with(rules: EndpointRules) -> Endpoint {
         },
         errors: vec![],
         rules,
+        idempotency: None,
         origin: origin(9),
     }
 }
@@ -739,3 +770,4 @@ fn the_exact_json_text_of_a_machine_and_a_transition() {
 
 mod policies;
 mod rollout;
+mod version;
