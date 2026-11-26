@@ -173,3 +173,40 @@ fn rules_events_a_consumed_service_testing_and_both_brokers_compile_strict() {
         );
     }
 }
+
+/// The same server without a broker adapter, compiled alone under the strictest flags the
+/// generated packages are held to: no types packages, the language library only, nothing skipped.
+#[test]
+fn rules_events_and_a_consumed_service_compile_without_any_types_package() {
+    let Some(tsc) = tsc_path() else {
+        return;
+    };
+    let ir = contract();
+    for (edition, target) in TARGETS {
+        let guard = scratch("merged-compile-plain-");
+        let work = guard.path();
+        let options = json!({ "typescript": edition, "testing": true });
+        let files = gen_servers_with(&ir, &["Bookings", "Billing"], &["Iam"], &options);
+        write(&work.join("server"), &files, &WriteOptions::default()).unwrap();
+        std::fs::write(
+            work.join("tsconfig.json"),
+            serde_json::to_string_pretty(&json!({
+                "compilerOptions": {
+                    "strict": true, "target": target, "lib": [target], "types": [],
+                    "module": "commonjs", "moduleResolution": "node10", "noEmit": true,
+                    "skipLibCheck": false, "forceConsistentCasingInFileNames": true
+                },
+                "include": ["server/**/*.ts"]
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        run(
+            Command::new("node")
+                .arg(&tsc)
+                .args(["-p", "tsconfig.json"])
+                .current_dir(work),
+            "tsc the merged server, strict",
+        );
+    }
+}
