@@ -302,6 +302,7 @@ A rejected request is the existing `422 ValidationError` problem document (`spec
   - `fields`: the wire names of the fields of that value which the rule reads, in order of first use in the source text, without duplicates. For `a.b.c` the entry is `a`. A field named in `has(...)` counts as read, and so does one that was not evaluated because of a short circuit: the list is a property of the rule, not of the request.
   - `message`
   - `error`: only for an evaluation error (§3.7)
+- A server of a member with message catalogs (`spec/platform.md` §22) adds `messageKey` to each entry, and writes `message` in the language of the request.
 - The generated typed `ValidationError` exposes `violations` in every target. A problem document without the member decodes to an empty list.
 
 ## 8. Generated code

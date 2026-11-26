@@ -105,6 +105,8 @@ never reused. The ranges are listed in `language.md` section 9.
 | `E1008` | error | veld-compiler | An `on` line names an event the channel does not carry or names an event twice, or the subscription has no `on` line |
 | `E1009` | error | veld-compiler | A subscription to a channel of this workspace that no service publishes |
 | `E1010` | error | veld-compiler | An event example that is not well formed: the channel cannot be chosen, an `expect` names no handler of that channel, or `rejected` is combined with `called` |
+| `E1301` | error | veld-compiler | A message catalog is not a flat table of strings, or its file name is not a language tag |
+| `E1310` | error | veld-compiler | `@retain` is wrong: the duration, the `since` field, `then`, or `anonymize` without a `@pii` field |
 | `W0001` | warning | veld-compiler | Doc comment is not attached to anything |
 | `W0201` | warning | veld-compiler | Unused import |
 | `W0202` | warning | veld-compiler | Declaration shadows a prelude declaration |
@@ -120,6 +122,8 @@ never reused. The ranges are listed in `language.md` section 9.
 | `W0970` | warning | veld-prove | `--prove`: some questions ended unknown or unsupported |
 | `W1001` | warning | veld-compiler | A published channel that nobody in the workspace subscribes to |
 | `W1002` | warning | veld-compiler | An event of a published channel that no subscription handles |
+| `W1301` | warning | veld-compiler | A message catalog has a key that no rule of the member has |
+| `W1302` | warning | veld-compiler | A message catalog lacks the message of a rule of the member |
 | `L0001` | lint | veld-tools | `unused-model`: declaration is never used by any endpoint, model or constant |
 | `L0002` | lint | veld-tools | `empty-service`: service has no endpoints |
 | `L0003` | lint | veld-tools | `empty-model`: model has no fields |
@@ -136,3 +140,4 @@ never reused. The ranges are listed in `language.md` section 9.
 | `L0014` | lint | veld-tools | `auth-required`: an endpoint whose auth comes from neither its own `@auth` nor its service's |
 | `L0015` | lint | veld-tools | `pii-without-auth`: an endpoint with no auth can answer with a `@pii` field |
 | `L0016` | lint | veld-tools | `secret-in-output`: a `@secret` field that a response, a declared error, a stream item or an event can contain |
+| `L0017` | lint | veld-tools | `pii-without-retention`: a model with a `@pii` field and no `@retain` |

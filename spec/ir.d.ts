@@ -26,6 +26,8 @@ export interface Package {
   id: PackageId;
   name: string;
   kind: PackageKind;
+  messages?: Record<string, Record<string, string>>;
+  messages_dir?: string;
 }
 
 export type PackageKind = "service" | "library" | "registry" | "prelude";
@@ -51,6 +53,7 @@ export type Decl =
       parent: DeclId | null;
       fields: Field[];
       rules?: Rule[];
+      retain?: Retain;
     }
   | {
       kind: "error";
@@ -405,6 +408,14 @@ export interface EndpointEnsure {
   origin: Origin;
 }
 
+export interface Retain {
+  after_ms: string;
+  since: string;
+  then: RetainThen;
+}
+
+export type RetainThen = "delete" | "anonymize";
+
 export interface ServiceFact {
   name: string;
   type: Type;
@@ -603,7 +614,7 @@ export interface Auth {
 
 export type AuthKind = "none" | "bearer" | "basic" | "api_key";
 
-export type Feature = "unions" | "constraints" | "auth" | "middleware" | "headers" | "streaming_sse" | "streaming_ws" | "page" | "consts" | "bytes" | "rules_invariants" | "rules_endpoint" | "rules_transitions" | "rules_policies" | "rules_rollout" | "rules_version" | "idempotency" | "events";
+export type Feature = "unions" | "constraints" | "auth" | "middleware" | "headers" | "streaming_sse" | "streaming_ws" | "page" | "consts" | "bytes" | "rules_invariants" | "rules_endpoint" | "rules_transitions" | "rules_policies" | "rules_rollout" | "rules_version" | "idempotency" | "events" | "messages" | "retention";
 
 export type Role = "server" | "client";
 

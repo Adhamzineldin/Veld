@@ -142,9 +142,20 @@ Field += { "secret": true }   // @secret: the value must never be shown
 
 Neither is a feature and neither changes a signature, an id or a byte on the wire. An inherited field has the flags of the field it came from.
 
+### 3.7 Message catalogs and retention
+
+Catalogs and `@retain` (`spec/platform.md` §22 and §23) add, each **omitted from the JSON when absent**:
+
+```jsonc
+Package += { "messages": { "ar": { "<key>": "<text>" } }, "messages_dir": "messages" }
+Model   += { "retain": { "after_ms": "2592000000", "since": "checkedOutAt", "then": "delete" | "anonymize" } }
+```
+
+`messages` is sorted by language and by key; `messages_dir` is the directory relative to the member, so that `E0801` can name `<messages_dir>/<tag>.toml`. `retain.after_ms` is a string like every `long`, and `since` is the wire name of the field. A member with catalogs uses the feature `messages`; a server of a member with a retained model uses `retention` (a client does not). Both are opt-in. Neither changes a signature or an id. `veld_ir::message_keys` gives the message key of a rule id, and `Ir::retention_plan` is the list every generator builds `retentionPlan` from.
+
 ## 4. Capabilities
 
-The compiler computes the set of features that a target needs (`Feature` enum: `unions`, `constraints`, `auth`, `headers`, `streaming_sse`, `streaming_ws`, `page`, `consts`, `bytes`, `rules_invariants`, `rules_endpoint`, `rules_transitions`, `rules_policies`, `rules_rollout`, `rules_version`, `idempotency`, `events`, …). A feature that changes what a rule means or what a request does (`rules_rollout`, `rules_version`, `idempotency`) is opt-in: `Capabilities::all_except` does not hand it out, and a generator adds it with `Capabilities::with` once it implements it. Before it invokes a generator, the core compares that set with the generator's declared `Capabilities`. For every feature that is used but not supported, it emits `E0801` with the span of the first use.
+The compiler computes the set of features that a target needs (`Feature` enum: `unions`, `constraints`, `auth`, `headers`, `streaming_sse`, `streaming_ws`, `page`, `consts`, `bytes`, `rules_invariants`, `rules_endpoint`, `rules_transitions`, `rules_policies`, `rules_rollout`, `rules_version`, `idempotency`, `events`, `messages`, `retention`, …). A feature that changes what a rule means or what a request does (`rules_rollout`, `rules_version`, `idempotency`, `messages`, `retention`) is opt-in: `Capabilities::all_except` does not hand it out, and a generator adds it with `Capabilities::with` once it implements it. Before it invokes a generator, the core compares that set with the generator's declared `Capabilities`. For every feature that is used but not supported, it emits `E0801` with the span of the first use.
 
 ## 5. Identity signatures (normative)
 

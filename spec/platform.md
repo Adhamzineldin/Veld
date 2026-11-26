@@ -410,16 +410,32 @@ Status: **DRAFT, written 26 November 2026. Not implemented.** The MCP export of 
 "veld/not-permitted" = "غير مسموح"
 ```
 
-- A member MAY have a directory `messages` next to its contracts (`[service] messages = "messages"` names another), with one file per language: `<tag>.toml`, where `<tag>` is a BCP 47 language tag in lower case (`ar`, `fr`, `pt-br`). A file is a flat table from a **message key** to a text.
-- **The message key** of a rule is its rule id without the `veld:` in front and without the `@` and the hash behind (`bookings/NewBooking.atMost30Days`, `bookings/Bookings.payBooking.notCheckedIn`). It stays the same when the expression changes, which the id does not. The fixed texts of the runtime have keys of their own: `veld/transition`, `veld/transition-not-due`, `veld/version`, `veld/not-permitted`.
-- What a catalog translates: the message of an invariant, of a `require`, of an `ensure` and of a `forbid`, and those fixed texts. The texts of validation issues are not in a catalog: an issue has a `code`, and a client translates by it.
+- A member MAY have a directory `messages` next to its contracts (`[service] messages = "…"` names another, relative to the member like `contracts`), with one file per language: `<tag>.toml`, where `<tag>` is a language tag in lower case (`ar`, `fr`, `pt-br`). A file is a flat table from a **message key** to a text. Only the `*.toml` files directly in the directory count; anything else in it (a README, a subdirectory, a link) is not a catalog. A directory that `[service] messages` names and that does not exist is `E0700`; the default one need not exist. Only a service reads catalogs, never a library or an app. A file with no key is a catalog with no translation and leaves nothing in the IR.
+- **The language tag** is a primary language of two or three lower case letters, then any number of subtags of one to eight lower case letters or digits, joined by `-` (`ar`, `pt-br`, `zh-hant-tw`). `AR.toml`, `pt_br.toml` and `arabic.toml` are `E1301`.
+- **The message key** of a rule is its rule id without the `veld:` in front and without the `@` and the hash behind (`bookings/NewBooking.atMost30Days`, `bookings/Bookings.payBooking.notCheckedIn`). It stays the same when the expression changes, which the id does not. It is written down once, in `veld_ir::message_keys` (re-exported by `veld-compiler::signature`), and these are all of them:
+
+  | What carries the text | Key |
+  |---|---|
+  | an invariant of a model, an error or an event | `<package>/<Decl>.<rule>` |
+  | a `require` or an `ensure` with a name | `<package>/<Service>.<endpoint>.<name>` |
+  | a `require` or an `ensure` without a name | `<package>/<Service>.<endpoint>.require` or `….ensure`: **every unnamed one of an endpoint shares it**, so give a statement a name to translate it on its own |
+  | the `n`th `forbid` of a policy (from 1, counting every `forbid`, with or without a message) | `<package>/<Policy>.forbid<n>` |
+  | a `transition` that is not a legal move | `veld/transition` |
+  | a timed move before its time (P2) | `veld/transition-not-due` |
+  | an `If-Match` that is not the current version | `veld/version` |
+  | a denial that no `forbid` with a message explains | `veld/not-permitted` |
+
+  A rule written by a parent keeps the key of its parent, like its id. A registry package's key starts with its name, `@org/name/…`. A statement whose message is the generated text of the language (`precondition failed`) has its key too: a catalog may translate it.
+- What a catalog translates: the message of an invariant, of a `require`, of an `ensure` and of a `forbid`, and the four fixed texts. The texts of validation issues are not in a catalog: an issue has a `code`, and a client translates by it. The text of a violation that is an evaluation error (`rule_error`) is generated, not the author's: it has its `messageKey` and is not translated.
 - The text in the contract is the default language. A catalog need not be complete.
-- **Server.** A server target of a member with catalogs embeds them. For each request it picks the first language of `Accept-Language`, in the header's order of preference, for which a catalog exists (a tag matches a catalog of the same tag or of its primary language; `*` matches none), and writes every message of the answer in it: the `message` of each violation and the `message` of a `Forbidden`. A key the catalog lacks keeps the contract's text. When a catalog was used the answer has `Content-Language`. Every violation of such a server also has `messageKey`.
+- **Choosing the language.** `Accept-Language` is read once per request. Its entries are taken in order of quality (`q`, default 1, a higher one first) and, among equal ones, in the order they are written. An entry is **skipped** when its tag is `*` (a wildcard matches no catalog), when its quality is `0`, when its quality is not a number from 0 to 1, or when its tag is not a language range (one to eight letters, then subtags of one to eight letters or digits): the rest of the header still counts. Case does not matter. The first entry for which a catalog exists wins: a tag matches the catalog of the same tag and then the catalog of its primary language, so `pt-BR` matches `pt-br` and then `pt`, `ar-EG` matches `ar-eg` and then `ar`, and **`pt` does not match a catalog `pt-br`**. No header, an empty header, and a header with no match choose the contract's text. `tests/wire/messages` has the table.
+- **Server.** A server target of a member with catalogs embeds them. It chooses the language as above and writes every message of the answer in it: the `message` of each violation and the `message` of a `Forbidden`. A message whose key the chosen catalog lacks keeps the contract's text. **A catalog was used** for an answer when at least one of its messages came from it; then the answer has `Content-Language`, the tag of that catalog in lower case as the file is named (`pt-br`). An answer none of whose messages came from a catalog has no `Content-Language`, even when a language was chosen. Every violation of such a server also has `messageKey`.
 - **Without catalogs nothing changes**: no `messageKey`, no header, the same bytes.
-- **Client.** A client target of a member with catalogs gets them as data (`messages.ar`), and the violations of its local check have `messageKey`, so an app can show its own language without asking the server.
-- **`veld check`.** `E1301`: a catalog that is not a flat table of strings, or whose name is not a language tag. `W1301`: a key of a catalog that no rule of the member has. `W1302`: a rule with a message that a catalog of the member lacks, reported once per catalog with the count and the first keys.
+- **Client.** A client target of a member with catalogs gets them as data (`messages.ar`), and the violations of its local check have `messageKey`, so an app can show its own language without asking the server. It chooses by the same rule.
+- **`veld check`.** `E1301`: a catalog that is not a flat table of strings (a number, a list or a `[table]` is an error at its key), is not TOML, or whose name is not a language tag. `W1301`: a key of a catalog that is not a key of the member, one warning per key, with the nearest key as help; the four fixed keys are valid for every member. `W1302`: a rule **with a message** that a catalog of the member lacks, reported once per catalog with the count and the first three keys; the fixed keys are never required, and a rule without a message needs no translation (its key is still valid). *The rules of a member* are those of the declarations its services reach (parameters, answers, errors, and what their fields reach), of the events it publishes or subscribes to, and of the package's own declarations; of its endpoints (`require`, `ensure`); and the `forbid` clauses of the policies declared in the package or named by an `allow` of the member. A diagnostic about a catalog names the file as `<package>/<directory>/<tag>.toml`; `veld check PATH` with contract paths does not print it.
 - **`veld fmt`** does not touch catalogs. **`veld diff`** ignores them: a text is not a contract.
-- **IR.** A package gains `"messages": { "ar": { "<key>": "<text>" } }`, sorted, omitted when it has no catalog. The feature is `messages`, opt-in; a generator that does not declare it reports `E0801` at the first catalog file.
+- **IR.** A package gains `"messages": { "ar": { "<key>": "<text>" } }`, sorted, omitted when it has no catalog, and `"messages_dir": "messages"`, the directory relative to the member, which lets a diagnostic name a file. The feature is `messages`, opt-in; a generator that does not declare it reports `E0801` at the first catalog file: the origin of that error is `<messages_dir>/<tag>.toml`, line 1, column 1, of the first language in sorted order (an `Origin` is a file name and a position, so it can name a file that is not a contract).
+- **The reference.** `veld_rules::messages` has `choose_language`, `localize`, `localize_violation`, `localize_denial` and `content_language`; the policy verdict says which `forbid` denied (`PolicyVerdict.forbid`). `veld_ir::Ir::violation_key` gives the key of a violation and `Ir::catalog_keys` the keys a member's catalog may have. `tests/wire/messages` has the goldens: a workspace with an `ar` and a `pt-br` catalog and the tables of headers, texts and keys.
 
 ## 23. Retention: `@retain`
 
@@ -433,14 +449,28 @@ model Guest {
 }
 ```
 
-- `@retain(d, since: f, then: delete | anonymize)` stands on a model. `d` is a positive constant duration of whole days. `f` is a `datetime` or `date` field of the model, required or optional: the moment from which `d` counts; a value without it is kept. `anonymize` needs at least one `@pii` field (`spec/rules.md` §19.3): those are the fields it is about. Anything else is `E1310`.
+- `@retain(d, since: f, then: delete | anonymize)` stands on a model. `d` is `days(n)`, a whole number of days of 1 or more (`hours(24)` or `days(1.5)` are errors, so is a duration that overflows milliseconds). `f` is a `datetime` or `date` field of the model, inherited or not, required or optional: the moment from which `d` counts; a value without it is kept. `anonymize` needs at least one `@pii` field (`spec/rules.md` §19.3), inherited ones included: those are the fields it is about. Anything else is `E1310`. `@retain` is not inherited: a model that extends a retained one writes its own.
 - **Veld does not delete anything.** It knows no database. It says what is due and the application does it:
   - a server target with retained models gets `retentionPlan`, data that lists for each: the model, `afterMs`, the `since` field, `then`, and for `anonymize` the wire paths of the `@pii` fields;
   - `RetentionJobs` is the interface the application implements: `delete(model, before)` and `anonymize(model, before, fields)`, each answering how many values it changed;
   - `run<Target>Retention(jobs, options)` calls it once per entry with `before = now - d` and answers the counts. The application runs it from a job. A failure of one entry does not stop the others and is in the report.
-- **`veld export retention [-o FILE]`** writes the data inventory of the workspace as Markdown: per package, every model with a `@pii` or `@secret` field, those fields, how long the model is kept and what happens then, or **"kept without limit"**, and where it travels (the endpoints that return it, the events that carry it). It is deterministic and the file is the user's.
-- **Lint `L0017` `pii-without-retention`** (a warning by default): a model with a `@pii` field and no `@retain`.
-- `@retain` changes nothing on the wire and no signature. **IR:** a model gains `"retain": { "after_ms": "2592000000", "since": "checkedOutAt", "then": "anonymize" }`, omitted when absent. The feature is `retention`, opt-in for a server; a client generates nothing for it.
+- **The plan** is one function, `veld_ir::Ir::retention_plan(services)`, which every generator calls, so that they list the same entries in the same order: one entry per model with `@retain` among the declarations of the services it serves (what their endpoints and events reach, and what their packages declare), sorted by qualified name. An entry has the declaration, its qualified name, `after_ms`, `since` (the **wire** name), `then`, and `fields`: for `anonymize`, the wire names of the `@pii` fields of the model itself, inherited ones included, in field order, a field that is itself a model listed once, whole; empty for `delete`. A server whose plan is empty uses no retention and generates nothing for it.
+- **`veld export retention [-o FILE]`** writes the data inventory of the workspace as Markdown: per package in name order, every model with a `@pii` or `@secret` field in name order, those fields, how long the model is kept and what happens then, or **"kept without limit"**, and where it travels (the endpoints whose answers or declared errors can contain it, and the events that can: `veld_ir::Ir::exposure_index`, the same walk as the lints of §19.3; a request body or a fact does not count). It is deterministic and the file is the user's. Errors and events are not listed as entries; they appear under "Travels" of the model they carry.
+- **Lint `L0017` `pii-without-retention`** (a warning by default): a model with a `@pii` field, its own or inherited, and no `@retain` of its own. A secret alone does not count, and neither does an error or an event.
+- **`veld diff`.** Retention changes nothing on the wire; each change is judged by what it does to whoever relies on the data:
+
+  | Change | Verdict |
+  |---|---|
+  | `@retain` added to a model | possibly breaking: what was kept without limit is due |
+  | `@retain` removed | compatible |
+  | a shorter duration | possibly breaking |
+  | a longer duration | compatible |
+  | `since:` another field | possibly breaking: the clock starts at another moment |
+  | `anonymize` becomes `delete` | possibly breaking |
+  | `delete` becomes `anonymize` | compatible |
+
+  (This widens the first draft's "a shorter retention or a change from `anonymize` to `delete`", which left out the first and the fifth row.)
+- `@retain` changes nothing on the wire and no signature. **IR:** a model gains `"retain": { "after_ms": "2592000000", "since": "checkedOutAt", "then": "anonymize" }`, omitted when absent; `since` is the wire name. The feature is `retention`, opt-in, and only a server's own: a client generates nothing for it and a service that is only called does not count. A generator that does not declare it reports `E0801` at the first retained model.
 
 ## 24. Diagnostics of P4
 
@@ -450,3 +480,5 @@ model Guest {
 | `W1301` | A catalog has a key that no rule has |
 | `W1302` | A rule's message is missing from a catalog |
 | `E1310` | `@retain` is wrong: the duration, the `since` field, `then`, or `anonymize` without a `@pii` field |
+
+Lint `L0017` is in section 23, and `L0015` and `L0016` in `spec/rules.md` §19.3.
