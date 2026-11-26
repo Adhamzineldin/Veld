@@ -170,7 +170,7 @@ fn java_refuses_flags() {
 #[test]
 fn java_refuses_deadlines_and_service_levels() {
     veld_emit_conformance::check_timeouts_are_refused(&Java).unwrap();
-    veld_emit_conformance::check_slo_is_refused(&Java).unwrap();
+    veld_emit_conformance::check_slo_is_generated(&Java).unwrap();
 }
 
 /// `visibility` is opt-in (`spec/platform.md` section 2): the Java server refuses a `@visible`

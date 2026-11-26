@@ -189,7 +189,43 @@ public final class Router implements VeldHandler {
 
   // -- pipeline ------------------------------------------------------------------------------
 
+  // #if slo
   private VeldResponse run(Route route, Matcher match, VeldRequest request) {
+    long started = System.nanoTime();
+    VeldResponse response = pipeline(route, match, request);
+    measure(route.endpoint().spec(), response, started);
+    return response;
+  }
+
+  /** The metrics hook, once per request that matched an endpoint, with the answer that is ready (spec/platform.md section 13). */
+  private void measure(EndpointSpec spec, VeldResponse response, long started) {
+    HandlerHooks.MetricsHook hook = hooks.metrics();
+    if (hook == null) {
+      return;
+    }
+    try {
+      Map<String, Object> attributes = new LinkedHashMap<>();
+      attributes.put("http.request.method", spec.method());
+      attributes.put("http.route", spec.path());
+      attributes.put("http.response.status_code", response.status());
+      if (response.status() >= 500) {
+        attributes.put("error.type", Integer.toString(response.status()));
+      }
+      String sig = spec.sig();
+      attributes.put("veld.service", sig.substring("veld:".length(), sig.lastIndexOf('.')));
+      attributes.put("veld.endpoint", spec.name());
+      attributes.put("veld.operation", sig);
+      hook.metrics(new Metric("http.server.request.duration", "s", (System.nanoTime() - started) / 1e9, attributes));
+    } catch (RuntimeException | StackOverflowError ignored) {
+      // A failing hook must not change the response.
+    }
+  }
+
+  private VeldResponse pipeline(Route route, Matcher match, VeldRequest request) {
+  // #endif
+  // #if no_slo
+  private VeldResponse run(Route route, Matcher match, VeldRequest request) {
+  // #endif
     ServerEndpoint ep = route.endpoint();
     EndpointSpec spec = ep.spec();
     RequestContext ctx = new RequestContext(spec.method(), normalizePath(request.path()), lowerHeaders(request.headers()), request.raw());

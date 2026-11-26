@@ -488,6 +488,9 @@ fn write_hooks(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service, clas
     if let Some(decl) = completes {
         write_complete_principal(w, fc, decl);
     }
+    if crate::slo::service_has_slo(svc) {
+        crate::slo::write_hook(w, fc, class);
+    }
     if !crate::timed::timed_endpoints(fc.tree.ir, svc).is_empty() {
         let typed = typed_principal(fc, svc);
         crate::timed::write_hooks_timer(w, fc, class, typed.as_deref(), completes.is_some());

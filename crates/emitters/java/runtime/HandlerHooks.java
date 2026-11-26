@@ -41,6 +41,19 @@ public final class HandlerHooks {
     void onError(Throwable error, RequestContext ctx);
   }
 
+  // #if slo
+  /**
+   * Observes every request that matched an endpoint of the server (spec/platform.md section 13): called
+   * once, when the answer is ready to be written, with the duration and the attributes of the OpenTelemetry
+   * HTTP conventions. A failing hook is ignored.
+   */
+  @FunctionalInterface
+  public interface MetricsHook {
+    /** Called with the measurement of one request. */
+    void metrics(Metric metric);
+  }
+
+  // #endif
   // #if conditional
   /**
    * The caller of a request, as text, for the scope of an idempotency key. The scope of a key
@@ -68,6 +81,9 @@ public final class HandlerHooks {
   private final IdempotencyStore idempotencyStore;
   private final IdempotencyCaller idempotencyCaller;
   // #endif
+  // #if slo
+  private final MetricsHook metrics;
+  // #endif
 
   private HandlerHooks(Builder b) {
     this.bearer = b.bearer;
@@ -84,6 +100,9 @@ public final class HandlerHooks {
     // #if conditional
     this.idempotencyStore = b.idempotencyStore;
     this.idempotencyCaller = b.idempotencyCaller;
+    // #endif
+    // #if slo
+    this.metrics = b.metrics;
     // #endif
   }
 
@@ -119,6 +138,12 @@ public final class HandlerHooks {
   boolean validateRequests() {
     return validateRequests;
   }
+  // #if slo
+
+  MetricsHook metrics() {
+    return metrics;
+  }
+  // #endif
   // #if rules
 
   RuleWalk.OutputMode rulesOutput() {
@@ -184,6 +209,9 @@ public final class HandlerHooks {
     // #if conditional
     private IdempotencyStore idempotencyStore;
     private IdempotencyCaller idempotencyCaller;
+    // #endif
+    // #if slo
+    private MetricsHook metrics;
     // #endif
 
     private Builder() {}
@@ -276,6 +304,14 @@ public final class HandlerHooks {
       this.ruleHook = other.ruleHook;
       // #endif
       // #if conditional
+      return this;
+    }
+
+    // #endif
+    // #if slo
+    /** Observes the duration of every request that matched an endpoint of the server. */
+    public Builder metrics(MetricsHook hook) {
+      this.metrics = hook;
       return this;
     }
 

@@ -22,6 +22,7 @@ pub mod rule_expr;
 pub mod rules;
 pub mod runtime;
 pub mod server;
+pub mod slo;
 pub mod spec;
 pub mod testing;
 pub mod timed;
@@ -79,6 +80,7 @@ fn events_capabilities(_role: Role) -> Capabilities {
         .with(Feature::RulesDerived)
         .with(Feature::EventsDelivery)
         .with(Feature::RulesTimed)
+        .with(Feature::Slo)
 }
 
 fn precheck(req: &GenRequest<'_>, caps: &Capabilities) -> Result<(), Vec<GenDiagnostic>> {
@@ -256,6 +258,7 @@ impl Generator for Java {
             testing: (endpoint || conditional_server || subscribing) && opts.testing == Some(true),
             machine: endpoint && endpoint::services_have_transition(req.ir, &req.services),
             timed: endpoint && machine::services_have_timed(req.ir, &req.services),
+            slo: req.role == Role::Server && slo::services_have_slo(req.ir, &req.services),
             policies,
             rollout,
             events: tree.events,

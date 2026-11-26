@@ -27,6 +27,8 @@ const TESTING_FILES: &[&str] = &["TestSupport"];
 const MACHINE_FILES: &[&str] = &["Transition"];
 /// The runtime class of the due-moves runner (`spec/platform.md` section 10.1).
 const TIMED_FILES: &[&str] = &["DueMoves"];
+/// The measurement of the metrics hook (`spec/platform.md` section 13).
+const SLO_FILES: &[&str] = &["Metric"];
 /// The runtime classes of the policies (`spec/targets/java.md` section 11).
 const POLICY_FILES: &[&str] = &["Policy"];
 /// The runtime class of audited rules (`@rollout(audit)`, `spec/rules.md` section 17.1).
@@ -89,6 +91,7 @@ runtime_files!(
     "JsonWriter",
     "MemoryIdempotencyStore",
     "MemoryTransport",
+    "Metric",
     "Page",
     "Policy",
     "Reconnect",
@@ -251,6 +254,8 @@ pub struct Flags {
     pub machine: bool,
     /// Timed moves (`rules_timed`, `// #if timed` regions and `DueMoves`). Needs `machine`.
     pub timed: bool,
+    /// Service levels (`slo`, `// #if slo` regions and `Metric`): the metrics hook. A server only.
+    pub slo: bool,
     /// Policies and the typed principal (`// #if policies` regions and `Policy`). Needs `rules`.
     pub policies: bool,
     /// Audited rules (`// #if rollout` regions and `Audit`). Needs `rules`.
@@ -286,6 +291,7 @@ pub fn emit_with(
             && (flags.testing || !TESTING_FILES.contains(&name))
             && (flags.machine || !MACHINE_FILES.contains(&name))
             && (flags.timed || !TIMED_FILES.contains(&name))
+            && (flags.slo || !SLO_FILES.contains(&name))
             && (flags.policies || !POLICY_FILES.contains(&name))
             && (flags.rollout || !ROLLOUT_FILES.contains(&name))
             && (flags.events || !EVENT_FILES.contains(&name))
@@ -301,6 +307,8 @@ pub fn emit_with(
         "testing" => flags.testing,
         "machine" => flags.machine,
         "timed" => flags.timed,
+        "slo" => flags.slo,
+        "no_slo" => !flags.slo,
         "policies" => flags.policies,
         "rollout" => flags.rollout,
         "conditional" => flags.conditional,
