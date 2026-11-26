@@ -121,14 +121,21 @@ fn service_file(
         ctx.tree.validate,
         ctx.tree.rules,
         typed.as_deref(),
+        mode_in_runtime(ctx.tree),
     );
     if !svc.facts.is_empty() {
         block::loader_trait(w, ctx, svc);
     }
     block::steps(w, ctx, svc)?;
     dispatch(w, ctx.tree, svc, &n, typed.as_deref());
-    handler(w, svc, &n);
+    handler(w, ctx.tree, svc, &n);
     Ok(())
+}
+
+/// Whether the rule output mode comes from the runtime config (`rules.output`) and not from the
+/// hooks.
+pub(crate) fn mode_in_runtime(tree: &Tree<'_>) -> bool {
+    tree.rules && tree.runtime.as_ref().is_some_and(|r| r.output)
 }
 
 fn context_type() -> &'static str {
@@ -175,6 +182,7 @@ fn hooks_trait(
     validate: bool,
     rules: bool,
     typed: Option<&str>,
+    mode_in_runtime: bool,
 ) {
     let name = service_type(svc);
     w.line(format!(
@@ -228,13 +236,15 @@ fn hooks_trait(
     w.close();
     if rules {
         w.blank();
-        w.line(
-            "/// What happens when the result of an endpoint violates an invariant: `Strict` (the",
-        );
-        w.line("/// default) answers `500 Internal`, `Audit` sends it and reports, `Off` does not check.");
-        w.open("fn rules_output(&self) -> veld::rules::RuleOutput");
-        w.line("veld::rules::RuleOutput::Strict");
-        w.close().blank();
+        if !mode_in_runtime {
+            w.line(
+                "/// What happens when the result of an endpoint violates an invariant: `Strict` (the",
+            );
+            w.line("/// default) answers `500 Internal`, `Audit` sends it and reports, `Off` does not check.");
+            w.open("fn rules_output(&self) -> veld::rules::RuleOutput");
+            w.line("veld::rules::RuleOutput::Strict");
+            w.close().blank();
+        }
         w.line("/// Observes every violated invariant of an input (rejected) or an output (rejected or");
         w.line("/// audited). It cannot change the response.");
         w.line("fn on_rule_violation(&self, _event: &veld::rules::RuleEvent) {}");
@@ -303,6 +313,9 @@ fn dispatch(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service, n: &Needs, typed
     if loaders {
         w.line(format!("{vis}loaders: L,"));
     }
+    if mode_in_runtime(tree) {
+        w.line(format!("{vis}output: veld::rules::RuleOutput,"));
+    }
     w.close().blank();
     w.open(format!(
         "impl<{bounds}> veld::server::Endpoints for {name}Dispatch<{decl}>"
@@ -340,7 +353,11 @@ fn dispatch(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service, n: &Needs, typed
 /// The rule hooks of a dispatch, the input reach and the digest.
 fn rules_forwards(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service) {
     w.open("fn rules_output(&self) -> veld::rules::RuleOutput");
-    w.line("self.hooks.rules_output()");
+    w.line(if mode_in_runtime(tree) {
+        "self.output"
+    } else {
+        "self.hooks.rules_output()"
+    });
     w.close().blank();
     w.open("fn on_rule_violation(&self, event: &veld::rules::RuleEvent)");
     w.line("self.hooks.on_rule_violation(event);");
@@ -602,8 +619,75 @@ fn call_ws_method(w: &mut CodeWriter, svc: &Service, args: &str) {
     w.close().close();
 }
 
-fn handler(w: &mut CodeWriter, svc: &Service, n: &Needs) {
+/// What the entry of a handler has because of the runtime config: the parameter after the
+/// loaders, the fallible result, the check and the dispatch member that carries the mode.
+pub(crate) struct Entry {
+    /// `, runtime: &BookingsRuntime`, or nothing.
+    pub param: String,
+    /// The text that passes it on (`, runtime`), or nothing.
+    pub pass: String,
+    /// The check, before the dispatch is built.
+    pub check: Option<String>,
+    /// `, output: runtime.rule_output()`, or nothing.
+    pub member: String,
+}
+
+impl Entry {
+    pub(crate) fn of(tree: &Tree<'_>) -> Entry {
+        match &tree.runtime {
+            None => Entry {
+                param: String::new(),
+                pass: String::new(),
+                check: None,
+                member: String::new(),
+            },
+            Some(rt) => Entry {
+                param: format!(", {}", rt.param()),
+                pass: ", runtime".to_string(),
+                check: Some(rt.check_stmt()),
+                member: if mode_in_runtime(tree) {
+                    ", output: runtime.rule_output()".to_string()
+                } else {
+                    String::new()
+                },
+            },
+        }
+    }
+
+    /// The result type that wraps `ok`.
+    pub(crate) fn result(&self, ok: &str) -> String {
+        if self.check.is_some() {
+            format!("Result<{ok}, {}>", crate::config::RuntimeCfg::error_type())
+        } else {
+            ok.to_string()
+        }
+    }
+
+    /// The expression that returns `value`, after the check.
+    pub(crate) fn finish(&self, w: &mut CodeWriter, value: &str) {
+        match &self.check {
+            Some(check) => {
+                w.line(check);
+                w.line(format!("Ok({value})"));
+            }
+            None => {
+                w.line(value);
+            }
+        }
+    }
+
+    pub(crate) fn docs(&self, w: &mut CodeWriter) {
+        if self.check.is_some() {
+            w.line("///");
+            w.line("/// # Errors");
+            w.line("/// [`ConfigError`](crate::runtime_config::ConfigError) with every problem of `runtime`.");
+        }
+    }
+}
+
+fn handler(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service, n: &Needs) {
     let name = service_type(svc);
+    let e = Entry::of(tree);
     w.line(format!(
         "/// Builds the handler of the `{}` service.",
         svc.name
@@ -611,43 +695,76 @@ fn handler(w: &mut CodeWriter, svc: &Service, n: &Needs) {
     w.line("#[derive(Debug, Clone, Copy)]");
     w.line(format!("pub struct {name}Handler;")).blank();
     w.open(format!("impl {name}Handler"));
-    if svc.facts.is_empty() {
+    let (loaders, loaders_decl, loaders_param, loaders_pass, dispatch_ty, member) =
+        if svc.facts.is_empty() {
+            (
+                false,
+                String::new(),
+                String::new(),
+                String::new(),
+                format!("{name}Dispatch<S, H>"),
+                String::new(),
+            )
+        } else {
+            let l = block::loaders_name(svc);
+            (
+                true,
+                format!(", L: {l}"),
+                ", loaders: L".to_string(),
+                ", loaders".to_string(),
+                format!("{name}Dispatch<S, H, L>"),
+                ", loaders".to_string(),
+            )
+        };
+    if loaders {
+        w.line("/// The handler for `service`, with `hooks` and the `loaders` of the facts the endpoint rules");
+        w.line("/// need. Mount it with an adapter, for example `crate::adapters::axum::router(handler)`.");
+    } else {
         w.line(
             "/// The handler for `service`, with `hooks`. Mount it with an adapter, for example",
         );
         w.line("/// `crate::adapters::axum::router(handler)`.");
-        w.open(format!(
-            "pub fn create<S: {name}Service, H: {name}Hooks>(service: S, hooks: H) -> veld::server::Handler<{name}Dispatch<S, H>>"
-        ));
-        w.line(format!(
-            "veld::server::Handler::new({name}Dispatch {{ service, hooks }})"
-        ));
-        w.close();
-        if !n.any() {
-            w.blank();
-            w.line("/// The handler for `service` with the default hooks.");
-            w.open(format!("pub fn plain<S: {name}Service>(service: S) -> veld::server::Handler<{name}Dispatch<S, NoHooks>>"));
-            w.line("Self::create(service, NoHooks)");
-            w.close();
-        }
-    } else {
-        let loaders = block::loaders_name(svc);
-        w.line("/// The handler for `service`, with `hooks` and the `loaders` of the facts the endpoint rules");
-        w.line("/// need. Mount it with an adapter, for example `crate::adapters::axum::router(handler)`.");
-        w.open(format!(
-            "pub fn create<S: {name}Service, H: {name}Hooks, L: {loaders}>(service: S, hooks: H, loaders: L) -> veld::server::Handler<{name}Dispatch<S, H, L>>"
-        ));
-        w.line(format!(
-            "veld::server::Handler::new({name}Dispatch {{ service, hooks, loaders }})"
-        ));
-        w.close();
-        if !n.any() {
-            w.blank();
+    }
+    e.docs(w);
+    let ret = e.result(&format!("veld::server::Handler<{dispatch_ty}>"));
+    w.open(format!(
+        "pub fn create<S: {name}Service, H: {name}Hooks{loaders_decl}>(service: S, hooks: H{loaders_param}{}) -> {ret}",
+        e.param
+    ));
+    e.finish(
+        w,
+        &format!(
+            "veld::server::Handler::new({name}Dispatch {{ service, hooks{member}{} }})",
+            e.member
+        ),
+    );
+    w.close();
+    if !n.any() {
+        w.blank();
+        if loaders {
             w.line("/// The handler for `service` and `loaders` with the default hooks.");
-            w.open(format!("pub fn plain<S: {name}Service, L: {loaders}>(service: S, loaders: L) -> veld::server::Handler<{name}Dispatch<S, NoHooks, L>>"));
-            w.line("Self::create(service, NoHooks, loaders)");
-            w.close();
+        } else {
+            w.line("/// The handler for `service` with the default hooks.");
         }
+        e.docs(w);
+        let plain_ret = e.result(&format!(
+            "veld::server::Handler<{name}Dispatch<S, NoHooks{}>>",
+            if loaders { ", L" } else { "" }
+        ));
+        let bound = if loaders {
+            format!(", L: {}", block::loaders_name(svc))
+        } else {
+            String::new()
+        };
+        w.open(format!(
+            "pub fn plain<S: {name}Service{bound}>(service: S{loaders_param}{}) -> {plain_ret}",
+            e.param
+        ));
+        w.line(format!(
+            "Self::create(service, NoHooks{loaders_pass}{})",
+            e.pass
+        ));
+        w.close();
     }
     w.close().blank();
 }

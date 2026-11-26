@@ -16,7 +16,8 @@ use bookings_server::bookings::bookings_server::{
     PayBookingFacts, PayBookingRequest,
 };
 use bookings_server::veld::Error;
-use bookings_server::veld::rules::{Outcome, Position, RuleEvent, RuleOutput};
+use bookings_server::runtime_config::{BookingsServerRuntime, RuleOutputMode, RulesSettings};
+use bookings_server::veld::rules::{Outcome, Position, RuleEvent};
 use bookings_server::veld::server::RequestContext;
 use serde_json::{Value, json};
 
@@ -125,17 +126,12 @@ impl BookingsService for Impl {
 type Events = Arc<Mutex<Vec<RuleEvent>>>;
 
 struct Hooks {
-    mode: RuleOutput,
     events: Events,
     clock: Option<SystemTime>,
     validate: bool,
 }
 
 impl BookingsHooks for Hooks {
-    fn rules_output(&self) -> RuleOutput {
-        self.mode
-    }
-
     fn validate_requests(&self) -> bool {
         self.validate
     }
@@ -158,7 +154,7 @@ struct Server {
 
 #[derive(Clone, Copy)]
 struct Setup {
-    mode: RuleOutput,
+    mode: RuleOutputMode,
     fault: Fault,
     clock: Option<SystemTime>,
     validate: bool,
@@ -166,7 +162,7 @@ struct Setup {
 
 impl Setup {
     const fn new() -> Self {
-        Setup { mode: RuleOutput::Strict, fault: Fault::None, clock: None, validate: true }
+        Setup { mode: RuleOutputMode::Strict, fault: Fault::None, clock: None, validate: true }
     }
 }
 
@@ -180,9 +176,11 @@ async fn serve(setup: Setup) -> Server {
     let hits = Arc::new(AtomicUsize::new(0));
     let handler = BookingsHandler::create(
         Impl { db: db.clone(), fault: setup.fault },
-        Hooks { mode: setup.mode, events: events.clone(), clock: setup.clock, validate: setup.validate },
+        Hooks { events: events.clone(), clock: setup.clock, validate: setup.validate },
         Loaders(db.clone()),
-    );
+        Some(&BookingsServerRuntime { rules: RulesSettings { output: setup.mode } }),
+    )
+    .unwrap();
     let counter = hits.clone();
     let router = bookings_server::adapters::axum::router(handler).layer(axum::middleware::from_fn(
         move |req: axum::extract::Request, next: axum::middleware::Next| {
@@ -370,7 +368,7 @@ async fn ensures() {
     assert!(events_of(&other)[0].rule.contains("keepsRoom@"));
 
     // audit: sent unchanged, reported.
-    let audit = serve(Setup { fault: Fault::Paid, mode: RuleOutput::Audit, ..Setup::new() }).await;
+    let audit = serve(Setup { fault: Fault::Paid, mode: RuleOutputMode::Audit, ..Setup::new() }).await;
     let a = create(&audit, &booking_body(ROOM, 2, FAR)).await;
     assert_eq!(a.status, 201, "{}", a.doc);
     assert_eq!(a.doc["status"], "paid");
@@ -378,7 +376,7 @@ async fn ensures() {
     assert_eq!((heard[0].position, heard[0].outcome), (Position::Output, Outcome::Audited));
 
     // off: not evaluated.
-    let off = serve(Setup { fault: Fault::Paid, mode: RuleOutput::Off, ..Setup::new() }).await;
+    let off = serve(Setup { fault: Fault::Paid, mode: RuleOutputMode::Off, ..Setup::new() }).await;
     assert_eq!(create(&off, &booking_body(ROOM, 2, FAR)).await.status, 201);
     assert!(events_of(&off).is_empty());
 }

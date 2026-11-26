@@ -63,6 +63,7 @@ pub const RESERVED_MODULES: &[&str] = &[
     "core",
     "crate",
     "prelude",
+    "runtime_config",
     "serde",
     "serde_json",
     "std",

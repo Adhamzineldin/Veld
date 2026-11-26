@@ -179,13 +179,13 @@ async fn serve(validate: bool) -> Server {
     let rooms = RoomsHandler::create(
         Impl(db.clone()),
         Hooks { events: events.clone(), validate },
-        Loaders(db.clone()),
-    );
+        Loaders(db.clone()), None,
+    ).unwrap();
     let orders = OrdersHandler::create(
         Impl(db.clone()),
         Hooks { events: events.clone(), validate },
-        Loaders(db.clone()),
-    );
+        Loaders(db.clone()), None,
+    ).unwrap();
     let router = rooms_server::adapters::axum::router(rooms).merge(rooms_server::adapters::axum::router(orders));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());

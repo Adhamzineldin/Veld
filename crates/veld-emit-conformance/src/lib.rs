@@ -66,6 +66,13 @@ pub use version::{
     check_version_is_refused, compiled_idempotency_contracts, compiled_version_contracts,
 };
 
+/// The options every conformance check gives a generator: none, and the name of the target
+/// (`veld_codegen::with_target_name`), which a target with a runtime config requires.
+#[must_use]
+pub fn options() -> serde_json::Value {
+    veld_codegen::with_target_name(&serde_json::Value::Null, "conformance")
+}
+
 /// Compiles one contract as the single service package `app`.
 ///
 /// # Panics
@@ -176,7 +183,7 @@ pub fn check_rules_are_refused(generator: &dyn DynGenerator) -> Result<(), Strin
         if gate.len() != 1 || !gate.iter().all(at_rule) {
             return Err(format!("{}: the gate reported {gate:?}", role.name()));
         }
-        match generator.generate_dyn(&req, &serde_json::Value::Null) {
+        match generator.generate_dyn(&req, &crate::options()) {
             Err(d) if !d.is_empty() && d.iter().all(|d| d.code == "E0801") => {}
             other => {
                 return Err(format!(
@@ -304,7 +311,7 @@ fn refuses_endpoint_rules(
         if gate.len() != 1 || !gate.iter().all(at_statement) {
             return Err(format!("{}: the gate reported {gate:?}", role.name()));
         }
-        match generator.generate_dyn(&req, &serde_json::Value::Null) {
+        match generator.generate_dyn(&req, &crate::options()) {
             Err(d) if !d.is_empty() && d.iter().all(|d| d.code == "E0801") => {}
             other => {
                 return Err(format!(
@@ -418,7 +425,7 @@ fn refuses_state_machines(
         if !at_the_machine || gate.iter().any(|d| d.code != "E0801") {
             return Err(format!("{}: the gate reported {gate:?}", role.name()));
         }
-        match generator.generate_dyn(&req, &serde_json::Value::Null) {
+        match generator.generate_dyn(&req, &crate::options()) {
             Err(d) if !d.is_empty() && d.iter().all(|d| d.code == "E0801") => {}
             other => {
                 return Err(format!(
@@ -540,7 +547,7 @@ fn refuses_policies(generator: &dyn DynGenerator, ir: &Ir, line: u32) -> Result<
         if !at_the_allow || gate.iter().any(|d| d.code != "E0801") {
             return Err(format!("{}: the gate reported {gate:?}", role.name()));
         }
-        match generator.generate_dyn(&req, &serde_json::Value::Null) {
+        match generator.generate_dyn(&req, &crate::options()) {
             Err(d) if !d.is_empty() && d.iter().all(|d| d.code == "E0801") => {}
             other => {
                 return Err(format!(
@@ -571,7 +578,7 @@ fn accepts_unused_policies(generator: &dyn DynGenerator) -> Result<(), String> {
                 role.name()
             ));
         }
-        if let Err(d) = generator.generate_dyn(&req, &serde_json::Value::Null) {
+        if let Err(d) = generator.generate_dyn(&req, &crate::options()) {
             return Err(format!(
                 "{}: generate failed for an unused policy: {d:?}",
                 role.name()
@@ -620,7 +627,7 @@ pub fn check_invariants_and_endpoint_rules_supported(
             if !gate.is_empty() {
                 return Err(format!("{}: the gate reported {gate:?}", role.name()));
             }
-            if let Err(d) = generator.generate_dyn(&req, &serde_json::Value::Null) {
+            if let Err(d) = generator.generate_dyn(&req, &crate::options()) {
                 return Err(format!("{}: generate failed: {d:?}", role.name()));
             }
         }
@@ -659,7 +666,7 @@ pub fn check_only_invariants_supported(generator: &dyn DynGenerator) -> Result<(
         if !gate.is_empty() {
             return Err(format!("{}: the gate reported {gate:?}", role.name()));
         }
-        if let Err(d) = generator.generate_dyn(&req, &serde_json::Value::Null) {
+        if let Err(d) = generator.generate_dyn(&req, &crate::options()) {
             return Err(format!("{}: generate failed: {d:?}", role.name()));
         }
     }
@@ -827,7 +834,7 @@ fn services_use_rejected(ir: &Ir, services: &[ServiceId], setup: Setup<'_>) -> b
 
 /// The generator must refuse the request, with `E0801` only, and write nothing.
 fn check_rejected(generator: &dyn DynGenerator, req: &GenRequest<'_>) -> Result<(), String> {
-    match generator.generate_dyn(req, &serde_json::Value::Null) {
+    match generator.generate_dyn(req, &crate::options()) {
         Err(d) if !d.is_empty() && d.iter().all(|d| d.code == "E0801") => Ok(()),
         Err(d) => Err(format!(
             "expected only E0801 for a rejected feature, got {d:?}"
@@ -841,18 +848,16 @@ fn all_services(ir: &Ir) -> Vec<ServiceId> {
 }
 
 fn generate(generator: &dyn DynGenerator, req: &GenRequest<'_>) -> Result<FileSet, String> {
-    generator
-        .generate_dyn(req, &serde_json::Value::Null)
-        .map_err(|d| {
-            let lines: Vec<String> = d
-                .iter()
-                .map(|d| format!("{}: {}", d.code, d.message))
-                .collect();
-            format!(
-                "generation failed although every used feature is declared:\n    {}",
-                lines.join("\n    ")
-            )
-        })
+    generator.generate_dyn(req, &crate::options()).map_err(|d| {
+        let lines: Vec<String> = d
+            .iter()
+            .map(|d| format!("{}: {}", d.code, d.message))
+            .collect();
+        format!(
+            "generation failed although every used feature is declared:\n    {}",
+            lines.join("\n    ")
+        )
+    })
 }
 
 #[cfg(test)]

@@ -13,7 +13,8 @@ use bookings_server::bookings::bookings_server::{
     CancelBookingRequest, CheckInFacts, CheckInRequest, PayBookingFacts, PayBookingRequest,
 };
 use bookings_server::veld::Error;
-use bookings_server::veld::rules::{Outcome, Position, RuleEvent, RuleOutput, Transition};
+use bookings_server::runtime_config::{BookingsServerRuntime, RuleOutputMode, RulesSettings};
+use bookings_server::veld::rules::{Outcome, Position, RuleEvent, Transition};
 use bookings_server::veld::server::RequestContext;
 use serde_json::{Value, json};
 
@@ -88,16 +89,11 @@ impl BookingsService for Impl {
 type Events = Arc<Mutex<Vec<RuleEvent>>>;
 
 struct Hooks {
-    mode: RuleOutput,
     events: Events,
     validate: bool,
 }
 
 impl BookingsHooks for Hooks {
-    fn rules_output(&self) -> RuleOutput {
-        self.mode
-    }
-
     fn validate_requests(&self) -> bool {
         self.validate
     }
@@ -113,14 +109,16 @@ struct Server {
     events: Events,
 }
 
-async fn serve(mode: RuleOutput, leave_unmoved: bool, validate: bool) -> Server {
+async fn serve(mode: RuleOutputMode, leave_unmoved: bool, validate: bool) -> Server {
     let db = Arc::new(Db::default());
     let events: Events = Arc::default();
     let handler = BookingsHandler::create(
         Impl { db: db.clone(), leave_unmoved },
-        Hooks { mode, events: events.clone(), validate },
+        Hooks { events: events.clone(), validate },
         Loaders(db.clone()),
-    );
+        Some(&BookingsServerRuntime { rules: RulesSettings { output: mode } }),
+    )
+    .unwrap();
     let router = bookings_server::adapters::axum::router(handler);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
@@ -174,7 +172,7 @@ fn assert_refused(a: &Answer, from: &str, to: &str) {
 
 /// A legal move reaches the handler with the transition: wire path, typed states.
 async fn legal_and_illegal() {
-    let s = serve(RuleOutput::Strict, false, true).await;
+    let s = serve(RuleOutputMode::Strict, false, true).await;
     put(&s, Status::Pending);
     let a = post(&s, "pay", &pay_body("50.00")).await;
     assert_eq!(a.status, 201, "{}", a.doc);
@@ -194,7 +192,7 @@ async fn legal_and_illegal() {
 
 /// Several sources, a final state, and an endpoint without a result.
 async fn sources_and_finals() {
-    let s = serve(RuleOutput::Strict, false, true).await;
+    let s = serve(RuleOutputMode::Strict, false, true).await;
     for from in [Status::Pending, Status::Paid] {
         put(&s, from);
         let a = post(&s, "cancel", &json!({})).await;
@@ -215,7 +213,7 @@ async fn sources_and_finals() {
 
 /// The order: a missing fact, then the guard, then `require`.
 async fn order() {
-    let s = serve(RuleOutput::Strict, false, true).await;
+    let s = serve(RuleOutputMode::Strict, false, true).await;
     // No booking: `404` before the guard.
     let a = post(&s, "pay", &pay_body("1.00")).await;
     assert_eq!(a.status, 404, "{}", a.doc);
@@ -232,7 +230,7 @@ async fn order() {
 
 /// The target state of the result is an `ensure` under the output mode.
 async fn target_check() {
-    let strict = serve(RuleOutput::Strict, true, true).await;
+    let strict = serve(RuleOutputMode::Strict, true, true).await;
     put(&strict, Status::Pending);
     let a = post(&strict, "pay", &pay_body("50.00")).await;
     assert_eq!(a.status, 500, "{}", a.doc);
@@ -247,7 +245,7 @@ async fn target_check() {
     );
     assert!(heard[0].violation.rule.contains(".transition@"));
 
-    let audit = serve(RuleOutput::Audit, true, true).await;
+    let audit = serve(RuleOutputMode::Audit, true, true).await;
     put(&audit, Status::Pending);
     let a = post(&audit, "pay", &pay_body("50.00")).await;
     assert_eq!(a.status, 201, "{}", a.doc);
@@ -256,7 +254,7 @@ async fn target_check() {
     assert_eq!(heard.len(), 1);
     assert_eq!((heard[0].position, heard[0].outcome), (Position::Output, Outcome::Audited));
 
-    let off = serve(RuleOutput::Off, true, true).await;
+    let off = serve(RuleOutputMode::Off, true, true).await;
     put(&off, Status::Pending);
     assert_eq!(post(&off, "pay", &pay_body("50.00")).await.status, 201);
     assert!(off.events.lock().unwrap().is_empty());
@@ -264,7 +262,7 @@ async fn target_check() {
 
 /// With request validation off the guard still runs, and the handler still gets the transition.
 async fn validation_off() {
-    let s = serve(RuleOutput::Strict, false, false).await;
+    let s = serve(RuleOutputMode::Strict, false, false).await;
     put(&s, Status::Paid);
     assert_refused(&post(&s, "pay", &pay_body("50.00")).await, "paid", "paid");
     put(&s, Status::Pending);
@@ -286,7 +284,7 @@ fn helpers() {
 
 /// `can_<endpoint>` of the client agrees with the server for every state.
 async fn can_agrees_with_the_server() {
-    let s = serve(RuleOutput::Strict, false, true).await;
+    let s = serve(RuleOutputMode::Strict, false, true).await;
     let all = [
         (Status::Pending, ClientStatus::Pending),
         (Status::Paid, ClientStatus::Paid),

@@ -220,7 +220,7 @@ async fn serve() -> Server {
     let app = Arc::new(App::default());
     app.capacity.store(9, Ordering::SeqCst);
     let hooks = Hooks(app.clone(), StoreRef(app.store.clone()));
-    let handler = BookingsHandler::create(Impl(app.clone()), hooks, Loaders(app.clone()));
+    let handler = BookingsHandler::create(Impl(app.clone()), hooks, Loaders(app.clone()), None).unwrap();
     let router = bookings_server::adapters::axum::router(handler);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());

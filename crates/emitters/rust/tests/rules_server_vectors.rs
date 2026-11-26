@@ -80,6 +80,9 @@ fn driver(ir: &Ir, stem: &str) -> String {
         true,
     );
     let krate = crate_ident(stem);
+    // Every contract of vectors has rules, so its server has a runtime config with the rule output
+    // mode, and the target is named after the crate.
+    let rt = veld_codegen::runtime_config::runtime_type_name(&format!("svec-{stem}"));
     let (mut methods, mut arms) = (String::new(), String::new());
     for id in tree.decls() {
         let d = ir.decl(*id);
@@ -107,11 +110,18 @@ fn driver(ir: &Ir, stem: &str) -> String {
         ));
         arms.push_str(&format!("            {:?} => 0,\n", d.name));
     }
+    let runtime_use =
+        format!("use {krate}::runtime_config::{{{rt}, RuleOutputMode, RulesSettings}};");
+    let mode = "    let mode = if off { RuleOutputMode::Off } else { RuleOutputMode::Strict };";
+    let create = format!(
+        "{krate}::t::vectors_server::VectorsHandler::create(Impl, Hooks {{ events: events.clone() }}, Some(&{rt} {{ rules: RulesSettings {{ output: mode }} }})).unwrap()"
+    );
     format!(
         r#"use std::sync::{{Arc, Mutex}};
 
 use {krate}::t::vectors_server::*;
-use {krate}::veld::rules::{{Outcome, RuleEvent, RuleOutput}};
+use {krate}::veld::rules::{{Outcome, RuleEvent}};
+{runtime_use}
 use {krate}::veld::server::{{Body, Request, RequestContext}};
 use {krate}::veld::{{Error, VeldDecl}};
 use serde_json::{{Value, json}};
@@ -124,15 +134,10 @@ impl VectorsService for Impl {{
 {methods}}}
 
 struct Hooks {{
-    mode: RuleOutput,
     events: Arc<Mutex<Vec<RuleEvent>>>,
 }}
 
 impl VectorsHooks for Hooks {{
-    fn rules_output(&self) -> RuleOutput {{
-        self.mode
-    }}
-
     fn on_rule_violation(&self, event: &RuleEvent) {{
         self.events.lock().unwrap().push(event.clone());
     }}
@@ -165,8 +170,8 @@ fn reported(events: &[RuleEvent], outcome: Outcome) -> Vec<Value> {{
 fn run(case: &Value) -> Value {{
     let events = Arc::new(Mutex::new(Vec::new()));
     let off = case["output"].as_str() == Some("off");
-    let mode = if off {{ RuleOutput::Off }} else {{ RuleOutput::Strict }};
-    let handler = {krate}::t::vectors_server::VectorsHandler::create(Impl, Hooks {{ mode, events: events.clone() }});
+{mode}
+    let handler = {create};
     let name = case["type"].as_str().unwrap_or("");
     let request = case["request"].as_bool().unwrap_or(false);
     *CURRENT.lock().unwrap() = case["value"].clone();

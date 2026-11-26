@@ -135,7 +135,7 @@ struct Server {
 async fn serve(validate: bool) -> Server {
     let db = Arc::new(Db::default());
     let events: Events = Arc::default();
-    let handler = BookingsHandler::create(Impl(db.clone()), Hooks { events: events.clone(), validate }, Loaders(db.clone()));
+    let handler = BookingsHandler::create(Impl(db.clone()), Hooks { events: events.clone(), validate }, Loaders(db.clone()), None).unwrap();
     let router = bookings_server::adapters::axum::router(handler);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());

@@ -14,7 +14,8 @@ use live_client::veld::stream::next;
 use live_server::live::live::{Note, Overbooked, Reading};
 use live_server::live::live_server::{LiveHandler, LiveHooks, LiveService, NotesRequest, ReadingsRequest, SeatsRequest};
 use live_server::veld::Error;
-use live_server::veld::rules::{Outcome, Position, RuleEvent, RuleOutput};
+use live_server::runtime_config::{LiveServerRuntime, RuleOutputMode, RulesSettings};
+use live_server::veld::rules::{Outcome, Position, RuleEvent};
 use live_server::veld::server::{RequestContext, WsSession};
 use live_server::veld::stream::{EventStream, SseEvent, iter};
 use tokio_tungstenite::tungstenite::Message;
@@ -22,15 +23,10 @@ use tokio_tungstenite::tungstenite::Message;
 type Events = Arc<Mutex<Vec<RuleEvent>>>;
 
 struct Hooks {
-    mode: RuleOutput,
     events: Events,
 }
 
 impl LiveHooks for Hooks {
-    fn rules_output(&self) -> RuleOutput {
-        self.mode
-    }
-
     fn on_rule_violation(&self, event: &RuleEvent) {
         self.events.lock().unwrap().push(event.clone());
     }
@@ -71,10 +67,15 @@ struct Server {
     received: Received,
 }
 
-async fn start(mode: RuleOutput) -> Server {
+async fn start(mode: RuleOutputMode) -> Server {
     let events: Events = Arc::default();
     let received: Received = Arc::default();
-    let handler = LiveHandler::create(Impl { received: received.clone() }, Hooks { mode, events: events.clone() });
+    let handler = LiveHandler::create(
+        Impl { received: received.clone() },
+        Hooks { events: events.clone() },
+        Some(&LiveServerRuntime { rules: RulesSettings { output: mode } }),
+    )
+    .unwrap();
     let router = live_server::adapters::axum::router(handler);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
@@ -98,7 +99,7 @@ fn last(events: &Events) -> RuleEvent {
 }
 
 async fn error_rules() {
-    let strict = start(RuleOutput::Strict).await;
+    let strict = start(RuleOutputMode::Strict).await;
     let (status, text) = get(&format!("{}/live/seats?ok=true", strict.base)).await;
     assert_eq!(status, 409);
     assert_eq!(serde_json::from_str::<serde_json::Value>(&text).unwrap()["title"], "Overbooked");
@@ -120,7 +121,7 @@ async fn error_rules() {
     assert_eq!(err.status(), Some(500));
 
     // audit: sent unchanged, the hook gets the violation, and the client never checks what it decodes.
-    let audit = start(RuleOutput::Audit).await;
+    let audit = start(RuleOutputMode::Audit).await;
     let (status, text) = get(&format!("{}/live/seats?ok=false", audit.base)).await;
     assert_eq!(status, 409);
     assert_eq!(serde_json::from_str::<serde_json::Value>(&text).unwrap()["data"]["seats"], 3);
@@ -133,7 +134,7 @@ async fn error_rules() {
     assert!(!err.is_local());
 
     // off: not evaluated.
-    let off = start(RuleOutput::Off).await;
+    let off = start(RuleOutputMode::Off).await;
     assert_eq!(get(&format!("{}/live/seats?ok=false", off.base)).await.0, 409);
     assert!(off.events.lock().unwrap().is_empty());
 }
@@ -155,7 +156,7 @@ async fn readings(base: &str, bad: i32) -> (Vec<(i32, i32)>, Option<live_client:
 }
 
 async fn sse_rules() {
-    let strict = start(RuleOutput::Strict).await;
+    let strict = start(RuleOutputMode::Strict).await;
     assert_eq!(readings(&strict.base, -1).await.0.len(), 3);
     assert!(strict.events.lock().unwrap().is_empty());
     // A violating item in the middle is not sent: the stream ends with a final error event.
@@ -173,14 +174,14 @@ async fn sse_rules() {
     assert_eq!(error.expect("the call fails").status(), Some(500));
     assert_eq!(get(&format!("{}/live/readings?bad=0", strict.base)).await.0, 500);
 
-    let audit = start(RuleOutput::Audit).await;
+    let audit = start(RuleOutputMode::Audit).await;
     let (got, error) = readings(&audit.base, 1).await;
     assert_eq!(got.iter().map(|r| r.0).collect::<Vec<_>>(), [0, 5, 2]);
     assert!(error.is_none());
     assert_eq!(audit.events.lock().unwrap().len(), 1);
     assert_eq!(last(&audit.events).outcome, Outcome::Audited);
 
-    let off = start(RuleOutput::Off).await;
+    let off = start(RuleOutputMode::Off).await;
     assert_eq!(readings(&off.base, 1).await.0.len(), 3);
     assert!(off.events.lock().unwrap().is_empty());
 }
@@ -226,7 +227,7 @@ fn note(text: &str, stars: i32) -> ClientNote {
 }
 
 async fn websocket_rules() {
-    let strict = start(RuleOutput::Strict).await;
+    let strict = start(RuleOutputMode::Strict).await;
     // Client to server, checked locally like a request body: nothing is written. The client has
     // not seen the server's rules digest yet (a WebSocket upgrade shows none), so one plain call
     // brings it: until a response says the rules are the ones it was generated from, it sends.
@@ -273,14 +274,14 @@ async fn websocket_rules() {
     assert_eq!((event.position, event.outcome), (Position::Output, Outcome::Rejected));
     assert!(event.rule.starts_with("veld:live/Reading.ordered@"));
 
-    let audit = start(RuleOutput::Audit).await;
+    let audit = start(RuleOutputMode::Audit).await;
     let mut chan = client(&audit.base).notes().await.unwrap();
     chan.send(note("bad", 1)).await.unwrap();
     let reply = chan.recv().await.unwrap().unwrap();
     assert_eq!((reply.low, reply.high), (9, 1), "audit sends it");
     assert_eq!(last(&audit.events).outcome, Outcome::Audited);
 
-    let off = start(RuleOutput::Off).await;
+    let off = start(RuleOutputMode::Off).await;
     let mut chan = client(&off.base).notes().await.unwrap();
     chan.send(note("bad", 1)).await.unwrap();
     assert_eq!(chan.recv().await.unwrap().unwrap().low, 9);

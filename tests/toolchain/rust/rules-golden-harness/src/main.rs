@@ -36,7 +36,7 @@ async fn main() {
     let request: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(dir.join("request.json")).unwrap()).unwrap();
     let golden = std::fs::read_to_string(dir.join("problem.json")).unwrap();
 
-    let router = golden_server::adapters::axum::router(BookingsHandler::plain(Impl));
+    let router = golden_server::adapters::axum::router(BookingsHandler::plain(Impl, None).unwrap());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
     tokio::spawn(async move {

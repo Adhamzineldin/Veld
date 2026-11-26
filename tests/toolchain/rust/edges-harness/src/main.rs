@@ -127,7 +127,7 @@ fn account(tier: &str) -> Value {
 }
 
 async fn the_test_handler() {
-    let base = start(router(EdgesTestHandler::plain(Impl))).await;
+    let base = start(router(EdgesTestHandler::plain(Impl, None).unwrap())).await;
     let probe_text = reqwest::get(format!("{base}/__veld/test")).await.unwrap().text().await.unwrap();
     let probe_doc: Value = serde_json::from_str(&probe_text).unwrap();
     assert_eq!(probe_doc, serde_json::from_str::<Value>(&probe()).unwrap());
@@ -163,7 +163,7 @@ async fn the_test_handler() {
     let basic = json!({ "account": account("basic") });
     assert_eq!(send("GET", &watch, &test_headers(&basic, true), None).await.status, 409);
     // A service with blocks and no facts: the result comes from the header, and `ensure` judges it.
-    let plain = start(plain_router(PlainTestHandler::plain(PlainImpl(0)))).await;
+    let plain = start(plain_router(PlainTestHandler::plain(PlainImpl(0), None).unwrap())).await;
     let result = |count: i32| vec![("veld-test-result", b64(&json!({ "id": ID, "count": count }).to_string()))];
     let echo = format!("{plain}/plain/echo");
     let good = send("POST", &echo, &result(3), Some(json!({ "count": 3 }))).await;
@@ -173,7 +173,7 @@ async fn the_test_handler() {
 }
 
 async fn the_production_handler() {
-    let base = start(edges_server::adapters::axum::router(EdgesHandler::plain(Impl, Loaders))).await;
+    let base = start(edges_server::adapters::axum::router(EdgesHandler::plain(Impl, Loaders, None).unwrap())).await;
     // An ensure on an endpoint with no success body.
     let ping = |q: &str| format!("{base}/edges/ping{q}");
     assert_eq!(send("POST", &ping(""), &[], None).await.status, 204);
@@ -187,7 +187,7 @@ async fn the_production_handler() {
     let too_many = send("POST", &format!("{base}/edges/{ID}/move"), &[], Some(json!({ "count": 2 }))).await;
     assert_eq!(too_many.status, 422, "{}", too_many.doc);
     assert_eq!(too_many.doc["data"], json!({ "allowed": 1, "asked": 4 }));
-    let plain = start(edges_server::adapters::axum::router(PlainHandler::plain(PlainImpl(7)))).await;
+    let plain = start(edges_server::adapters::axum::router(PlainHandler::plain(PlainImpl(7), None).unwrap())).await;
     let echoed = send("POST", &format!("{plain}/plain/echo"), &[], Some(json!({ "count": 7 }))).await;
     assert_eq!(echoed.status, 201);
     let broken = send("POST", &format!("{plain}/plain/echo"), &[], Some(json!({ "count": 1 }))).await;

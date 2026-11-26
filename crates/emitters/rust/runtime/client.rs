@@ -149,7 +149,8 @@ type Supplier<T> = Arc<dyn Fn() -> T + Send + Sync>;
 /// Options of a generated client.
 #[derive(Clone)]
 pub struct ClientOptions {
-    /// The server's base URL. Else `VELD_<SERVICE>_URL`, else the contract's `base-url`.
+    /// The server's base URL: required. A client built without it fails with
+    /// [`Error::Transport`]. `runtime_config::clients` sets it from the runtime config.
     pub base_url: Option<String>,
     /// Headers sent with every request.
     pub headers: Vec<(String, String)>,
@@ -382,15 +383,13 @@ struct Built {
 }
 
 impl<T: Transport> Core<T> {
-    /// Resolves the base URL: `options.base_url`, else the environment variable `env`, else
-    /// `default_base` (the contract's `base-url`).
+    /// Takes the base URL from `options.base_url`: there is no other source (no environment
+    /// variable, no URL compiled into the client).
     ///
     /// # Errors
-    /// [`Error::Transport`] when none of the three is set.
+    /// [`Error::Transport`] when `options.base_url` is not set.
     pub fn new(
         transport: T,
-        env: &str,
-        default_base: Option<&str>,
         std: StdSigs,
         validate_default: bool,
         options: ClientOptions,
@@ -399,9 +398,7 @@ impl<T: Transport> Core<T> {
             .base_url
             .clone()
             .filter(|b| !b.is_empty())
-            .or_else(|| std::env::var(env).ok().filter(|b| !b.is_empty()))
-            .or_else(|| default_base.map(str::to_string))
-            .ok_or_else(|| Error::Transport(format!("no base URL: pass `base_url`, set {env} or give the contract a base-url")))?;
+            .ok_or_else(|| Error::Transport("no base URL: pass `base_url` in the client options".to_string()))?;
         let validate = options.validate.unwrap_or(validate_default);
         // #if !rules
         Ok(Core { transport: Arc::new(transport), base: base.trim_end_matches('/').to_string(), options, std, validate })

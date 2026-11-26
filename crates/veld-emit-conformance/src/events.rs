@@ -169,7 +169,7 @@ fn refuses(
             "the gate reported {gate:?}, wanted one E0801 at line {line}"
         ));
     }
-    match generator.generate_dyn(&req, &serde_json::Value::Null) {
+    match generator.generate_dyn(&req, &crate::options()) {
         Err(d) if !d.is_empty() && d.iter().all(|d| d.code == "E0801") => Ok(()),
         other => Err(format!("generate did not answer E0801: {other:?}")),
     }
@@ -189,7 +189,7 @@ fn generate(
         framework: None,
     };
     generator
-        .generate_dyn(&req, &serde_json::Value::Null)
+        .generate_dyn(&req, &crate::options())
         .map_err(|d| format!("generation failed: {d:?}"))
 }
 

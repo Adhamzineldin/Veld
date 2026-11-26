@@ -209,7 +209,7 @@ fn a_parameter_that_the_client_needs_for_the_headers_is_refused() {
                 framework: None,
             };
             let err = Rust
-                .generate_dyn(&req, &json!({}))
+                .generate_dyn(&req, &veld_codegen::with_target_name(&json!({}), "t"))
                 .expect_err("a clashing parameter is refused");
             assert!(err.iter().all(|d| d.code == "E0801"), "{name}: {err:?}");
             assert!(err[0].message.contains(name), "{err:?}");

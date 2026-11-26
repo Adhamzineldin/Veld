@@ -344,7 +344,7 @@ fn gen_ts(
         framework: None,
     };
     generator
-        .generate_dyn(&req, &Value::Null)
+        .generate_dyn(&req, &veld_codegen::with_target_name(&Value::Null, "t"))
         .unwrap_or_else(|d| panic!("generation failed: {d:?}"))
 }
 

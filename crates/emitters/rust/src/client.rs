@@ -1,6 +1,6 @@
 //! The client of a service: generic over a `Transport`.
 
-use veld_codegen::{CodeWriter, FileSet, GenDiagnostic, naming};
+use veld_codegen::{CodeWriter, FileSet, GenDiagnostic};
 use veld_ir::{Endpoint, Service};
 
 use crate::endpoints::{
@@ -104,27 +104,22 @@ fn client_type(w: &mut CodeWriter, svc: &Service, name: &str) {
 }
 
 fn constructor(w: &mut CodeWriter, svc: &Service, validate: bool) {
-    let env = format!("VELD_{}_URL", naming::screaming_snake(&svc.name));
-    let default = svc
-        .base_url
-        .as_deref()
-        .map_or("None".to_string(), |u| format!("Some({})", lit(u)));
     w.line("/// A client over `transport`.");
     w.line("///");
-    w.line(format!(
-        "/// The base URL is `options.base_url`, else the environment variable `{env}`, else the"
-    ));
-    w.line("/// contract's `base-url`.");
+    w.line("/// The base URL is `options.base_url`: there is no other source. Build the clients of a target");
+    w.line("/// from its runtime config with `runtime_config::clients`.");
     w.line("///");
     w.line("/// # Errors");
-    w.line("/// `veld::Error::Transport` when no base URL is set.");
+    w.line("/// `veld::Error::Transport` when `options.base_url` is not set.");
     w.open("pub fn new(transport: T, options: veld::client::ClientOptions) -> Result<Self, veld::Error>");
     // A service that reaches invariants has a rules digest (`spec/rules.md` section 9.7): the
     // client keeps the server's and stops checking locally when it differs from its own.
     let digest = svc.rules_digest.as_ref().map_or(String::new(), |d| {
         format!(".with_digest({}, {})", lit(&svc.name), lit(d))
     });
-    w.line(format!("Ok(Self {{ core: veld::client::Core::new(transport, {}, {default}, STD, {validate}, options)?{digest} }})", lit(&env)));
+    w.line(format!(
+        "Ok(Self {{ core: veld::client::Core::new(transport, STD, {validate}, options)?{digest} }})"
+    ));
     w.close().blank();
 }
 
@@ -208,7 +203,7 @@ fn transport_constructors(w: &mut CodeWriter, name: &str, t: Transports) {
         w.line("/// A client on the default `reqwest` transport.");
         w.line("///");
         w.line("/// # Errors");
-        w.line("/// `veld::Error::Transport` when no base URL is set.");
+        w.line("/// `veld::Error::Transport` when `options.base_url` is not set.");
         w.open("pub fn reqwest(options: veld::client::ClientOptions) -> Result<Self, veld::Error>");
         w.line("Self::new(veld::transport_reqwest::ReqwestTransport::new(), options)");
         w.close().close().blank();
@@ -218,7 +213,7 @@ fn transport_constructors(w: &mut CodeWriter, name: &str, t: Transports) {
         w.line("/// A client on the default (blocking) `ureq` transport. Drive its futures with `veld::block_on`.");
         w.line("///");
         w.line("/// # Errors");
-        w.line("/// `veld::Error::Transport` when no base URL is set.");
+        w.line("/// `veld::Error::Transport` when `options.base_url` is not set.");
         w.open("pub fn ureq(options: veld::client::ClientOptions) -> Result<Self, veld::Error>");
         w.line("Self::new(veld::transport_ureq::UreqTransport::new(), options)");
         w.close().close().blank();

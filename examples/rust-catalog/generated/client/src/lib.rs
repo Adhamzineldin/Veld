@@ -11,5 +11,6 @@
 )]
 
 pub mod prelude;
+pub mod runtime_config;
 pub mod veld;
 pub mod catalog;

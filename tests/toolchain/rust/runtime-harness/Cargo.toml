@@ -1,0 +1,12 @@
+[package]
+name = "runtime-harness"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+bookings = { path = "../bookings" }
+web = { path = "../web" }
+orders = { path = "../orders" }
+card-service = { path = "../card_service" }
+serde_json = "1"

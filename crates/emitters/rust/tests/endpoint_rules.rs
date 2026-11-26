@@ -187,7 +187,10 @@ fn the_testing_option_belongs_to_the_server_and_must_be_a_boolean() {
         framework: None,
     };
     let err = Rust
-        .generate_dyn(&client, &json!({ "testing": true }))
+        .generate_dyn(
+            &client,
+            &veld_codegen::with_target_name(&json!({ "testing": true }), "t"),
+        )
         .unwrap_err();
     assert_eq!(err[0].code, "E0802");
     let server = GenRequest {
@@ -195,7 +198,10 @@ fn the_testing_option_belongs_to_the_server_and_must_be_a_boolean() {
         ..client
     };
     let err = Rust
-        .generate_dyn(&server, &json!({ "testing": "yes" }))
+        .generate_dyn(
+            &server,
+            &veld_codegen::with_target_name(&json!({ "testing": "yes" }), "t"),
+        )
         .unwrap_err();
     assert_eq!(err[0].code, "E0802");
 }
@@ -237,7 +243,9 @@ fn an_endpoint_rule_on_a_ws_endpoint_is_e0801() {
         consumes: vec![],
         framework: None,
     };
-    let err = Rust.generate_dyn(&req, &json!({})).unwrap_err();
+    let err = Rust
+        .generate_dyn(&req, &veld_codegen::with_target_name(&json!({}), "t"))
+        .unwrap_err();
     assert!(err.iter().all(|d| d.code == "E0801"), "{err:?}");
     assert!(err[0].message.contains("`ws` endpoint"), "{err:?}");
 }

@@ -14,22 +14,18 @@ use bookings_server::bookings::bookings_server::{
     BookingsHandler, BookingsHooks, BookingsService, CreateBookingRequest as ServerCreate, ReceiptRequest as ServerReceipt,
 };
 use bookings_server::veld::Error;
-use bookings_server::veld::rules::{Outcome, Position, RuleEvent, RuleOutput};
+use bookings_server::runtime_config::{BookingsServerRuntime, RuleOutputMode, RulesSettings};
+use bookings_server::veld::rules::{Outcome, Position, RuleEvent};
 use bookings_server::veld::server::RequestContext;
 
 type Events = Arc<Mutex<Vec<RuleEvent>>>;
 
 struct Hooks {
-    mode: RuleOutput,
     events: Events,
     validate: bool,
 }
 
 impl BookingsHooks for Hooks {
-    fn rules_output(&self) -> RuleOutput {
-        self.mode
-    }
-
     fn validate_requests(&self) -> bool {
         self.validate
     }
@@ -57,14 +53,15 @@ struct Server {
     hits: Arc<AtomicUsize>,
 }
 
-async fn serve(mode: RuleOutput) -> Server {
+async fn serve(mode: RuleOutputMode) -> Server {
     serve_with(mode, true).await
 }
 
-async fn serve_with(mode: RuleOutput, validate: bool) -> Server {
+async fn serve_with(mode: RuleOutputMode, validate: bool) -> Server {
     let events: Events = Arc::default();
     let hits = Arc::new(AtomicUsize::new(0));
-    let handler = BookingsHandler::create(Impl, Hooks { mode, events: events.clone(), validate });
+    let runtime = BookingsServerRuntime { rules: RulesSettings { output: mode } };
+    let handler = BookingsHandler::create(Impl, Hooks { events: events.clone(), validate }, Some(&runtime)).unwrap();
     let counter = hits.clone();
     let router = bookings_server::adapters::axum::router(handler).layer(axum::middleware::from_fn(
         move |req: axum::extract::Request, next: axum::middleware::Next| {
@@ -114,7 +111,7 @@ fn assert_end_after_start(err: &bookings_client::veld::Error, local: bool, what:
 }
 
 async fn input_rules() {
-    let server = serve(RuleOutput::Strict).await;
+    let server = serve(RuleOutputMode::Strict).await;
     // The raw problem document of section 7.
     let raw = reqwest::Client::new()
         .post(format!("{}/bookings", server.base))
@@ -171,7 +168,7 @@ async fn input_rules() {
 }
 
 async fn output_rules() {
-    let strict = serve(RuleOutput::Strict).await;
+    let strict = serve(RuleOutputMode::Strict).await;
     let client = BookingsClient::reqwest(ClientOptions::new().base_url(&strict.base)).unwrap();
     assert_eq!(client.receipt(ReceiptRequest { total: 3 }).await.unwrap().total, 3);
     assert!(strict.events.lock().unwrap().is_empty());
@@ -186,7 +183,7 @@ async fn output_rules() {
         assert_eq!(events[0].violation.path, "$");
     }
 
-    let audit = serve(RuleOutput::Audit).await;
+    let audit = serve(RuleOutputMode::Audit).await;
     let client = BookingsClient::reqwest(ClientOptions::new().base_url(&audit.base)).unwrap();
     assert_eq!(client.receipt(ReceiptRequest { total: 0 }).await.unwrap().total, 0, "audit sends it");
     let events = audit.events.lock().unwrap();
@@ -194,7 +191,7 @@ async fn output_rules() {
     assert_eq!((events[0].position, events[0].outcome), (Position::Output, Outcome::Audited));
     drop(events);
 
-    let off = serve(RuleOutput::Off).await;
+    let off = serve(RuleOutputMode::Off).await;
     let client = BookingsClient::reqwest(ClientOptions::new().base_url(&off.base)).unwrap();
     assert_eq!(client.receipt(ReceiptRequest { total: 0 }).await.unwrap().total, 0);
     assert!(off.events.lock().unwrap().is_empty());
@@ -205,7 +202,7 @@ async fn output_rules() {
 async fn serve_off() {
     // This crate was generated with the target option `validate = false`: the default hooks
     // (`BookingsHandler::plain`) leave request validation off, and say so once when created.
-    let router = bookings_server::adapters::axum::router(BookingsHandler::plain(Impl));
+    let router = bookings_server::adapters::axum::router(BookingsHandler::plain(Impl, None).unwrap());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     println!("PORT={}", listener.local_addr().unwrap().port());
     let _ = axum::serve(listener, router).await;

@@ -87,13 +87,13 @@ impl<T: veld::client::Transport> std::fmt::Debug for CatalogClient<T> {
 impl<T: veld::client::Transport> CatalogClient<T> {
     /// A client over `transport`.
     ///
-    /// The base URL is `options.base_url`, else the environment variable `VELD_CATALOG_URL`, else the
-    /// contract's `base-url`.
+    /// The base URL is `options.base_url`: there is no other source. Build the clients of a target
+    /// from its runtime config with `runtime_config::clients`.
     ///
     /// # Errors
-    /// `veld::Error::Transport` when no base URL is set.
+    /// `veld::Error::Transport` when `options.base_url` is not set.
     pub fn new(transport: T, options: veld::client::ClientOptions) -> Result<Self, veld::Error> {
-        Ok(Self { core: veld::client::Core::new(transport, "VELD_CATALOG_URL", None, STD, true, options)? })
+        Ok(Self { core: veld::client::Core::new(transport, STD, true, options)? })
     }
 
     /// Looks up a book by ISBN.
@@ -107,7 +107,7 @@ impl CatalogClient<veld::transport_ureq::UreqTransport> {
     /// A client on the default (blocking) `ureq` transport. Drive its futures with `veld::block_on`.
     ///
     /// # Errors
-    /// `veld::Error::Transport` when no base URL is set.
+    /// `veld::Error::Transport` when `options.base_url` is not set.
     pub fn ureq(options: veld::client::ClientOptions) -> Result<Self, veld::Error> {
         Self::new(veld::transport_ureq::UreqTransport::new(), options)
     }
