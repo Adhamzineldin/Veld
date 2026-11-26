@@ -505,10 +505,12 @@ impl<'a> Pipeline<'a> {
             }
             _ => crate::visibility::Caller::none(),
         };
+        // A typed server always has the defaults of what it sends: visibility sees them too.
+        let (full, _) = complete_type(self.ir, ty, value, Options::default())?;
         Ok(crate::visibility::apply_visibility_type(
             self.ir,
             ty,
-            value,
+            &full,
             caller,
             request.now,
         )?)

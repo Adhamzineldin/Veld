@@ -153,6 +153,7 @@ A message is one CloudEvents 1.0 event in the JSON format, structured mode:
 | `subject` | The key text (§4). Omitted when the channel has no key. |
 | `time` | The publisher's clock at `publish`, as a canonical `datetime` (`language.md` §5.1), at millisecond precision |
 | `datacontenttype` | `"application/json"` |
+| `veldtenant` | The tenant text of the event's `@tenant` field (`spec/platform.md` §3): a `string` as it is, a `uuid` in lowercase, an `int` or `long` in decimal digits. Omitted when the event has none. A CloudEvents extension attribute; a consumer reads it and does not check it, and a non-string one is malformed. |
 | `veldrules` | The rules digest of the event as the publisher knows it (§6.1). Omitted when it has none. A CloudEvents extension attribute. |
 | `data` | The event in wire form, stored as a JSON value: defaults applied, absent optional fields omitted, scalars in their canonical formats (`spec/ir.md` §5.3) |
 

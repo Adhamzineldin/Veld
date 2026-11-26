@@ -169,8 +169,8 @@ fn node_and_typescript_refuse_visibility_as_a_server_only() {
     veld_emit_conformance::check_visibility_is_refused(&TypeScript).unwrap();
 }
 
-/// `tenancy` is opt-in (`spec/platform.md` section 3): the Node server refuses a `@tenant` field;
-/// the TypeScript client is not asked.
+/// `tenancy` is opt-in (`spec/platform.md` section 3): the Node server refuses a `@tenant` field,
+/// and the TypeScript client one that an endpoint returns (a request does not carry it).
 #[test]
 fn node_and_typescript_refuse_tenancy_as_a_server_only() {
     veld_emit_conformance::check_tenancy_is_refused(&Node).unwrap();

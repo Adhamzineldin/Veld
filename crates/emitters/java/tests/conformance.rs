@@ -180,7 +180,8 @@ fn java_refuses_visibility_as_a_server() {
     veld_emit_conformance::check_visibility_is_refused(&Java).unwrap();
 }
 
-/// `tenancy` is opt-in (`spec/platform.md` section 3): the Java server refuses a `@tenant` field.
+/// `tenancy` is opt-in (`spec/platform.md` section 3): Java refuses a `@tenant` field, as a server
+/// and, when an endpoint returns one, as a client.
 #[test]
 fn java_refuses_tenancy_as_a_server() {
     veld_emit_conformance::check_tenancy_is_refused(&Java).unwrap();

@@ -97,17 +97,18 @@ fn the_expression_must_guard_an_optional_field_it_reads() {
 
 #[test]
 fn another_argument_or_none_is_e0602() {
-    for bad in [
-        "@visible",
-        "@visible(true)",
-        "@visible(who: true)",
-        "@visible(when: true, x: 1)",
-    ] {
+    for bad in ["@visible", "@visible(true)", "@visible(who: true)"] {
         let src = format!("{USER}model B {{ x?: string {bad} }}\n");
         assert!(codes(&src).contains(&"E0602"), "{bad}: {:?}", codes(&src));
     }
     let on_model = format!("{USER}@visible(when: true)\nmodel B {{ x?: string }}\n");
     assert!(codes(&on_model).contains(&"E0602"));
+}
+
+#[test]
+fn an_argument_after_the_expression_is_a_syntax_error() {
+    let src = format!("{USER}model B {{ x?: string @visible(when: true, x: 1) }}\n");
+    assert_eq!(codes(&src), vec!["E0003"]);
 }
 
 #[test]

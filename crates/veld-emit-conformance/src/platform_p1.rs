@@ -197,10 +197,11 @@ pub fn compiled_visibility_contracts() -> Vec<(Ir, u32)> {
 /// # Errors
 /// A description of the first role and contract for which the generator does not behave so.
 pub fn check_visibility_is_refused(generator: &dyn DynGenerator) -> Result<(), String> {
-    refused_by_servers(
+    refused_by(
         generator,
         Feature::Visibility,
         &compiled_visibility_contracts(),
+        |_| false,
     )
 }
 
@@ -241,13 +242,18 @@ fn tenant_line(source: &str, _needle: &str) -> u32 {
 }
 
 /// The generator must not declare `tenancy` and must refuse a contract with a `@tenant` field that
-/// a server loads, returns or publishes, as a server (see [`check_visibility_is_refused`]); a
-/// client is not asked.
+/// a server loads, returns or publishes. A client is asked too when an endpoint returns a model
+/// with a `@tenant` field: the server sets the field, so a request must not carry it.
 ///
 /// # Errors
 /// A description of the first role and contract for which the generator does not behave so.
 pub fn check_tenancy_is_refused(generator: &dyn DynGenerator) -> Result<(), String> {
-    refused_by_servers(generator, Feature::Tenancy, &compiled_tenancy_contracts())
+    refused_by(
+        generator,
+        Feature::Tenancy,
+        &compiled_tenancy_contracts(),
+        client_reaches_tenant,
+    )
 }
 
 /// The contracts that use `audit`, with the line of the first endpoint that is audited.
@@ -277,7 +283,12 @@ pub fn compiled_audit_contracts() -> Vec<(Ir, u32)> {
 /// # Errors
 /// A description of the first role and contract for which the generator does not behave so.
 pub fn check_audit_is_refused(generator: &dyn DynGenerator) -> Result<(), String> {
-    refused_by_servers(generator, Feature::Audit, &compiled_audit_contracts())
+    refused_by(
+        generator,
+        Feature::Audit,
+        &compiled_audit_contracts(),
+        |_| false,
+    )
 }
 
 /// The contracts that use `limits`, with the line of the first endpoint that has a limit.
@@ -307,19 +318,12 @@ pub fn compiled_limit_contracts() -> Vec<(Ir, u32)> {
 /// # Errors
 /// A description of the first role and contract for which the generator does not behave so.
 pub fn check_limits_are_refused(generator: &dyn DynGenerator) -> Result<(), String> {
-    let name = format!("`{}`", Feature::Limits.name());
-    for (ir, line) in compiled_limit_contracts() {
-        for role in generator.roles() {
-            if generator.capabilities(*role).supports(Feature::Limits) {
-                return Err(format!("{}: declares {name}", role.name()));
-            }
-            let req = request(&ir, *role);
-            let gate = check_capabilities(&ir, &req, &generator.capabilities(*role));
-            refuses(generator, &req, &gate, &name, line)
-                .map_err(|e| format!("{} / line {line}: {e}", role.name()))?;
-        }
-    }
-    Ok(())
+    refused_by(
+        generator,
+        Feature::Limits,
+        &compiled_limit_contracts(),
+        |_| true,
+    )
 }
 
 fn request(ir: &Ir, role: Role) -> GenRequest<'_> {
@@ -332,18 +336,21 @@ fn request(ir: &Ir, role: Role) -> GenRequest<'_> {
     }
 }
 
-/// Every server role refuses; a client role is not asked about `feature`.
-fn refused_by_servers(
+/// A server role refuses `feature` at the first use. A client role refuses it when
+/// `client_asked` says the contract asks a client, and is not asked about it otherwise.
+fn refused_by(
     generator: &dyn DynGenerator,
     feature: Feature,
     contracts: &[(Ir, u32)],
+    client_asked: fn(&Ir) -> bool,
 ) -> Result<(), String> {
     let name = format!("`{}`", feature.name());
     for (ir, line) in contracts {
         for role in generator.roles() {
             let req = request(ir, *role);
             let gate = check_capabilities(ir, &req, &generator.capabilities(*role));
-            if *role == Role::Client {
+            let asked = *role != Role::Client || client_asked(ir);
+            if !asked {
                 if gate.iter().any(|d| d.message.contains(&name)) {
                     return Err(format!("client / line {line}: the gate asked about {name}"));
                 }
@@ -357,6 +364,14 @@ fn refused_by_servers(
         }
     }
     Ok(())
+}
+
+/// A client reaches a tenant-scoped model when an endpoint's response does.
+fn client_reaches_tenant(ir: &Ir) -> bool {
+    let services: Vec<ServiceId> = ir.services.iter().map(|s| s.id).collect();
+    ir.reachable_decls(&services)
+        .into_iter()
+        .any(|id| ir.decl(id).tenant_field().is_some())
 }
 
 fn refuses(
