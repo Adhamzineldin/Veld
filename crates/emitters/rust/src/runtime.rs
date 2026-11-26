@@ -366,6 +366,126 @@ pub fn emit(files: &mut FileSet, f: &Features) -> Result<(), Vec<GenDiagnostic>>
 mod tests {
     use super::*;
 
+    /// The runtime files that carry regions of platform phase P1.
+    fn p1_sources() -> Vec<(&'static str, &'static str)> {
+        vec![
+            ("server", SERVER),
+            ("client", CLIENT),
+            ("schema", SCHEMA),
+            ("spec", SPEC),
+            ("events", EVENTS),
+            ("platform", PLATFORM),
+            ("rules", RULES),
+            ("transport_reqwest", TRANSPORT_REQWEST),
+            ("transport_ureq", TRANSPORT_UREQ),
+        ]
+    }
+
+    /// Every combination of the gates of platform phase P1 on top of everything else being on or off.
+    fn p1_combinations() -> Vec<Features> {
+        let mut all = Vec::new();
+        for others in [false, true] {
+            for bits in 0u32..256 {
+                let on = |bit: u32| bits & (1 << bit) != 0;
+                all.push(Features {
+                    visibility: on(0),
+                    tenancy: on(1),
+                    tenant_fields: on(2),
+                    audit_log: on(3),
+                    limits: on(4),
+                    limits_client: on(5),
+                    pii: on(6),
+                    tenant_events: on(7),
+                    server: others,
+                    client: others,
+                    sse: others,
+                    ws_server: others,
+                    ws_client: others,
+                    axum: others,
+                    rules: others,
+                    endpoint_rules: others,
+                    events: others,
+                    derived: others,
+                    flags: others,
+                    timed: others,
+                    timeouts: others,
+                    idempotency: others,
+                    outbox: others,
+                    rollout: others,
+                    ..Features::default()
+                });
+            }
+        }
+        all
+    }
+
+    fn lines_with(src: &str, prefix: &str) -> usize {
+        src.lines().filter(|l| l.trim().starts_with(prefix)).count()
+    }
+
+    /// The markers of every runtime file pair, and every combination of the gates of P1 resolves:
+    /// no region is left open, and none of the markers survives.
+    #[test]
+    fn the_markers_pair_in_every_combination_of_the_p1_gates() {
+        for (name, src) in p1_sources() {
+            assert_eq!(
+                lines_with(src, "// @if "),
+                lines_with(src, "// @end"),
+                "{name}: `// @if` and `// @end`"
+            );
+            assert_eq!(
+                lines_with(src, "// #if "),
+                lines_with(src, "// #endif"),
+                "{name}: `// #if` and `// #endif`"
+            );
+            for f in p1_combinations() {
+                let kept =
+                    gate_regions(src, &|n| f.region(n)).unwrap_or_else(|e| panic!("{name}: {e}"));
+                let out = gate(&kept, &f);
+                assert!(
+                    !out.lines()
+                        .any(|l| l.trim().starts_with("// @") || l.trim().starts_with("// #")),
+                    "{name}: a marker is left"
+                );
+            }
+        }
+    }
+
+    /// With the gates of P1 off, none of the words of the features is in a runtime file: a crate
+    /// that does not use them has the runtime it had.
+    #[test]
+    fn without_the_p1_gates_none_of_their_words_is_left() {
+        let off = Features {
+            server: true,
+            client: true,
+            sse: true,
+            ws_server: true,
+            ws_client: true,
+            axum: true,
+            rules: true,
+            ..Features::default()
+        };
+        for (name, src) in p1_sources().into_iter().filter(|(n, _)| *n != "platform") {
+            let kept =
+                gate_regions(src, &|n| off.region(n)).unwrap_or_else(|e| panic!("{name}: {e}"));
+            let out = gate(&kept, &off);
+            for word in [
+                "super::platform",
+                "TenantMark",
+                "veldtenant",
+                "limit_spec",
+                "retry_on_limit",
+                "audit_spec",
+                "AuditHold",
+                "request_clock",
+                "show_record",
+                "sleeper",
+            ] {
+                assert!(!out.contains(word), "{name}: `{word}`");
+            }
+        }
+    }
+
     #[test]
     fn gating_keeps_and_drops_blocks() {
         let src = "a\n// @if sse\nb\n// @if !ws_server\nc\n// @end\n// @end\nd\n";
