@@ -556,6 +556,7 @@ fn annotation_snippet(name: &str, shape: ArgShape) -> String {
         ArgShape::Rollout => format!("{name}(audit)"),
         // The arguments are optional: `@idempotent` alone is the usual form.
         ArgShape::Idempotent => name.to_string(),
+        ArgShape::Retry => format!("{name}(max: ${{1:3}}, backoff: ${{2|exponential,fixed|}})"),
     }
 }
 
