@@ -16,7 +16,9 @@ mod prove;
 mod registry;
 mod setup;
 mod test;
+mod test_coverage;
 mod test_fuzz;
+mod test_violation;
 mod watch;
 
 use anyhow::Result;

@@ -1,6 +1,6 @@
-//! `veld export <openapi|ir>`.
+//! `veld export <openapi|rules|ir>`.
 //!
-//! Both exports print to stdout, or to `-o FILE`. A file is written with
+//! The exports print to stdout, or to `-o FILE`. A file is written with
 //! `output::write_unmanaged`: staged and contained like generated output, but never tracked in a
 //! manifest, so `generate` and `clean` leave it alone, and a differing existing file is refused
 //! unless `--force`.
@@ -26,6 +26,10 @@ pub fn run(ui: &Ui, config: Option<&Path>, cmd: &ExportCommand) -> Result<Exit> 
     let ir = &done.ir;
     match cmd {
         ExportCommand::Ir { output } => export_ir(ui, ir, output.as_deref()),
+        ExportCommand::Rules(out) => {
+            let text = veld_tools::rule_book(ir, &selected_services(ir, &out.service)?);
+            document(ui, out, "rules.md", &text)
+        }
         ExportCommand::Openapi(out) => {
             let value = veld_tools::openapi(ir, &selected_services(ir, &out.service)?);
             document(ui, out, "openapi.json", &pretty(&value)?)

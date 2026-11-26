@@ -10,7 +10,7 @@ use veld_ir::{Example, Ir};
 use veld_rules::{ExampleReport, Verdict};
 use veld_testing::{Live, LiveError};
 
-use super::test_fuzz;
+use super::{test_coverage, test_fuzz, test_violation};
 use crate::cli::TestArgs;
 use crate::error::{Exit, user};
 use crate::pipeline;
@@ -33,6 +33,9 @@ struct Tally {
 }
 
 pub fn run(ui: &Ui, config: Option<&Path>, args: &TestArgs) -> Result<Exit> {
+    if let Some(file) = &args.from_violation {
+        return test_violation::run(ui, config, file);
+    }
     let project = pipeline::load_project(config)?;
     let detail = match &args.live {
         Some(url) => format!("{} (live {url})", project.name),
@@ -60,7 +63,7 @@ pub fn run(ui: &Ui, config: Option<&Path>, args: &TestArgs) -> Result<Exit> {
         .collect();
     let no_examples =
         "no examples to run (write `example \"...\" { ... }` blocks in your contracts)";
-    if examples.is_empty() && args.fuzz.is_none() {
+    if examples.is_empty() && args.fuzz.is_none() && !args.coverage {
         ui.info(no_examples);
         return Ok(Exit::Ok);
     }
@@ -80,6 +83,14 @@ pub fn run(ui: &Ui, config: Option<&Path>, args: &TestArgs) -> Result<Exit> {
     } else {
         summarize(ui, tally)
     };
+    let examples_exit = match args.coverage {
+        true => {
+            let include = |package: &str| selection.has(package);
+            let covered = test_coverage::run(ui, &done.ir, &examples, &include, args.fail_under);
+            worst(examples_exit, covered)
+        }
+        false => examples_exit,
+    };
     // Fuzzing runs after the examples; `--fuzz` requires `--live`, so `live` is there.
     let (Some(count), Some(live)) = (args.fuzz, live.as_ref()) else {
         return Ok(examples_exit);
@@ -88,6 +99,14 @@ pub fn run(ui: &Ui, config: Option<&Path>, args: &TestArgs) -> Result<Exit> {
     let fuzz_exit = test_fuzz::run(ui, &done.ir, live, count, args.seed)?;
     let ok = matches!((examples_exit, fuzz_exit), (Exit::Ok, Exit::Ok));
     Ok(if ok { Exit::Ok } else { Exit::User })
+}
+
+/// `Exit::Ok` only when both are.
+fn worst(a: Exit, b: Exit) -> Exit {
+    match (a, b) {
+        (Exit::Ok, Exit::Ok) => Exit::Ok,
+        _ => Exit::User,
+    }
 }
 
 fn run_one(ir: &Ir, live: Option<&Live>, ex: &Example) -> Result<Done> {

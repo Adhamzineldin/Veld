@@ -409,12 +409,34 @@ pub struct TestArgs {
     /// With --fuzz: the seed to repeat a run (a run without one picks and prints a seed)
     #[arg(long, value_name = "SEED", requires = "fuzz")]
     pub seed: Option<u64>,
+    /// After the examples, report which rules they exercise: each rule must be held by one
+    /// example and violated by another (works with and without --live)
+    #[arg(long)]
+    pub coverage: bool,
+    /// With --coverage: exit 1 when fewer than N percent of the rules are covered
+    #[arg(
+        long,
+        value_name = "N",
+        requires = "coverage",
+        value_parser = clap::value_parser!(u8).range(0..=100)
+    )]
+    pub fail_under: Option<u8>,
+    /// Print the `example` block for a violation event a server captured (a JSON file), and
+    /// run nothing else
+    #[arg(
+        long,
+        value_name = "FILE",
+        conflicts_with_all = ["paths", "filter", "live", "dry_run", "fuzz", "seed", "coverage", "fail_under"]
+    )]
+    pub from_violation: Option<PathBuf>,
 }
 
 #[derive(Debug, Subcommand)]
 pub enum ExportCommand {
     /// OpenAPI 3.1 JSON
     Openapi(DocOut),
+    /// The rules of the workspace as Markdown, for people who do not read contracts
+    Rules(DocOut),
     /// The compiled IR as JSON, for plugin authors
     Ir {
         /// Write to this file instead of stdout
