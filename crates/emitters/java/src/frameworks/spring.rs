@@ -326,8 +326,10 @@ mod tests {
             }],
         };
         let text = controller(&model, &model.services[0], "OrdersController");
-        assert!(text.contains("@GetMapping(\"/orders/{id}\")"));
-        assert!(text.contains("@RequestMapping(path = \"/ping\", method = RequestMethod.HEAD)"));
+        assert!(text.contains("@GetMapping({\"/orders/{id}\", \"/orders/{id}/\"})"));
+        assert!(text.contains(
+            "@RequestMapping(path = {\"/ping\", \"/ping/\"}, method = RequestMethod.HEAD)"
+        ));
         assert!(text.contains("SpringAdapter.respond(handler, \"getOrder\", request)"));
         assert!(text.contains("OrdersHandler.create(service, hooks)"));
     }
