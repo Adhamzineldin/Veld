@@ -151,34 +151,23 @@ fn write_request(
         }
         w.dedent();
     }
-    w.line("/** Reads the parameters bound by the router, keyed by parameter name. */");
-    w.open(format!("public static {name} fromWire({json}.Obj params)"));
-    if comps.is_empty() {
-        w.line(format!("return new {name}();"));
-    } else {
-        let codec = fc.rt("Codec");
-        open_call(w, format!("return new {name}"));
-        let total = shown.len() + extra.len();
-        for (i, p) in shown.iter().enumerate() {
-            let get = if p.optional { "opt" } else { "req" };
-            let sep = if i + 1 == total { ");" } else { "," };
-            let c = codec_expr(fc, &p.ty);
-            w.line(format!(
-                "{codec}.{get}(params, {}, {c}){sep}",
-                java_str(&p.name)
-            ));
-        }
-        for i in 0..extra.len() {
-            w.line(if shown.len() + i + 1 == total {
-                "null);"
-            } else {
-                "null,"
-            });
-        }
-        end_call(w);
+    if extra.is_empty() {
+        write_from_wire(w, fc, name, &shown);
+        w.blank();
+    } else if ep.idempotency.as_ref().is_some_and(|i| i.required) {
+        // A client never reads a request from the wire, so its record has no `fromWire`; a key the
+        // endpoint requires is required of the caller too.
+        let objects = fc.name("java.util.Objects");
+        w.line("/** Creates the request; the idempotency key is required. */");
+        w.open(format!("public {name}"));
+        w.line(format!(
+            "{objects}.requireNonNull({}, \"{}\");",
+            crate::conditional::KEY,
+            crate::conditional::KEY
+        ));
+        w.close();
+        w.blank();
     }
-    w.close();
-    w.blank();
     w.line("/** The parameters in wire form, keyed by parameter name. */");
     w.open(format!("public {json}.Obj toWire()"));
     w.line(format!("return {json}.object()"));
@@ -190,6 +179,30 @@ fn write_request(
     w.line(".build();");
     w.dedent().dedent();
     w.close();
+    w.close();
+}
+
+/// `fromWire` of a request record: reads the parameters the router bound, keyed by parameter name.
+fn write_from_wire(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, name: &str, shown: &[&Param]) {
+    let json = fc.rt("Json");
+    w.line("/** Reads the parameters bound by the router, keyed by parameter name. */");
+    w.open(format!("public static {name} fromWire({json}.Obj params)"));
+    if shown.is_empty() {
+        w.line(format!("return new {name}();"));
+    } else {
+        let codec = fc.rt("Codec");
+        open_call(w, format!("return new {name}"));
+        for (i, p) in shown.iter().enumerate() {
+            let get = if p.optional { "opt" } else { "req" };
+            let sep = if i + 1 == shown.len() { ");" } else { "," };
+            let c = codec_expr(fc, &p.ty);
+            w.line(format!(
+                "{codec}.{get}(params, {}, {c}){sep}",
+                java_str(&p.name)
+            ));
+        }
+        end_call(w);
+    }
     w.close();
 }
 
