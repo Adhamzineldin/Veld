@@ -273,16 +273,36 @@ pub(super) fn parse_table(text: &str) -> Result<Table, ConfigError> {
 }
 
 fn check_keys(table: &Table, location: &str, valid: &[&str]) -> Result<(), ConfigError> {
+    check_keys_with(table, location, valid, "")
+}
+
+/// `note` is added to the hint of the first unknown key.
+fn check_keys_with(
+    table: &Table,
+    location: &str,
+    valid: &[&str],
+    note: &str,
+) -> Result<(), ConfigError> {
     let Some(key) = table.keys().find(|k| !valid.contains(&k.as_str())) else {
         return Ok(());
     };
     let suggestion = closest(key, valid.iter().copied());
+    let note = note.replace("{key}", key);
     Err(ConfigError::UnknownKey {
         location: location.to_string(),
         key: key.clone(),
-        hint: hint(suggestion.as_deref(), valid),
+        hint: format!("{}{note}", hint(suggestion.as_deref(), valid)),
         suggestion,
     })
+}
+
+/// What to add when a target table has a key it does not know. The loader cannot tell the options
+/// of an emitter (each emitter reads them into its own type), so the note is the same for every
+/// key and says "if".
+fn options_note(role: &str) -> String {
+    format!(
+        ". If `{{key}}` is an option of the emitter (`testing`, `package`, ...), write it under `[{role}.options]`"
+    )
 }
 
 fn check_table(root: &Table, section: &str, valid: &[&str]) -> Result<(), ConfigError> {
@@ -306,11 +326,14 @@ fn check_named_tables(root: &Table, section: &str, valid: &[&str]) -> Result<(),
 
 fn check_targets(root: &Table, role: &str) -> Result<(), ConfigError> {
     match root.get(role) {
-        Some(Value::Table(t)) => check_keys(t, &format!("`[{role}]`"), TARGET),
+        Some(Value::Table(t)) => {
+            check_keys_with(t, &format!("`[{role}]`"), TARGET, &options_note(role))
+        }
         Some(Value::Array(list)) => {
             for (i, value) in list.iter().enumerate() {
                 if let Value::Table(t) = value {
-                    check_keys(t, &format!("`[[{role}]]` #{}", i + 1), TARGET)?;
+                    let place = format!("`[[{role}]]` #{}", i + 1);
+                    check_keys_with(t, &place, TARGET, &options_note(role))?;
                 }
             }
             Ok(())
@@ -446,6 +469,27 @@ url = "https://r"
         assert!(
             msg.contains("`emiter`") && msg.contains("did you mean `emitter`"),
             "{msg}"
+        );
+    }
+
+    #[test]
+    fn an_emitter_option_written_as_a_target_key_points_to_the_options_table() {
+        let err =
+            FileConfig::parse("[service]\nname=\"x\"\n[server]\nemitter=\"node\"\ntesting=true\n")
+                .unwrap_err();
+        assert_eq!(err.code(), Some("E0701"));
+        let msg = err.to_string();
+        assert!(
+            msg.contains("`testing`") && msg.contains("under `[server.options]`"),
+            "{msg}"
+        );
+        let err = FileConfig::parse(
+            "[service]\nname=\"x\"\n[[client]]\nemitter=\"typescript\"\ntesting=true\n",
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("under `[client.options]`"),
+            "{err}"
         );
     }
 
