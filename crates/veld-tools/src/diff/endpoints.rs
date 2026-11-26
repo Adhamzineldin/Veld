@@ -104,6 +104,7 @@ fn diff_endpoint(ctx: &Ctx<'_>, o: &Endpoint, n: &Endpoint, out: &mut Vec<Change
     diff_errors(ctx, s, o, n, out);
     diff_auth(s, o, n, out);
     super::endpoint_rules::diff_endpoint_rules(ctx, s, o, n, out);
+    super::conditional::diff_endpoint_conditions(s, o, n, out);
     diff_docs(
         s,
         &o.name,
@@ -212,14 +213,15 @@ fn error_set(ir: &Ir, e: &Endpoint) -> Vec<(String, u16)> {
 
 fn diff_errors(ctx: &Ctx<'_>, s: &str, o: &Endpoint, n: &Endpoint, out: &mut Vec<Change>) {
     let (old, new) = (error_set(ctx.old, o), error_set(ctx.new, n));
-    for (q, status) in old.iter().filter(|e| !new.contains(e)) {
+    let own = |q: &str| !super::conditional::implied_error(q, o, n);
+    for (q, status) in old.iter().filter(|e| !new.contains(e) && own(&e.0)) {
         out.push(Change::breaking(
             ChangeKind::ErrorRemoved,
             s,
             format!("declared error `{q}` ({status}) was removed"),
         ));
     }
-    for (q, status) in new.iter().filter(|e| !old.contains(e)) {
+    for (q, status) in new.iter().filter(|e| !old.contains(e) && own(&e.0)) {
         out.push(Change::breaking(
             ChangeKind::ErrorAdded,
             s,
