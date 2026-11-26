@@ -206,7 +206,7 @@ fn write_object_schema(
             "{schema}.field({}, {}, {ty}, {}, {default}, {}){sep}",
             java_str(&f.name),
             java_str(&f.wire),
-            f.optional,
+            f.optional || f.derived.is_some(),
             f.readonly
         ));
     }
@@ -262,6 +262,10 @@ fn write_record(
     if rules::has_rules(d) {
         w.blank();
         rules::write_members(w, fc, d, &name)?;
+    }
+    if crate::derived::has_derived(d) {
+        w.blank();
+        crate::derived::write_members(w, fc, d, &name)?;
     }
     w.close();
     Ok(())
@@ -561,6 +565,10 @@ fn write_error(
     if rules::has_rules(d) {
         w.blank();
         rules::write_members(w, fc, d, "Data")?;
+    }
+    if crate::derived::has_derived(d) {
+        w.blank();
+        crate::derived::write_members(w, fc, d, "Data")?;
     }
     w.close();
     Ok(())

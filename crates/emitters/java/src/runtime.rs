@@ -37,6 +37,9 @@ const CONDITIONAL_FILES: &[&str] = &[
     "MemoryIdempotencyStore",
     "StoredAnswer",
 ];
+/// The runtime class of derived fields (`spec/rules.md` section 17.2, `spec/targets/java.md` section
+/// 15), emitted only for a target that has a model with a derived field. It needs the rule classes.
+const DERIVED_FILES: &[&str] = &["Derive"];
 /// The runtime class of the `If-Match` of a client call (`spec/targets/java.md` section 13).
 const PRECONDITION_FILES: &[&str] = &["IfMatch"];
 /// The runtime classes of events (`spec/events.md` sections 6 to 9), emitted only for a server that
@@ -64,6 +67,7 @@ runtime_files!(
     "ClientOptions",
     "Codec",
     "Conditions",
+    "Derive",
     "DigestHandler",
     "EndpointRules",
     "EndpointSpec",
@@ -247,6 +251,8 @@ pub struct Flags {
     /// `If-Match` and the idempotency key on a client call: `IfMatch` and the
     /// `// #if preconditions` regions.
     pub preconditions: bool,
+    /// Derived fields (`Derive` and the `// #if derived` regions). Needs `rules`.
+    pub derived: bool,
     /// The typed runtime config (`spec/runtime-config.md`): `RuntimeCheck`, `VeldConfigException`
     /// and the `// #if runtimecfg` regions. Without it a client keeps the environment fallback of
     /// before, so a target without settings keeps its bytes.
@@ -270,6 +276,7 @@ pub fn emit_with(
             && (flags.policies || !POLICY_FILES.contains(&name))
             && (flags.rollout || !ROLLOUT_FILES.contains(&name))
             && (flags.events || !EVENT_FILES.contains(&name))
+            && (flags.derived || !DERIVED_FILES.contains(&name))
             && (flags.conditional || !CONDITIONAL_FILES.contains(&name))
             && (flags.preconditions || !PRECONDITION_FILES.contains(&name))
             && (flags.runtime_config || !RUNTIME_CONFIG_FILES.contains(&name))
@@ -286,6 +293,11 @@ pub fn emit_with(
         "conditional_rules" => flags.conditional && flags.rules,
         "plain_rules" => !(flags.conditional && flags.rules),
         "early" => flags.conditional && !flags.endpoint,
+        "derived" => flags.derived,
+        "no_derived" => !flags.derived,
+        "derived_conditional" => flags.derived && flags.conditional,
+        "no_derived_conditional" => !flags.derived && flags.conditional,
+        "rules_no_derived" => flags.rules && !flags.derived,
         "preconditions" => flags.preconditions,
         "testing_conditional" => flags.testing && flags.conditional,
         "testing_plain" => !(flags.testing && flags.conditional),

@@ -327,6 +327,9 @@ public final class ClientCore {
     if (body != null && params.get(body.name()) != null) {
       headers.put("content-type", "application/json");
       Json wire = Wire.prepare(body.type(), params.get(body.name()), Wire.Mode.RESPONSE);
+      // #if derived
+      wire = Derive.strip(body.type(), wire);
+      // #endif
       publisher = HttpRequest.BodyPublishers.ofString(wire.write(), StandardCharsets.UTF_8);
     }
     headers.forEach(builder::header);
@@ -402,6 +405,9 @@ public final class ClientCore {
         addPairs(pairs, p.name(), v);
       } else if (p.binding() == EndpointSpec.Binding.QUERY_OBJECT && v != null) {
         Json wire = Wire.prepare(p.type(), v, Wire.Mode.RESPONSE);
+        // #if derived
+        wire = Derive.strip(p.type(), wire);
+        // #endif
         if (wire instanceof Json.Obj obj) {
           obj.fields().forEach((k, x) -> addPairs(pairs, k, x));
         }

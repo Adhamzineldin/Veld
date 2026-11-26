@@ -113,7 +113,7 @@ final class WsConnection implements WsSession<Json, Json> {
       fail(validation(issues));
       return;
     }
-    // #if rules
+    // #if rules_no_derived
     if (rulesHooks != null && validateRequests) {
       VeldResponse broken = RuleWalk.messageFailure(
           spec, rulesHooks, incomingSchema, Wire.prepare(incomingSchema, raw, Wire.Mode.REQUEST), std);
@@ -123,7 +123,22 @@ final class WsConnection implements WsSession<Json, Json> {
       }
     }
     // #endif
+    // #if no_derived
     inbox.add(Wire.fillReadonly(incomingSchema, Wire.prepare(incomingSchema, raw, Wire.Mode.REQUEST)));
+    // #endif
+    // #if derived
+    Json prepared = Derive.input(incomingSchema, Wire.prepare(incomingSchema, raw, Wire.Mode.REQUEST), "message");
+    if (rulesHooks != null && validateRequests) {
+      VeldResponse broken = RuleWalk.messageFailure(spec, rulesHooks, incomingSchema, prepared, std);
+      if (broken != null) {
+        fail(broken);
+        return;
+      }
+    } else {
+      Derive.take();
+    }
+    inbox.add(Wire.fillReadonly(incomingSchema, prepared));
+    // #endif
   }
 
   private void invalid(Issue issue) {
@@ -218,6 +233,9 @@ final class WsConnection implements WsSession<Json, Json> {
       throw new IllegalStateException(spec.name() + ": this endpoint sends no messages");
     }
     Json wire = Wire.prepare(spec.success(), message, Wire.Mode.RESPONSE);
+    // #if derived
+    wire = Derive.output(spec.success(), wire);
+    // #endif
     if (validateResponses) {
       List<Issue> issues = Wire.validate(spec.success(), wire, "$", false);
       if (!issues.isEmpty()) {

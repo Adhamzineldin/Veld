@@ -169,6 +169,11 @@ public final class EndpointRules {
       } catch (RuleError e) {
         ok = false;
         error = e.kind();
+        // #if derived
+      } catch (NullPointerException e) {
+        // The statement reads a derived field that is absent: it is skipped, the cause is reported.
+        ok = true;
+        // #endif
       }
       if (ok) {
         return;
@@ -190,6 +195,9 @@ public final class EndpointRules {
         throw new RuleWalk.Rejected();
       }
       Json data = Wire.prepare(built.dataSchema(), built.dataWire(), Wire.Mode.RESPONSE);
+      // #if derived
+      data = Derive.compute(built.dataSchema(), data);
+      // #endif
       // #if rollout
       Audit.checkError(hooks, spec, built.dataSchema(), data, started);
       // #endif
@@ -201,8 +209,29 @@ public final class EndpointRules {
       throw early(built, built.status(), found);
     }
 
+    // #if derived
+    /**
+     * A value the application handed over, a fact or the principal, with its defaults applied and
+     * its derived fields computed (spec/rules.md section 17.2). A derived field that cannot be
+     * computed is the application's mistake, not the caller's: it is reported as an output
+     * violation and the request ends with {@code 500 Internal}.
+     */
+    public <T> T derive(Schema schema, Codec<T> codec, T value) {
+      List<Violation> found = new ArrayList<>();
+      T done = Derive.value(schema, codec, value, found);
+      if (!found.isEmpty()) {
+        RuleWalk.report(hooks, spec, RuleWalk.Position.OUTPUT, RuleWalk.Outcome.REJECTED, found, started);
+        throw new RuleWalk.Rejected();
+      }
+      return done;
+    }
+
+    // #endif
     private Early early(VeldError error, int status, List<Violation> found) {
       Json data = Wire.prepare(error.dataSchema(), error.dataWire(), Wire.Mode.RESPONSE);
+      // #if derived
+      data = Derive.compute(error.dataSchema(), data);
+      // #endif
       return new Early(Router.problem(error.sig(), error.title(), status, spec.sig(), data, found));
     }
 
@@ -366,6 +395,11 @@ public final class EndpointRules {
       } catch (RuleError e) {
         ok = false;
         error = e.kind();
+        // #if derived
+      } catch (NullPointerException e) {
+        // The statement reads a derived field that is absent: it is skipped, the cause is reported.
+        ok = true;
+        // #endif
       }
       if (!ok) {
         String text = error == null ? c.message() : "rule " + c.name() + " could not be evaluated";

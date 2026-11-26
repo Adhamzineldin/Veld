@@ -69,6 +69,10 @@ public final class Rules {
       }
     } catch (RuleError e) {
       out.add(new Violation(id, path, fields, "rule " + name + " could not be evaluated", e.kind()));
+      // #if derived
+    } catch (NullPointerException e) {
+      // The rule reads a derived field that is absent: it is skipped, the cause is reported.
+      // #endif
     }
   }
 

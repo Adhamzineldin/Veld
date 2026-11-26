@@ -218,6 +218,31 @@ public final class Schema {
   }
 
   // #endif
+  // #if derived
+  /** The derived fields of this object schema, or {@code null}. */
+  Derive.Compute derive;
+
+  /** The wire names of the derived fields of this object schema. */
+  List<String> derivedWires = List.of();
+
+  /**
+   * A copy of this object schema whose derived fields (spec/rules.md section 17.2) are
+   * {@code wires}: nobody supplies them, they are not validated, and {@code compute} computes them.
+   */
+  public Schema derived(Derive.Compute compute, String... wires) {
+    Schema copy = withBounds(bounds);
+    copy.check = check;
+    copy.derive = compute;
+    copy.derivedWires = List.of(wires);
+    return copy;
+  }
+
+  /** Whether the member {@code wire} of this object is a derived field. */
+  boolean derives(String wire) {
+    return derivedWires.contains(wire);
+  }
+
+  // #endif
   /** Follows references until a concrete node is reached. */
   Schema resolve() {
     Schema cur = this;

@@ -78,7 +78,15 @@ public final class RuleWalk {
    */
   public static List<Violation> checkWire(Schema schema, Json wire, boolean request) {
     Json prepared = Wire.prepare(schema, wire, request ? Wire.Mode.REQUEST : Wire.Mode.RESPONSE);
+    // #if no_derived
     return check(schema, prepared, "$", request);
+    // #endif
+    // #if derived
+    List<Violation> found = new ArrayList<>();
+    prepared = Derive.apply(schema, prepared, "$", request, found);
+    found.addAll(check(schema, prepared, "$", request));
+    return found;
+    // #endif
   }
 
   /** The violations of a value that was validated and prepared, with paths that start at {@code path}. */
@@ -176,6 +184,11 @@ public final class RuleWalk {
         if (node.check != null) {
           return true;
         }
+        // #if derived
+        if (node.derive != null) {
+          return true;
+        }
+        // #endif
         for (Schema.Field f : node.fields) {
           if (search(f.type(), seen)) {
             return true;
@@ -248,6 +261,9 @@ public final class RuleWalk {
     // #endif
     long started = System.nanoTime();
     List<Violation> found = new ArrayList<>();
+    // #if derived
+    found.addAll(Derive.take());
+    // #endif
     // #if rollout
     Audit.begin();
     // #endif
@@ -313,6 +329,9 @@ public final class RuleWalk {
   private static boolean outputRejected(
       EndpointSpec spec, HandlerHooks hooks, Schema schema, Json wire, boolean strictShape) {
     OutputMode mode = hooks.rulesOutput();
+    // #if derived
+    List<Violation> derived = Derive.take();
+    // #endif
     if (mode == OutputMode.OFF || schema == null || !reachesRules(schema)) {
       return false;
     }
@@ -328,6 +347,9 @@ public final class RuleWalk {
     Audit.begin();
     // #endif
     List<Violation> found = check(schema, wire, "$", false);
+    // #if derived
+    found.addAll(0, derived);
+    // #endif
     // #if rollout
     Audit.report(
         hooks, spec, Position.OUTPUT, Audit.end(), started, schema == spec.success() ? "result" : "error");
@@ -354,6 +376,9 @@ public final class RuleWalk {
     Audit.begin();
     // #endif
     List<Violation> found = check(schema, prepared, "message", true);
+    // #if derived
+    found.addAll(0, Derive.take());
+    // #endif
     // #if rollout
     Audit.report(hooks, spec, Position.INPUT, Audit.end(), started, null);
     // #endif
@@ -371,7 +396,14 @@ public final class RuleWalk {
     if (schema == null || !reachesRules(schema)) {
       return;
     }
+    // #if no_derived
     List<Violation> found = check(schema, Wire.prepare(schema, wire, Wire.Mode.REQUEST), "message", true);
+    // #endif
+    // #if derived
+    List<Violation> found = new ArrayList<>();
+    Json prepared = Derive.apply(schema, Wire.prepare(schema, wire, Wire.Mode.REQUEST), "message", true, found);
+    found.addAll(check(schema, prepared, "message", true));
+    // #endif
     if (!found.isEmpty()) {
       VeldError err = validation.apply(issues(found));
       err.setOp(ep.sig());
@@ -420,6 +452,9 @@ public final class RuleWalk {
       Json value = carries && !p.stream() ? params.get(p.name()) : null;
       if (value != null && reachesRules(p.type())) {
         Json prepared = Wire.prepare(p.type(), value, Wire.Mode.REQUEST);
+        // #if derived
+        prepared = Derive.apply(p.type(), prepared, p.location(), true, found);
+        // #endif
         found.addAll(check(p.type(), prepared, p.location(), true));
       }
     }

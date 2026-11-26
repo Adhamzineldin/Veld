@@ -6,11 +6,13 @@ use veld_ir::{Constraints, Field, Literal, Scalar, StringFormat, Type};
 use crate::tree::FileCtx;
 use crate::util::java_str;
 
-/// Whether a field is represented by a nullable (boxed) type: optional fields, and fields with a
-/// default, where `null` means "use the default".
+/// Whether a field is represented by a nullable (boxed) type: optional fields, fields with a
+/// default, where `null` means "use the default", and derived fields, where `null` means "not
+/// computed yet": the handler leaves it out of what it returns and it is present in what it receives
+/// (`spec/targets/java.md` section 15).
 #[must_use]
 pub fn nullable(f: &Field) -> bool {
-    f.optional || f.default.is_some()
+    f.optional || f.default.is_some() || f.derived.is_some()
 }
 
 /// The Java type of a scalar. `boxed` selects `Integer` over `int` and so on.

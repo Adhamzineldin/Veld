@@ -27,11 +27,12 @@ pub fn has_rules(d: &Decl) -> bool {
 /// The `.checked(...)` suffix of the schema of a declaration with rules.
 #[must_use]
 pub fn schema_suffix(d: &Decl, class: &str) -> String {
-    if has_rules(d) {
+    let checked = if has_rules(d) {
         format!(".checked({class}::checkWire)")
     } else {
         String::new()
-    }
+    };
+    format!("{checked}{}", crate::derived::schema_suffix(d, class))
 }
 
 /// The constant names of the rule ids, in rule order.

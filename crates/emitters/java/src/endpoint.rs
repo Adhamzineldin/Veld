@@ -296,14 +296,19 @@ fn write_fact(
     };
     let load = format!("loaders.{method}({args})");
     let name = java_str(&fact.name);
-    let line = match (fact.optional, presence) {
-        (false, _) => format!("{ty} fact_{ident} = run.required({name}, {load});"),
-        (true, Some(cond)) => {
-            format!("{ty} fact_{ident} = {cond} ? {load}.orElse(null) : null;")
-        }
-        (true, None) => format!("{ty} fact_{ident} = {load}.orElse(null);"),
+    let loaded = match (fact.optional, presence) {
+        (false, _) => format!("run.required({name}, {load})"),
+        (true, Some(cond)) => format!("{cond} ? {load}.orElse(null) : null"),
+        (true, None) => format!("{load}.orElse(null)"),
     };
-    w.line(line);
+    // A fact is given its defaults and its derived fields after it is loaded (`spec/rules.md` 17.2).
+    let loaded = if printer.file().tree.ir.type_reaches_derived(&fact.ty) {
+        let (schema, codec) = value_codec(printer.file(), &fact.ty);
+        format!("run.derive({schema}, {codec}, {loaded})")
+    } else {
+        loaded
+    };
+    w.line(format!("{ty} fact_{ident} = {loaded};"));
 }
 
 fn write_otherwise(
@@ -361,7 +366,9 @@ pub fn write_call_body(
     let mut diags = Vec::new();
     let idents = fact_idents(&ep.rules.facts);
     let principal = principal_of(fc, site);
-    let held = principal.as_ref().map(|(_, class)| class.clone());
+    let held = principal
+        .as_ref()
+        .map(|(v, class)| (class.clone(), v.ty.clone()));
     let mut printer = JavaExpr::for_endpoint(fc, scope(ep, &idents, principal.map(|(v, _)| v)));
     // The `ensure` expressions come first: they decide the slots of `old(...)`.
     let ensures: Vec<String> = ep
@@ -372,8 +379,17 @@ pub fn write_call_body(
         .collect();
     let request = site.request;
     write_start(w, &mut printer, site);
-    if let Some(class) = &held {
-        w.line(format!("{class} principal = ({class}) ctx.principal();"));
+    if let Some((class, ty)) = &held {
+        let read = format!("({class}) ctx.principal()");
+        if printer.file().tree.ir.type_reaches_derived(ty) {
+            // The caller is given its derived fields before the policies read it (`spec/rules.md` 17.2).
+            let (schema, codec) = value_codec(printer.file(), ty);
+            w.line(format!(
+                "{class} principal = run.derive({schema}, {codec}, {read});"
+            ));
+        } else {
+            w.line(format!("{class} principal = {read};"));
+        }
     }
     let loaders: Vec<String> = service_methods(site);
     for (fact, ident) in ep.rules.facts.iter().zip(&idents) {
@@ -393,12 +409,32 @@ pub fn write_call_body(
         w.line(format!("{facts} facts = new {facts}({});", args.join(", ")));
     }
     match encode {
-        Some(_) => w.line(format!("var result = {call};")),
-        None => w.line(format!("{call};")),
-    };
+        Some(_) => {
+            // `ensure` reads the result with its derived fields; the router computes them again
+            // and reports the ones that fail under the output mode.
+            let call = match &ep.success.ty {
+                Some(t) if printer.file().tree.ir.type_reaches_derived(t) => {
+                    let derive = printer.file().rt("Derive");
+                    let (schema, codec) = value_codec(printer.file(), t);
+                    format!("{derive}.value({schema}, {codec}, {call})")
+                }
+                Some(_) | None => call.to_string(),
+            };
+            w.line(format!("var result = {call};"));
+        }
+        None => {
+            w.line(format!("{call};"));
+        }
+    }
     write_finish(w, &mut printer, site, &ensures, encode, &mut diags);
     diags.extend(printer_problems(&printer, site));
     diags
+}
+
+/// The schema and the codec of a type, for `Derive.value` and `run.derive`.
+fn value_codec(fc: &mut FileCtx<'_, '_>, ty: &Type) -> (String, String) {
+    let schema = crate::types::schema_expr(fc, ty, &veld_ir::Constraints::default(), false);
+    (schema, codec_expr(fc, ty))
 }
 
 /// The request, the run (the one clock reading) and `now`.

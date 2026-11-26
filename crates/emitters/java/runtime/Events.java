@@ -377,10 +377,16 @@ public final class Events {
   private static List<Violation> runRules(
       EventDef<?> def, Json prepared, RuleWalk.Hook fn, RuleWalk.Position position) {
     long started = System.nanoTime();
+    // #if derived
+    List<Violation> derived = Derive.take();
+    // #endif
     // #if rollout
     Audit.begin();
     // #endif
     List<Violation> found = RuleWalk.check(def.schema(), prepared, "$", false);
+    // #if derived
+    found.addAll(0, derived);
+    // #endif
     // #if rollout
     List<Violation> audited = Audit.end();
     // #endif
@@ -445,6 +451,10 @@ public final class Events {
   public static <E> PublishedEvent publish(PublisherContext ctx, ChannelDef channel, EventDef<E> def, E event) {
     Objects.requireNonNull(event, "event");
     Json prepared = Wire.prepare(def.schema(), def.codec().encode(event), Wire.Mode.RESPONSE);
+    // #if derived
+    Derive.take();
+    prepared = Derive.output(def.schema(), prepared);
+    // #endif
     Json wire = canonScalars(def.schema(), prepared);
     List<Issue> issues = Wire.validate(def.schema(), wire, "$", false);
     if (!issues.isEmpty()) {
@@ -621,6 +631,13 @@ public final class Events {
         return reject(message, Reason.SHAPE, text.toString(), def.name(), issues, List.of());
       }
       Json prepared = Wire.prepare(def.schema(), env.data(), Wire.Mode.RESPONSE);
+      // #if derived
+      Derive.take();
+      prepared = Derive.output(def.schema(), prepared);
+      if (!Objects.equals(env.veldrules(), def.digest())) {
+        Derive.take();
+      }
+      // #endif
       if (Objects.equals(env.veldrules(), def.digest())) {
         List<Violation> violations = runRules(def, prepared, options.onRuleViolation, RuleWalk.Position.INPUT);
         if (!violations.isEmpty()) {

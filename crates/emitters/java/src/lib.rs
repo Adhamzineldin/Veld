@@ -9,6 +9,7 @@ pub mod can;
 pub mod client;
 pub mod conditional;
 pub mod config;
+pub mod derived;
 pub mod endpoint;
 pub mod events;
 pub mod frameworks;
@@ -69,6 +70,7 @@ fn events_capabilities(_role: Role) -> Capabilities {
         .with(Feature::RulesRollout)
         .with(Feature::RulesVersion)
         .with(Feature::Idempotency)
+        .with(Feature::RulesDerived)
 }
 
 fn precheck(req: &GenRequest<'_>, caps: &Capabilities) -> Result<(), Vec<GenDiagnostic>> {
@@ -206,6 +208,13 @@ impl Generator for Java {
                 && req.consumes.iter().any(|sid| {
                     declares_rules(&Tree::new(req.ir, &base, &runtime_package, vec![*sid]))
                 }));
+        // A model, an error or an event with a derived field, reached by an endpoint or not (a fact
+        // is not reached by one): the output then carries `Derive`, which needs the rule classes.
+        let derived = declares_derived(&tree)
+            || (req.role == Role::Server
+                && req.consumes.iter().any(|sid| {
+                    declares_derived(&Tree::new(req.ir, &base, &runtime_package, vec![*sid]))
+                }));
         let policies = features.contains(&Feature::RulesPolicies);
         // A declaration that no endpoint reaches is emitted too, and it calls `Audit` for its audited
         // rules: the class is emitted for every audited rule the output has, reached or not.
@@ -223,7 +232,8 @@ impl Generator for Java {
         let conditional_server =
             req.role == Role::Server && conditional::services_use(req.ir, &req.services);
         let flags = runtime::Flags {
-            rules: rules || policies || rollout || output_mode,
+            rules: rules || policies || rollout || output_mode || derived,
+            derived,
             runtime_config: runtime_config.is_some(),
             endpoint,
             // A service that has endpoint rules, or only a guard, a key or an `ETag`, gets a test
@@ -375,6 +385,13 @@ fn declares_rules(tree: &Tree<'_>) -> bool {
     tree.decls()
         .iter()
         .any(|id| rules::has_rules(tree.ir.decl(*id)))
+}
+
+/// Whether a declaration the tree emits has a derived field (`spec/rules.md` section 17.2).
+fn declares_derived(tree: &Tree<'_>) -> bool {
+    tree.decls()
+        .iter()
+        .any(|id| derived::has_derived(tree.ir.decl(*id)))
 }
 
 /// Whether a declaration the tree emits has an audited invariant (`@rollout(audit)`), reachable from a

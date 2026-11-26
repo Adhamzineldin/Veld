@@ -347,6 +347,9 @@ public final class Router implements VeldHandler {
       throws Exception {
     EndpointSpec spec = route.endpoint().spec();
     Guarded out = new Guarded();
+    // #if derived
+    Derive.take();
+    // #endif
     if (spec.auth() != null) {
       ctx.setPrincipal(authenticate(spec.auth(), ctx));
       if (ctx.principal() == null) {
@@ -403,6 +406,9 @@ public final class Router implements VeldHandler {
       throw new IllegalStateException(spec.name() + ": a stream needs an item type");
     }
     Json wire = Wire.prepare(spec.success(), event.data(), Wire.Mode.RESPONSE);
+    // #if derived
+    wire = Derive.output(spec.success(), wire);
+    // #endif
     if (hooks.validateResponses()) {
       List<Issue> issues = Wire.validate(spec.success(), wire, "$", false);
       if (!issues.isEmpty()) {
@@ -566,6 +572,9 @@ public final class Router implements VeldHandler {
       throw new IllegalStateException(spec.name() + ": implementation returned no value");
     }
     Json wire = Wire.prepare(spec.success(), result, Wire.Mode.RESPONSE);
+    // #if derived
+    wire = Derive.output(spec.success(), wire);
+    // #endif
     // #if rules
     VeldResponse broken = RuleWalk.outputFailure(spec, hooks, spec.success(), wire, true, std);
     if (broken != null) {
@@ -621,6 +630,9 @@ public final class Router implements VeldHandler {
         if (d.sig().equals(ve.sig())) {
           ve.setOp(spec.sig());
           Json data = Wire.prepare(d.schema(), ve.dataWire(), Wire.Mode.RESPONSE);
+          // #if derived
+          data = Derive.output(d.schema(), data);
+          // #endif
           // #if rules
           VeldResponse broken = RuleWalk.outputFailure(spec, hooks, d.schema(), data, false, std);
           if (broken != null) {
@@ -740,6 +752,11 @@ public final class Router implements VeldHandler {
     }
     Map<String, Json> wire = new LinkedHashMap<>();
     for (Schema.Field f : s.fields) {
+      // #if derived
+      if (s.derives(f.wire())) {
+        continue;
+      }
+      // #endif
       List<String> raw = query.get(f.wire());
       if (raw != null) {
         wire.put(f.wire(), coerceMany(f.type(), raw));
@@ -749,10 +766,21 @@ public final class Router implements VeldHandler {
     List<Issue> issues = b.check ? Wire.validate(p.type(), obj, p.location(), true) : List.of();
     b.issues.addAll(issues);
     if (issues.isEmpty()) {
-      // #if conditional
+      // #if derived
+      Json prepared = Derive.input(p.type(), Wire.prepare(p.type(), obj, Wire.Mode.REQUEST), p.location());
+      // #endif
+      // #if no_derived_conditional
       b.canonical.put(p.name(), Wire.prepare(p.type(), obj, Wire.Mode.REQUEST));
       // #endif
+      // #if derived_conditional
+      b.canonical.put(p.name(), prepared);
+      // #endif
+      // #if no_derived
       b.values.put(p.name(), Wire.fillReadonly(p.type(), Wire.prepare(p.type(), obj, Wire.Mode.REQUEST)));
+      // #endif
+      // #if derived
+      b.values.put(p.name(), Wire.fillReadonly(p.type(), prepared));
+      // #endif
     }
   }
 
@@ -777,10 +805,21 @@ public final class Router implements VeldHandler {
     List<Issue> issues = b.check ? Wire.validate(p.type(), raw, "body", true) : List.of();
     b.issues.addAll(issues);
     if (issues.isEmpty()) {
-      // #if conditional
+      // #if derived
+      Json prepared = Derive.input(p.type(), Wire.prepare(p.type(), raw, Wire.Mode.REQUEST), p.location());
+      // #endif
+      // #if no_derived_conditional
       b.canonical.put(p.name(), Wire.prepare(p.type(), raw, Wire.Mode.REQUEST));
       // #endif
+      // #if derived_conditional
+      b.canonical.put(p.name(), prepared);
+      // #endif
+      // #if no_derived
       b.values.put(p.name(), Wire.fillReadonly(p.type(), Wire.prepare(p.type(), raw, Wire.Mode.REQUEST)));
+      // #endif
+      // #if derived
+      b.values.put(p.name(), Wire.fillReadonly(p.type(), prepared));
+      // #endif
     }
   }
 

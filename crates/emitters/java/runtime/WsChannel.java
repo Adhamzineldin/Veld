@@ -186,6 +186,9 @@ public final class WsChannel<In, Out> implements AutoCloseable {
       RuleWalk.localMessageCheck(ep, outgoing, wire, validation);
     }
     // #endif
+    // #if derived
+    wire = Derive.strip(outgoing, wire);
+    // #endif
     String text = Wire.canonicalOf(outgoing, wire);
     synchronized (sendLock) {
       if (!connected) {

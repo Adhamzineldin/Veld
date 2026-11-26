@@ -139,6 +139,11 @@ public final class Wire {
       return;
     }
     for (Schema.Field f : s.fields) {
+      // #if derived
+      if (s.derives(f.wire())) {
+        continue;
+      }
+      // #endif
       Json x = obj.get(f.wire());
       String at = path + "." + f.wire();
       if (x == null) {
@@ -398,6 +403,11 @@ public final class Wire {
       if (mode == Mode.REQUEST && f.readonly()) {
         continue;
       }
+      // #if derived
+      if (mode == Mode.REQUEST && s.derives(f.wire())) {
+        continue;
+      }
+      // #endif
       Json x = obj.get(f.wire());
       if (x == null && f.defaultValue() != null) {
         x = f.defaultValue();
