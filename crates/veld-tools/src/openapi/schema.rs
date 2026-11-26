@@ -167,6 +167,13 @@ pub(super) fn field_schema(ir: &Ir, f: &Field) -> Value {
         if f.readonly {
             m.insert("readOnly".into(), Value::Bool(true));
         }
+        // `spec/rules.md` section 19.3: extensions only where the annotation is.
+        if f.pii {
+            m.insert("x-veld-pii".into(), Value::Bool(true));
+        }
+        if f.secret {
+            m.insert("x-veld-secret".into(), Value::Bool(true));
+        }
         put(
             m,
             "default",
