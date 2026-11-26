@@ -228,7 +228,9 @@ pub fn emit(
     )
 }
 
-/// Which optional parts of the runtime a target carries. `endpoint` and `testing` need `rules`.
+/// Which optional parts of the runtime a target carries. `endpoint` needs `rules`; `testing` needs
+/// `endpoint` or `conditional` (a service with only a key, a guard or an `ETag` has a test handler);
+/// `derived` needs `rules`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Flags {
     /// Invariants (`// #if rules` regions and the rule classes).

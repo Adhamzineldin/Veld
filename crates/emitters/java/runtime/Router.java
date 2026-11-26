@@ -382,6 +382,9 @@ public final class Router implements VeldHandler {
       }
     }
     // #endif
+    // #if derived
+    Derive.take();
+    // #endif
     return out;
   }
   // veld:sse

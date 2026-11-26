@@ -49,9 +49,10 @@ pub struct Options {
     pub package: Option<String>,
     /// `false` skips runtime request validation by default (the types stay). Default: `true`.
     pub validate: Option<bool>,
-    /// `true` also writes `<Service>TestHandler` for each service with endpoint rules: a handler
-    /// that takes facts, principal, clock and result from request headers. It must never be
-    /// mounted in production. Default: `false`.
+    /// `true` also writes `<Service>TestHandler` for each service with endpoint rules, an
+    /// `@idempotent` endpoint, a version guard or an endpoint that owes an `ETag`: a handler that
+    /// takes facts, principal, clock, result and the state of the idempotency store from request
+    /// headers. It must never be mounted in production. Default: `false`.
     pub testing: Option<bool>,
     /// The prefix of the Spring properties of the runtime config (`veld.services.iam.url`), for
     /// the `spring` framework. Default: `veld`.

@@ -27,8 +27,8 @@ pub struct Tree<'a> {
     /// True when the contract has invariants: the output then carries the rule classes and the
     /// rule members of the hooks, the options and the schemas (`spec/targets/java.md` section 8).
     pub rules: bool,
-    /// True when the target option `testing` is set and the services have endpoint rules: the
-    /// server then also gets a test handler per service with endpoint rules.
+    /// True when the target option `testing` is set and the services have endpoint rules, a key, a
+    /// guard or an `ETag`: the server then also gets a test handler per such service.
     pub testing: bool,
     /// True when the contract uses policies or reads the principal: a service with a principal
     /// then gets typed auth hooks, and `allow`, the policy methods and `can<Endpoint>` are
@@ -99,7 +99,7 @@ impl<'a> Tree<'a> {
         self
     }
 
-    /// Sets whether the server also gets a test handler per service with endpoint rules.
+    /// Sets whether the server also gets a test handler per service that needs one.
     #[must_use]
     pub fn with_testing(mut self, testing: bool) -> Self {
         self.testing = testing;

@@ -248,8 +248,14 @@ impl<'f, 't, 'a> JavaExpr<'f, 't, 'a> {
         };
         let mut prefixes = vec![code.clone()];
         for step in &path.steps {
+            let derived = derived_step(at, &step.name);
             let (accessor, next, step_boxed) = self.step(at, &step.name);
             code = format!("{code}.{accessor}()");
+            if derived {
+                // A derived field may be absent: reading it is a read of an absent value, which
+                // the runtime skips (`Derive.present`), whatever the type of the field.
+                code = format!("{}.present({code})", self.fc.rt("Derive"));
+            }
             at = next;
             boxed = step_boxed;
             prefixes.push(code.clone());
@@ -817,6 +823,17 @@ impl ExprPrinter for JavaExpr<'_, '_, '_> {
             | ValueKind::Map
             | ValueKind::Page => Printed::atom(read),
         }
+    }
+}
+
+/// Whether the step `name` below `at` reads a derived field.
+fn derived_step(at: At<'_>, name: &str) -> bool {
+    match at {
+        At::Decl(d) => d
+            .fields()
+            .iter()
+            .any(|f| f.name == name && f.derived.is_some()),
+        At::Page | At::Nothing => false,
     }
 }
 

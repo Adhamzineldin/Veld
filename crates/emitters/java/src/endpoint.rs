@@ -385,7 +385,7 @@ pub fn write_call_body(
             // The caller is given its derived fields before the policies read it (`spec/rules.md` 17.2).
             let (schema, codec) = value_codec(printer.file(), ty);
             w.line(format!(
-                "{class} principal = run.derive({schema}, {codec}, {read});"
+                "{class} principal = run.derivePrincipal(ctx, {schema}, {codec}, {read});"
             ));
         } else {
             w.line(format!("{class} principal = {read};"));
@@ -458,8 +458,20 @@ fn write_finish(
     encode: Option<&str>,
     diags: &mut Vec<GenDiagnostic>,
 ) {
+    let reads_derived = site
+        .ep
+        .success
+        .ty
+        .as_ref()
+        .is_some_and(|t| printer.file().tree.ir.type_reaches_derived(t));
     for (e, cond) in site.ep.rules.ensures.iter().zip(ensures) {
         let fields = list_of(printer.file(), &e.reads);
+        // A statement that reads a derived field that failed is skipped (`spec/rules.md` 17.2).
+        let cond = if reads_derived {
+            format!("{}.holds(() -> {cond})", printer.file().rt("Derive"))
+        } else {
+            cond.clone()
+        };
         // An audited `ensure` is registered like an enforced one and never rejects (section 17.1).
         let register = if e.rollout.is_some() {
             "ensureAudited"

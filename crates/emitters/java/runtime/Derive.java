@@ -65,6 +65,29 @@ public final class Derive {
     }
   }
 
+  /**
+   * A derived field that an expression reads. An absent one ({@code null}: its own expression
+   * failed, or the value is a request that cannot carry what it reads) raises the
+   * {@link NullPointerException} that {@link #run}, {@link Rules#run} and {@link #holds} take for
+   * "skip this", whatever the type of the field: comparing an absent enum with {@code ==} or an
+   * absent string with {@code equals} would otherwise give an answer.
+   */
+  public static <T> T present(T value) {
+    if (value == null) {
+      throw new NullPointerException("a derived field is absent");
+    }
+    return value;
+  }
+
+  /** A statement that reads derived fields: it holds, that is it is skipped, when one of them is absent. */
+  public static boolean holds(java.util.function.BooleanSupplier statement) {
+    try {
+      return statement.getAsBoolean();
+    } catch (NullPointerException e) {
+      return true;
+    }
+  }
+
   // -- the walk -------------------------------------------------------------------------------
 
   /**
@@ -249,14 +272,14 @@ public final class Derive {
   }
 
   /**
-   * A prepared value with its derived fields computed and the violations left out: for an error
-   * payload the application did not build, and for a value only the application reads.
+   * A prepared value with its derived fields computed; the violations of the fields that failed go
+   * to {@code out}. Used for an error payload the server builds itself.
    */
-  static Json compute(Schema schema, Json prepared) {
+  static Json compute(Schema schema, Json prepared, String path, List<Violation> out) {
     if (schema == null || !search(schema, new IdentityHashMap<>())) {
       return prepared;
     }
-    return apply(schema, prepared, "$", false, new ArrayList<>());
+    return apply(schema, prepared, path, false, out);
   }
 
   private static void keep(List<Violation> found) {

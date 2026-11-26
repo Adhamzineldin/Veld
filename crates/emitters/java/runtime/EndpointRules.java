@@ -196,12 +196,16 @@ public final class EndpointRules {
       }
       Json data = Wire.prepare(built.dataSchema(), built.dataWire(), Wire.Mode.RESPONSE);
       // #if derived
-      data = Derive.compute(built.dataSchema(), data);
+      List<Violation> uncomputed = new ArrayList<>();
+      data = Derive.compute(built.dataSchema(), data, "error", uncomputed);
       // #endif
       // #if rollout
       Audit.checkError(hooks, spec, built.dataSchema(), data, started);
       // #endif
       List<Violation> broken = RuleWalk.check(built.dataSchema(), data, "error", false);
+      // #if derived
+      broken.addAll(0, uncomputed);
+      // #endif
       if (!broken.isEmpty()) {
         RuleWalk.report(hooks, spec, RuleWalk.Position.OUTPUT, RuleWalk.Outcome.REJECTED, broken, started);
         throw new RuleWalk.Rejected();
@@ -226,11 +230,21 @@ public final class EndpointRules {
       return done;
     }
 
+    /**
+     * Like {@link #derive}, for the caller: the handler and the hooks that read the context after
+     * this see the principal with its derived fields.
+     */
+    public <T> T derivePrincipal(RequestContext ctx, Schema schema, Codec<T> codec, T principal) {
+      T done = derive(schema, codec, principal);
+      ctx.setPrincipal(done);
+      return done;
+    }
+
     // #endif
     private Early early(VeldError error, int status, List<Violation> found) {
       Json data = Wire.prepare(error.dataSchema(), error.dataWire(), Wire.Mode.RESPONSE);
       // #if derived
-      data = Derive.compute(error.dataSchema(), data);
+      data = Derive.compute(error.dataSchema(), data, "error", new ArrayList<>());
       // #endif
       return new Early(Router.problem(error.sig(), error.title(), status, spec.sig(), data, found));
     }
