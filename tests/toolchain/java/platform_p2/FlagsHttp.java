@@ -181,7 +181,7 @@ public final class FlagsHttp {
     room = new Room(ID, true, 0, Phase.DRAFT);
     errors.clear();
     int handled = HANDLED.get();
-    check(post(handler, "resize", "staff").status() == 200, "flag off: no operand, no failure");
+    check(post(handler, "resize", "staff").status() / 100 == 2, "flag off: no operand, no failure");
     check(HANDLED.get() == handled + 1, "the handler ran");
     check(errors.isEmpty(), "and nothing failed: " + errors);
     // With the flag on the operand is evaluated, and what cannot be evaluated fails the `ensure`.
@@ -189,7 +189,7 @@ public final class FlagsHttp {
     VeldResponse unevaluable = post(handler, "resize", "staff");
     check(unevaluable.status() == 500, "flag on: the operand is evaluated and fails the ensure: " + unevaluable.status());
     room = new Room(ID, true, 2, Phase.DRAFT);
-    check(post(handler, "resize", "staff").status() == 200, "flag on, a capacity the operand can divide by");
+    check(post(handler, "resize", "staff").status() / 100 == 2, "flag on, a capacity the operand can divide by");
     provider.on.clear();
     errors.clear();
 

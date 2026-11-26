@@ -1,7 +1,7 @@
 package veldtest;
 
-import gen.b.flagsws.flags_ws.Heard;
-import gen.b.flagsws.flags_ws.Say;
+import gen.b.flagsws.flagsws.Heard;
+import gen.b.flagsws.flagsws.Say;
 import gen.b.flagsws.server.ChatHandler;
 import gen.b.flagsws.server.ChatHooks;
 import gen.b.flagsws.server.ChatService;
