@@ -234,7 +234,11 @@ fn the_delivery_crate_reproduces_the_goldens_runs_two_services_and_passes_the_ex
     let order_placed = ir.decls.iter().find(|d| d.name == "OrderPlaced").unwrap();
     let digest = match &order_placed.kind {
         veld_ir::DeclKind::Event(e) => e.rules_digest.clone(),
-        _ => None,
+        veld_ir::DeclKind::Model(_)
+        | veld_ir::DeclKind::Error(_)
+        | veld_ir::DeclKind::Enum(_)
+        | veld_ir::DeclKind::Union(_)
+        | veld_ir::DeclKind::Const(_) => None,
     };
     let def = json!({ "sig": order_placed.sig, "digest": digest });
     let ws = workspace(

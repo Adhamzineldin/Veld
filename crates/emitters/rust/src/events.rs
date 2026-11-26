@@ -429,7 +429,7 @@ fn write_subscriber(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service) {
         }
         w.close_with("],");
         if annotated {
-            w.close_with(&format!(
+            w.close_with(format!(
                 "}}, {}),",
                 delivery(ctx.tree.ir.channel(sub.channel))
             ));
