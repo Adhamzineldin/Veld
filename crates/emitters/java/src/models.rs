@@ -386,6 +386,45 @@ fn write_machine_helpers(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, name: &st
         ));
     }
     w.close();
+    if e.flows.iter().any(|f| f.after_ms.is_some()) {
+        w.blank();
+        write_timed_moves(w, fc, name, e, &constant);
+    }
+}
+
+/// `timedMoves()` of a state machine with a timed edge (`spec/platform.md` section 10.1): the
+/// source, the target and the milliseconds of each timed edge, so an app can show "expires in 3
+/// hours". A flagged edge is listed too: the server still decides.
+fn write_timed_moves(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    name: &str,
+    e: &Enum,
+    constant: &dyn Fn(&str) -> String,
+) {
+    let list = fc.name("java.util.List");
+    w.line("/** A timed edge (`flow a -> b after d`): the state it leaves, the state it enters and the milliseconds a value must have waited in the first. */");
+    w.line(format!(
+        "public record TimedMove({name} from, {name} to, long ms) {{}}"
+    ));
+    w.blank();
+    w.line("/** The timed edges of the state machine, in the order of the edges; a flagged edge is listed too. */");
+    w.open(format!("public static {list}<TimedMove> timedMoves()"));
+    let moves: Vec<String> = e
+        .flows
+        .iter()
+        .filter_map(|f| {
+            f.after_ms.as_ref().map(|ms| {
+                format!(
+                    "new TimedMove({}, {}, {ms}L)",
+                    constant(&f.from),
+                    constant(&f.to)
+                )
+            })
+        })
+        .collect();
+    w.line(format!("return {list}.of({});", moves.join(", ")));
+    w.close();
 }
 
 /// Java constant names for the variants of an enum, unique and legal.

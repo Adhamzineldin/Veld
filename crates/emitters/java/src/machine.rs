@@ -124,12 +124,57 @@ pub fn write_guard(
     );
     let error = prelude_error(printer.file(), site, ("InvalidTransition", 409), &data);
     w.line(format!("{class} transition_from = {from};"));
+    if let Some(after) = timed_wait(machine, t) {
+        // A timed edge also needs `now - since >= after` (`spec/platform.md` section 10).
+        let Some(since) = printer.field_code(Root::Fact(t.fact.clone()), &t.since) else {
+            diags.push(unsupported(site, "a `since` path it cannot read"));
+            return;
+        };
+        let rules = printer.file().rt("Rules");
+        w.line(format!(
+            "{transition} transition = run.transitionDue({}, {}, transition_from, {list}.of({}), {target}, {after}L, () -> {rules}.toDatetime({since}), () -> {error});",
+            java_str(&t.id),
+            java_str(&field_path(t)),
+            sources.join(", ")
+        ));
+        return;
+    }
     w.line(format!(
         "{transition} transition = run.transition({}, {}, transition_from, {list}.of({}), {target}, () -> {error});",
         java_str(&t.id),
         java_str(&field_path(t)),
         sources.join(", ")
     ));
+}
+
+/// The milliseconds of the timed edge a `transition` with `since` takes, in a state machine.
+#[must_use]
+pub fn timed_wait(machine: &Enum, t: &EndpointTransition) -> Option<i64> {
+    if t.since.is_empty() {
+        return None;
+    }
+    let [source] = t.from.as_slice() else {
+        return None;
+    };
+    machine
+        .flows
+        .iter()
+        .find(|f| &f.from == source && f.to == t.to)
+        .and_then(|f| f.after_ms.as_deref())
+        .and_then(|ms| ms.parse().ok())
+}
+
+/// Whether an endpoint of the services takes a timed edge (the runtime then carries the guard of
+/// the due check and the runner).
+#[must_use]
+pub fn services_have_timed(ir: &Ir, services: &[veld_ir::ServiceId]) -> bool {
+    services.iter().any(|sid| {
+        ir.service(*sid).endpoints.iter().any(|ep| {
+            ep.rules.transition.as_ref().is_some_and(|t| {
+                matches!(&ir.decl(t.decl).kind, DeclKind::Enum(e) if timed_wait(e, t).is_some())
+            })
+        })
+    })
 }
 
 /// The transition part of `can<Endpoint>` in the client: a Java condition that is true when the

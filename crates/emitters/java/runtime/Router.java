@@ -350,6 +350,22 @@ public final class Router implements VeldHandler {
     // #if derived
     Derive.take();
     // #endif
+    // #if timed
+    boolean timer = request.raw() instanceof DueMoves.Call;
+    if (timer) {
+      // The due-moves runner: step 2 is replaced by the caller of the timer, and no middleware runs.
+      if (spec.auth() != null) {
+        ctx.setPrincipal(((DueMoves.Call) request.raw()).principal());
+        if (ctx.principal() == null) {
+          out.failure = problem(std.unauthorized(), "Unauthorized", 401, spec.sig(), Json.object().build());
+          return out;
+        }
+      }
+    }
+    // #endif
+    // #if timed
+    if (!timer) {
+    // #endif
     if (spec.auth() != null) {
       ctx.setPrincipal(authenticate(spec.auth(), ctx));
       if (ctx.principal() == null) {
@@ -360,6 +376,9 @@ public final class Router implements VeldHandler {
     for (String name : route.endpoint().middleware()) {
       hooks.middleware(name).run(ctx);
     }
+    // #if timed
+    }
+    // #endif
     out.bound = bind(route, match, request, ctx, ws, hooks.validateRequests());
     // #if conditional
     Conditions held = conditions.get(spec.sig());

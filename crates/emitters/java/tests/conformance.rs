@@ -158,8 +158,8 @@ fn java_refuses_sagas() {
 }
 
 #[test]
-fn java_refuses_timed_moves() {
-    veld_emit_conformance::check_timed_is_refused(&Java).unwrap();
+fn java_generates_timed_moves() {
+    veld_emit_conformance::check_timed_is_generated(&Java).unwrap();
 }
 
 #[test]

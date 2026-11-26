@@ -68,6 +68,16 @@ pub fn emit(files: &mut FileSet, tree: &Tree<'_>) -> Result<(), Vec<GenDiagnosti
                     endpoint::write_loaders(w, fc, svc, class);
                 })?;
             }
+            let timed = crate::timed::timed_endpoints(tree.ir, svc);
+            if !timed.is_empty() {
+                put("DueLoaders", &|w, fc, _| {
+                    crate::timed::write_loaders(w, fc, &names, svc, &timed);
+                })?;
+                put("DueMoves", &|w, fc, _| {
+                    let given = handler_given(&base, svc);
+                    crate::timed::write_runner(w, fc, svc, &timed, (&given.0, &given.1));
+                })?;
+            }
             let problems = problems.into_inner();
             if !problems.is_empty() {
                 return Err(problems);
@@ -177,6 +187,20 @@ pub(crate) fn extra_args(ep: &Endpoint) -> String {
         out.push_str("transition, ");
     }
     out
+}
+
+/// The service parameters of `create` (`OrdersService impl, OrdersFactLoaders loaders`) and the same
+/// as the arguments of a call.
+pub(crate) fn handler_given(base: &str, svc: &Service) -> (String, String) {
+    let service = format!("{base}Service");
+    if svc.facts.is_empty() {
+        (format!("{service} impl"), "impl".to_string())
+    } else {
+        (
+            format!("{service} impl, {} loaders", endpoint::loaders_name(base)),
+            "impl, loaders".to_string(),
+        )
+    }
 }
 
 /// One required hook of a service.
@@ -320,6 +344,14 @@ fn required_hooks(fc: &mut FileCtx<'_, '_>, svc: &Service) -> Vec<Hook> {
     out
 }
 
+/// The generated class of the principal when the hooks of the service are typed: the contract uses
+/// policies, the service has a principal and some endpoint authenticates.
+fn typed_principal(fc: &mut FileCtx<'_, '_>, svc: &Service) -> Option<String> {
+    let p = svc.principal.as_ref()?;
+    let authenticates = svc.endpoints.iter().any(|e| e.auth.kind != AuthKind::None);
+    (fc.tree.policies && authenticates).then(|| fc.decl(p.decl))
+}
+
 /// The principal's model when it has derived fields and the service authenticates: the hooks then
 /// complete the value the authentication hook returns (`spec/rules.md` section 17.2).
 fn completed_principal(fc: &mut FileCtx<'_, '_>, svc: &Service) -> Option<veld_ir::DeclId> {
@@ -452,8 +484,13 @@ fn write_hooks(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service, clas
     }
     w.close();
     w.blank();
-    if let Some(decl) = completed_principal(fc, svc) {
+    let completes = completed_principal(fc, svc);
+    if let Some(decl) = completes {
         write_complete_principal(w, fc, decl);
+    }
+    if !crate::timed::timed_endpoints(fc.tree.ir, svc).is_empty() {
+        let typed = typed_principal(fc, svc);
+        crate::timed::write_hooks_timer(w, fc, class, typed.as_deref(), completes.is_some());
     }
     w.line(
         "/** Observes errors that become `Internal`; a failing hook never changes the response. */",

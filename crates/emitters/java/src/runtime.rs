@@ -25,6 +25,8 @@ const ENDPOINT_FILES: &[&str] = &["EndpointRules"];
 const TESTING_FILES: &[&str] = &["TestSupport"];
 /// The runtime classes of the state machines of endpoints (`spec/targets/java.md` section 10).
 const MACHINE_FILES: &[&str] = &["Transition"];
+/// The runtime class of the due-moves runner (`spec/platform.md` section 10.1).
+const TIMED_FILES: &[&str] = &["DueMoves"];
 /// The runtime classes of the policies (`spec/targets/java.md` section 11).
 const POLICY_FILES: &[&str] = &["Policy"];
 /// The runtime class of audited rules (`@rollout(audit)`, `spec/rules.md` section 17.1).
@@ -74,6 +76,7 @@ runtime_files!(
     "Conditions",
     "Derive",
     "DigestHandler",
+    "DueMoves",
     "EndpointRules",
     "EndpointSpec",
     "Events",
@@ -246,6 +249,8 @@ pub struct Flags {
     pub testing: bool,
     /// The transition guard of endpoints (`// #if machine` regions and `Transition`). Needs `endpoint`.
     pub machine: bool,
+    /// Timed moves (`rules_timed`, `// #if timed` regions and `DueMoves`). Needs `machine`.
+    pub timed: bool,
     /// Policies and the typed principal (`// #if policies` regions and `Policy`). Needs `rules`.
     pub policies: bool,
     /// Audited rules (`// #if rollout` regions and `Audit`). Needs `rules`.
@@ -280,6 +285,7 @@ pub fn emit_with(
             && (flags.endpoint || !ENDPOINT_FILES.contains(&name))
             && (flags.testing || !TESTING_FILES.contains(&name))
             && (flags.machine || !MACHINE_FILES.contains(&name))
+            && (flags.timed || !TIMED_FILES.contains(&name))
             && (flags.policies || !POLICY_FILES.contains(&name))
             && (flags.rollout || !ROLLOUT_FILES.contains(&name))
             && (flags.events || !EVENT_FILES.contains(&name))
@@ -294,6 +300,7 @@ pub fn emit_with(
         "endpoint" => flags.endpoint,
         "testing" => flags.testing,
         "machine" => flags.machine,
+        "timed" => flags.timed,
         "policies" => flags.policies,
         "rollout" => flags.rollout,
         "conditional" => flags.conditional,

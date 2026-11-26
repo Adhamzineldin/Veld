@@ -283,6 +283,43 @@ public final class EndpointRules {
     }
 
     // #endif
+    // #if timed
+    /**
+     * The guard of a timed edge (spec/platform.md section 10): the state check of {@link #transition}
+     * and, after it, {@code now - since >= afterMs}, with the clock of the request. A value that
+     * has waited exactly {@code afterMs} is due, one millisecond less is not, and neither is a
+     * {@code since} in the future or one that cannot be read. The refusal is the same {@code 409
+     * InvalidTransition}; its violation says {@code violates rule transition: not due}.
+     */
+    public <S extends Enum<S>> Transition<S> transitionDue(
+        String id,
+        String field,
+        S from,
+        List<S> sources,
+        S to,
+        long afterMs,
+        java.util.function.LongSupplier since,
+        Supplier<VeldError> invalid) {
+      boolean state = sources.contains(from);
+      if (state && due(afterMs, since)) {
+        return new Transition<>(field, from, to);
+      }
+      String text = state ? "violates rule transition: not due" : "violates rule transition";
+      List<Violation> found = List.of(new Violation(id, "request", List.of(), text, null));
+      RuleWalk.report(hooks, spec, RuleWalk.Position.INPUT, RuleWalk.Outcome.REJECTED, found, started);
+      VeldError error = invalid.get();
+      throw early(error, error.status(), found);
+    }
+
+    private boolean due(long afterMs, java.util.function.LongSupplier since) {
+      try {
+        return Math.subtractExact(now, since.getAsLong()) >= afterMs;
+      } catch (RuntimeException e) {
+        return false;
+      }
+    }
+
+    // #endif
     // #if policies
     /**
      * One {@code allow} (spec/rules.md section 11.3). When the policy denies, or an argument
