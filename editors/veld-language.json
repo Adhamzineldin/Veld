@@ -43,6 +43,8 @@
     "final",
     "emits",
     "transition",
+    "after",
+    "since",
     "policy",
     "permit",
     "forbid",

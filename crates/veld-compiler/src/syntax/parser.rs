@@ -25,6 +25,8 @@ mod policy;
 mod policy_tests;
 #[cfg(test)]
 mod rule_tests;
+#[cfg(test)]
+mod timed_tests;
 
 use super::ast::{
     Annotation, Arg, ArgValue, ConstDecl, Decl, DeclKind, Doc, Endpoint, EnumDecl, ErrorDecl,

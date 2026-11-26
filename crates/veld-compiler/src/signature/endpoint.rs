@@ -95,6 +95,17 @@ pub struct TransitionRef<'a> {
     /// The wire values of the sources, in any order.
     pub from: &'a [String],
     pub to: &'a str,
+    /// A timed transition (`spec/platform.md` section 10): the milliseconds of the edge's `after`
+    /// as a decimal string, and the wire names of the `since` path below the fact. `None` for every
+    /// other transition, whose id is what it always was.
+    pub timed: Option<TimedRef<'a>>,
+}
+
+/// What a timed transition adds to its id: `"a"` and `"n"`.
+#[derive(Debug, Clone, Copy)]
+pub struct TimedRef<'a> {
+    pub after_ms: &'a str,
+    pub since: &'a [String],
 }
 
 /// The canonical JSON that the id of a `transition` hashes.
@@ -107,7 +118,7 @@ pub fn transition_rule_bytes(at: &EndpointRef<'_>, t: &TransitionRef<'_>) -> Str
     let mut sources: Vec<&String> = t.from.iter().collect();
     sources.sort_by(|a, b| cmp_utf16(a, b));
     sources.dedup();
-    canonical(&obj(vec![
+    let mut members = vec![
         ("d", text(&qualified)),
         ("k", text("transition")),
         ("f", text(t.fact)),
@@ -117,7 +128,15 @@ pub fn transition_rule_bytes(at: &EndpointRef<'_>, t: &TransitionRef<'_>) -> Str
             Json::Arr(sources.into_iter().map(|s| text(s)).collect()),
         ),
         ("t", text(t.to)),
-    ]))
+    ];
+    if let Some(timed) = &t.timed {
+        members.push(("a", text(timed.after_ms)));
+        members.push((
+            "n",
+            Json::Arr(timed.since.iter().map(|p| text(p)).collect()),
+        ));
+    }
+    canonical(&obj(members))
 }
 
 /// The id of a `transition`: `veld:<package>/<Service>.<endpoint>.transition@<hex16>`.

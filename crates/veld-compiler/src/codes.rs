@@ -342,6 +342,16 @@ pub const CODES: &[CodeInfo] = &[
         "A `transition` lists a move that is not a flow of the machine",
     ),
     e("E0934", C, "More than one `transition` in an endpoint"),
+    e(
+        "E0935",
+        C,
+        "`after` is wrong: on a `flow` with several edges, twice for one edge, or not a positive constant duration",
+    ),
+    e(
+        "E0936",
+        C,
+        "`since` is wrong: missing on a timed edge, present on another, several sources, or not a required `datetime` field of the fact",
+    ),
     e("E0940", C, "The type after `principal` is not a model"),
     e("E0941", C, "More than one `principal` in a package"),
     e(
@@ -447,6 +457,7 @@ pub const CODES: &[CodeInfo] = &[
         C,
         "A variant of a state machine that takes part in no flow and is not final",
     ),
+    w("W0933", C, "A timed edge that no `transition` takes"),
     w("W0940", C, "A policy with no `permit` permits nobody"),
     w(
         "W0970",

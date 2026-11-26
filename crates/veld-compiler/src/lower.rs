@@ -282,6 +282,7 @@ impl Lowerer<'_, '_> {
                     .map(|f| Flow {
                         from: f.from.clone(),
                         to: f.to.clone(),
+                        after_ms: f.after_ms.map(|ms| ms.to_string()),
                     })
                     .collect(),
                 finals: d.res.machine.finals.clone(),

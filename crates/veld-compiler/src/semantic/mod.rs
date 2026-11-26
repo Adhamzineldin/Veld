@@ -3,6 +3,7 @@
 
 pub mod annotations;
 mod collect;
+mod duration;
 mod events;
 #[cfg(test)]
 mod events_groundwork_tests;
@@ -25,6 +26,9 @@ pub mod rules;
 mod services;
 #[cfg(test)]
 mod tests;
+mod timed;
+#[cfg(test)]
+mod timed_tests;
 mod typeck;
 #[cfg(test)]
 mod version_tests;
@@ -124,6 +128,8 @@ pub struct RVariant {
 pub struct RFlow {
     pub from: String,
     pub to: String,
+    /// `after d` in milliseconds (`spec/platform.md` section 10); `None` for an ordinary edge.
+    pub after_ms: Option<i64>,
     pub span: Span,
 }
 
@@ -323,6 +329,7 @@ pub fn analyze_lenient<'a>(
     rules::check(&mut prog, diags);
     rules::check_policies(&mut prog, diags);
     services::analyze(&mut prog, diags);
+    timed::check_unused_edges(&prog, diags);
     examples::check(&mut prog, diags);
     events::check_graph(&prog, diags);
     resolve::report_unused_imports(&prog, diags);

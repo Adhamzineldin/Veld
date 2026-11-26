@@ -297,6 +297,8 @@ pub struct EnumDecl {
 #[derive(Debug, Clone, PartialEq)]
 pub struct FlowStmt {
     pub states: Vec<Ident>,
+    /// `after d` (`spec/platform.md` section 10): the duration a value stays in the source state.
+    pub after: Option<Expr>,
     pub span: Span,
 }
 
@@ -508,6 +510,9 @@ pub struct TransitionStmt {
     pub path: Vec<Ident>,
     pub from: Vec<Ident>,
     pub to: Ident,
+    /// `since fact.path` (`spec/platform.md` section 10): the field that holds the time the value
+    /// entered its state, as written: the fact first.
+    pub since: Option<Vec<Ident>>,
     pub span: Span,
 }
 

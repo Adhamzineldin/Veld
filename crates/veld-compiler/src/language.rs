@@ -18,7 +18,7 @@ pub const METHOD_WORDS: [&str; 8] = [
 /// Contextual words of the rules language (`spec/rules.md` section 2.2). Each is a keyword only
 /// where the grammar expects it and an ordinary identifier everywhere else, so a field, variant,
 /// parameter, endpoint or declaration may carry any of them. The reserved list never grows.
-pub const CONTEXTUAL_RULE_WORDS: [&str; 34] = [
+pub const CONTEXTUAL_RULE_WORDS: [&str; 36] = [
     "rule",
     "message",
     "implies",
@@ -36,6 +36,8 @@ pub const CONTEXTUAL_RULE_WORDS: [&str; 34] = [
     "final",
     "emits",
     "transition",
+    "after",
+    "since",
     "policy",
     "permit",
     "forbid",

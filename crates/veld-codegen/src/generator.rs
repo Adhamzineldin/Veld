@@ -329,6 +329,7 @@ fn first_use(
                 Feature::RulesVersion => ep.rules.version.is_some() || ir.etag_field(ep).is_some(),
                 Feature::Idempotency => ep.idempotency.is_some(),
                 Feature::RulesTransitions => ep.rules.transition.is_some(),
+                Feature::RulesTimed => ep.rules.transition.as_ref().is_some_and(|t| t.is_timed()),
                 Feature::RulesPolicies => ep.rules.first_policy_origin().is_some(),
                 Feature::Unions
                 | Feature::Constraints
@@ -355,7 +356,7 @@ fn first_use(
                 if feature == Feature::Idempotency {
                     return ep.idempotency.as_ref().map(|i| i.origin.clone());
                 }
-                if feature == Feature::RulesTransitions {
+                if feature == Feature::RulesTransitions || feature == Feature::RulesTimed {
                     return ep.rules.transition.as_ref().map(|t| t.origin.clone());
                 }
                 if feature == Feature::RulesPolicies {
@@ -376,6 +377,9 @@ fn first_use(
     }
     if feature == Feature::RulesTransitions {
         return first_machine_origin(ir, &searched(ir, services, req));
+    }
+    if feature == Feature::RulesTimed {
+        return first_timed_origin(ir, &searched(ir, services, req));
     }
     let wanted_union = feature == Feature::Unions;
     let wanted_const = feature == Feature::Consts;
@@ -398,6 +402,16 @@ fn searched(ir: &Ir, services: &[ServiceId], req: &GenRequest<'_>) -> Vec<DeclId
         ids.extend(ir.event_reachable_decls(&req.services));
     }
     ids
+}
+
+/// The origin of the first reachable enum with a timed edge (`spec/platform.md` section 10).
+fn first_timed_origin(ir: &Ir, decls: &[DeclId]) -> Option<Origin> {
+    decls
+        .iter()
+        .copied()
+        .map(|id| ir.decl(id))
+        .find(|d| matches!(&d.kind, DeclKind::Enum(e) if e.has_timed_edge()))
+        .map(|d| d.origin.clone())
 }
 
 /// The origin of the first reachable enum that is a state machine.
