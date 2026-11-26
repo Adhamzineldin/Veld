@@ -467,13 +467,14 @@ fn write_hooks(
         w.line(format!("metrics?: (m: {metric}) => void | Promise<void>;"));
     }
     w.line("validateResponses?: boolean;");
-    if fc.tree.uses_rules() {
+    if fc.tree.uses_rules() && !output_is_a_setting(runtime) {
+        let mode = fc.rt("RuleOutputMode");
+        w.line("/** How rules on this server's own output are enforced (default `strict`). */");
+        w.line(format!("rules?: {{ output?: {mode} }};"));
+    }
+    // Tenancy reports the values it refuses like an output violation, with no invariant in sight.
+    if fc.tree.uses_rules() || fc.tree.uses_tenancy() {
         let event = fc.rt("RuleViolationEvent");
-        if !output_is_a_setting(runtime) {
-            let mode = fc.rt("RuleOutputMode");
-            w.line("/** How rules on this server's own output are enforced (default `strict`). */");
-            w.line(format!("rules?: {{ output?: {mode} }};"));
-        }
         w.line(format!("onRuleViolation?: (event: {event}) => void;"));
     }
     if !fc.tree.validate {

@@ -2433,7 +2433,7 @@ export interface HandlerHooks {
   /** The client address of a request, for `by: ip`: only the application knows which proxy header to trust. */
   address?: (ctx: RequestContext) => string | Promise<string>;
   /** Who the caller is, as a text, for `by: user`. A server with `@idempotent` endpoints shares `idempotency.caller`. */
-  caller?: (principal: unknown, ctx: RequestContext) => string | Promise<string>;
+  caller?: (principal: never, ctx: RequestContext) => string | Promise<string>;
   // #endif
   // #if audit
   /** Called once for every request that matched an audited endpoint, after its outcome is known and before the answer is written (spec/platform.md section 4). */
@@ -3794,7 +3794,7 @@ async function limitIdentity(ep: ServerEndpoint, limit: LimitSpec, ctx: RequestC
     case 'user': {
       const caller = callerHook(hooks);
       if (caller === undefined) throw new Error(`${ep.name}: hooks.caller is required`);
-      return await caller(ctx.principal, ctx);
+      return await caller(ctx.principal as never, ctx);
     }
     case 'tenant': {
       // A caller whose principal has no tenant has the empty identity: all of them are counted together.
