@@ -29,7 +29,7 @@ use self::loc::{fact_value, param_value};
 pub use self::render::render_example;
 use self::rng::derive;
 use self::rules::{RuleIndex, Scope, Target, Task};
-use self::values::{Gen, Skip};
+use self::values::{Gen, Skip, strip_derived};
 use crate::error::LiveError;
 use crate::live::Live;
 use crate::outcome::{Called, describe_answer, judge_outcome};
@@ -428,6 +428,7 @@ pub fn generate(
                     && settle(&mut g, ep, &mut req, &pipeline, &index, 0)?;
                 if ready {
                     if rules::apply(&mut g, ep, &mut req, &task, delta).is_some() {
+                        strip_request(ir, ep, g.principal, &mut req);
                         out.push(req);
                     }
                     break;
@@ -446,6 +447,7 @@ pub fn generate(
             settle(&mut g, ep, &mut req, &pipeline, &index, QUIT)?;
         }
         move_clock(&mut g, &mut req);
+        strip_request(ir, ep, g.principal, &mut req);
         out.push(req);
     }
     Ok(Generated {
@@ -476,10 +478,31 @@ fn state_boundaries(
             req = baseline(g, ep, Facts::Present)?;
         }
         if access::set_state(g, ep, &mut req, t, state).is_some() {
+            strip_request(g.ir, ep, g.principal, &mut req);
             out.push(req);
         }
     }
     Ok(())
+}
+
+/// Removes the derived fields from every value of the request (`spec/rules.md` section 17.2): a
+/// caller never sends one, an `example` never writes one, and the reference pipeline computes
+/// them. A rule on a derived field gets no boundary of its own; it is exercised through the fields
+/// the expression reads.
+fn strip_request(ir: &Ir, ep: &Endpoint, principal: Option<veld_ir::DeclId>, req: &mut Request) {
+    for p in ep.params.iter().filter(|p| !p.stream) {
+        if let Some(v) = req.params.get_mut(&p.name) {
+            strip_derived(ir, &p.ty, v);
+        }
+    }
+    for f in &ep.rules.facts {
+        if let Some(Some(v)) = req.facts.get_mut(&f.name) {
+            strip_derived(ir, &f.ty, v);
+        }
+    }
+    if let (Some(decl), Some(v)) = (principal, req.principal.as_mut()) {
+        strip_derived(ir, &Type::Decl(decl), v);
+    }
 }
 
 #[derive(Default)]
