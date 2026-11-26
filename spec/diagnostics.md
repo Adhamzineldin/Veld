@@ -104,7 +104,7 @@ never reused. The ranges are listed in `language.md` section 9.
 | `E1007` | error | veld-compiler | The group of a subscription is not a legal group name |
 | `E1008` | error | veld-compiler | An `on` line names an event the channel does not carry or names an event twice, or the subscription has no `on` line |
 | `E1009` | error | veld-compiler | A subscription to a channel of this workspace that no service publishes |
-| `E1010` | error | veld-compiler | An event example that is not well formed: the channel cannot be chosen, an `expect` names no handler of that channel, `rejected` is combined with `called`, or `once` follows `not called` or `rejected` |
+| `E1010` | error | veld-compiler | An example whose `expect` lines are not well formed. An event example: the channel cannot be chosen, an `expect` names no handler of that channel, `rejected` is combined with `called`, or `once` follows `not called` or `rejected`. A call example: `expect emitted` on an endpoint whose transition emits nothing, naming an event it does not emit, twice, without `ok` and `returns`, or combined with `expect not emitted` |
 | `E1011` | error | veld-compiler | `emits` is wrong: on a flow with several edges, not an event, or a transition whose service publishes no channel that carries it |
 | `W0001` | warning | veld-compiler | Doc comment is not attached to anything |
 | `W0201` | warning | veld-compiler | Unused import |

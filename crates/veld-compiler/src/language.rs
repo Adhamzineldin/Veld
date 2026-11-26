@@ -56,8 +56,8 @@ pub const CONTEXTUAL_RULE_WORDS: [&str; 34] = [
 ];
 
 /// Contextual words of events (`spec/events.md` section 2). `emits`, `given` and `expect` are rule
-/// words already. Each is a keyword only where the grammar expects it; the reserved list never grows.
-pub const CONTEXTUAL_EVENT_WORDS: [&str; 10] = [
+/// words already; `emitted` follows `expect` in a call example (section 11.1). Each is a keyword only where the grammar expects it; the reserved list never grows.
+pub const CONTEXTUAL_EVENT_WORDS: [&str; 11] = [
     "event",
     "channel",
     "carries",
@@ -68,6 +68,7 @@ pub const CONTEXTUAL_EVENT_WORDS: [&str; 10] = [
     "called",
     "rejected",
     "once",
+    "emitted",
 ];
 
 /// Words that start a declaration.

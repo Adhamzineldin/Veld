@@ -124,14 +124,6 @@ fn java_server_refuses_channel_annotations_and_the_client_ignores_them() {
     veld_emit_conformance::check_events_delivery_is_ignored_by_clients(&Java).unwrap();
 }
 
-/// `emits` and the outbox (`spec/events.md` section 11): the Java server has not built them and
-/// refuses a service with an emitting `transition` with `E0801`; the client keeps its bytes.
-#[test]
-fn java_server_refuses_the_outbox_and_the_client_ignores_it() {
-    veld_emit_conformance::check_events_outbox_is_refused(&Java).unwrap();
-    veld_emit_conformance::check_events_outbox_is_ignored_by_clients(&Java).unwrap();
-}
-
 /// `@rollout(audit)` (`spec/rules.md` section 17.1): Java declares `rules_rollout` as a server and
 /// as a client, so an audited invariant, `require` and `ensure` pass the gate and generate.
 #[test]
@@ -146,4 +138,12 @@ fn java_generates_audited_rules() {
 fn java_generates_version_and_idempotency() {
     veld_emit_conformance::check_version_is_generated(&Java).unwrap();
     veld_emit_conformance::check_idempotency_is_generated(&Java).unwrap();
+}
+
+/// `emits` and the outbox (`spec/events.md` section 11): the Java server has not built them and
+/// refuses a service with an emitting `transition` with `E0801`; the client keeps its bytes.
+#[test]
+fn java_server_refuses_the_outbox_and_the_client_ignores_it() {
+    veld_emit_conformance::check_events_outbox_is_refused(&Java).unwrap();
+    veld_emit_conformance::check_events_outbox_is_ignored_by_clients(&Java).unwrap();
 }

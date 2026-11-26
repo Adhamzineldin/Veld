@@ -101,14 +101,6 @@ fn node_refuses_channel_annotations_and_typescript_ignores_them() {
     veld_emit_conformance::check_events_delivery_is_ignored_by_clients(&TypeScript).unwrap();
 }
 
-/// `emits` and the outbox (`spec/events.md` section 11): the Node server has not built them and
-/// refuses a service with an emitting `transition` with `E0801`; the TypeScript client keeps its bytes.
-#[test]
-fn node_refuses_the_outbox_and_typescript_ignores_it() {
-    veld_emit_conformance::check_events_outbox_is_refused(&Node).unwrap();
-    veld_emit_conformance::check_events_outbox_is_ignored_by_clients(&TypeScript).unwrap();
-}
-
 /// `@rollout(audit)` (`spec/rules.md` section 17.1): both generators declare `rules_rollout`, so
 /// the gate lets an audited invariant, `require` and `ensure` through and `generate` makes files,
 /// for the server and the client alike.
@@ -127,4 +119,12 @@ fn node_and_typescript_refuse_version_and_idempotency() {
     veld_emit_conformance::check_idempotency_is_refused(&Node).unwrap();
     veld_emit_conformance::check_version_is_refused(&TypeScript).unwrap();
     veld_emit_conformance::check_idempotency_is_refused(&TypeScript).unwrap();
+}
+
+/// `emits` and the outbox (`spec/events.md` section 11): the Node server has not built them and
+/// refuses a service with an emitting `transition` with `E0801`; the TypeScript client keeps its bytes.
+#[test]
+fn node_refuses_the_outbox_and_typescript_ignores_it() {
+    veld_emit_conformance::check_events_outbox_is_refused(&Node).unwrap();
+    veld_emit_conformance::check_events_outbox_is_ignored_by_clients(&TypeScript).unwrap();
 }

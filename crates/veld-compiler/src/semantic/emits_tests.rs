@@ -394,3 +394,18 @@ fn expect_not_emitted_on_an_endpoint_without_an_emitting_move_is_e1010() {
     );
     assert_eq!(errors(&src), ["E1010"]);
 }
+
+#[test]
+fn emitted_and_emits_stay_ordinary_names() {
+    let src = r#"model emitted { emitted: bool, emits: int }
+service S at "/s" {
+  get "/x" emitted(@query emitted: bool) -> emitted
+}
+example "ordinary" {
+  emitted(emitted: true) -> ok
+}
+"#;
+    assert!(errors(src).is_empty(), "{:?}", codes(src));
+    let in_a_value = "model m { expect: int }\nservice S at \"/s\" { get \"/x\" f() -> m }\nexample \"v\" {\n  f() -> ok { expect: 1 }\n}";
+    assert!(errors(in_a_value).is_empty(), "{:?}", codes(in_a_value));
+}

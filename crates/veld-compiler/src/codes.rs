@@ -422,7 +422,7 @@ pub const CODES: &[CodeInfo] = &[
     e(
         "E1010",
         C,
-        "An event example that is not well formed: the channel cannot be chosen, an `expect` names no handler of that channel, `rejected` is combined with `called`, or `once` follows `not called` or `rejected`",
+        "An example whose `expect` lines are not well formed. An event example: the channel cannot be chosen, an `expect` names no handler of that channel, `rejected` is combined with `called`, or `once` follows `not called` or `rejected`. A call example: `expect emitted` on an endpoint whose transition emits nothing, naming an event it does not emit, twice, without `ok` and `returns`, or combined with `expect not emitted`",
     ),
     e(
         "E1011",

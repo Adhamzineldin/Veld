@@ -432,6 +432,7 @@ export interface Example {
   outcome?: ExampleOutcome;
   event?: ExampleEvent;
   expect?: EventExpect;
+  emitted?: DeclId[];
   docs: string | null;
   origin: Origin;
 }

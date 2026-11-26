@@ -568,6 +568,7 @@ pub const DEFS: &[Def] = &[
             ("outcome", T::Optional(&T::Ref("ExampleOutcome"))),
             ("event", T::Optional(&T::Ref("ExampleEvent"))),
             ("expect", T::Optional(&T::Ref("EventExpect"))),
+            ("emitted", T::Optional(&T::List(&DECL_ID))),
             ("docs", OPT_STR),
             ("origin", ORIGIN),
         ],

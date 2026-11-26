@@ -163,3 +163,107 @@ fn generate(generator: &dyn DynGenerator, ir: &Ir, role: Role) -> Result<FileSet
         .generate_dyn(&req, &serde_json::Value::Null)
         .map_err(|d| format!("generation failed: {d:?}"))
 }
+
+#[cfg(test)]
+mod tests {
+    use veld_codegen::{Capabilities, GenDiagnostic};
+
+    use super::*;
+
+    /// A generator with the capabilities `caps` whose `generate` lists the emitting moves it sees.
+    struct Fake {
+        caps: Capabilities,
+        role: Role,
+        refuse: bool,
+    }
+
+    impl DynGenerator for Fake {
+        fn id(&self) -> &'static str {
+            "fake"
+        }
+        fn roles(&self) -> &'static [Role] {
+            match self.role {
+                Role::Server => &[Role::Server],
+                Role::Client => &[Role::Client],
+            }
+        }
+        fn frameworks(&self, _: Role) -> Vec<veld_codegen::FrameworkInfo> {
+            Vec::new()
+        }
+        fn capabilities(&self, _: Role) -> Capabilities {
+            self.caps.clone()
+        }
+        fn generate_dyn(
+            &self,
+            req: &GenRequest<'_>,
+            _: &serde_json::Value,
+        ) -> Result<FileSet, Vec<GenDiagnostic>> {
+            if self.refuse {
+                return Err(vec![GenDiagnostic::new("E0801", "no")]);
+            }
+            let emitting: Vec<String> = req
+                .ir
+                .services
+                .iter()
+                .map(|s| format!("{} {}", s.name, s.first_emitting_transition().is_some()))
+                .collect();
+            let mut files = FileSet::new();
+            files
+                .add("emitting.txt", emitting.join("\n"))
+                .map_err(|e| vec![GenDiagnostic::new("E0899", e.to_string())])?;
+            Ok(files)
+        }
+    }
+
+    fn server(caps: Capabilities, refuse: bool) -> Fake {
+        Fake {
+            caps,
+            role: Role::Server,
+            refuse,
+        }
+    }
+
+    #[test]
+    fn the_contract_uses_the_feature_only_with_emits() {
+        let with = compiled_events_outbox_contract(true);
+        let id = orders(&with).unwrap();
+        assert!(with.features_used(&[id]).contains(&Feature::EventsOutbox));
+        let plain = compiled_events_outbox_contract(false);
+        let id = orders(&plain).unwrap();
+        assert!(!plain.features_used(&[id]).contains(&Feature::EventsOutbox));
+    }
+
+    #[test]
+    fn a_server_that_refuses_the_outbox_conforms() {
+        let refuses = server(Capabilities::all_except(&[]), true);
+        check_events_outbox_is_refused(&refuses).unwrap();
+    }
+
+    #[test]
+    fn a_server_that_declares_the_feature_is_caught() {
+        let claims = server(
+            Capabilities::all_except(&[]).with(Feature::EventsOutbox),
+            true,
+        );
+        let err = check_events_outbox_is_refused(&claims).unwrap_err();
+        assert!(err.contains("declares `events_outbox`"), "{err}");
+    }
+
+    #[test]
+    fn a_server_that_generates_anyway_is_caught() {
+        let leaky = server(Capabilities::all_except(&[]), false);
+        let err = check_events_outbox_is_refused(&leaky).unwrap_err();
+        assert!(err.contains("generate did not answer E0801"), "{err}");
+    }
+
+    #[test]
+    fn a_client_that_writes_emits_is_caught() {
+        let client = Fake {
+            caps: Capabilities::all_except(&[]),
+            role: Role::Client,
+            refuse: false,
+        };
+        let err = check_events_outbox_is_ignored_by_clients(&client).unwrap_err();
+        assert!(err.contains("changed the client output"), "{err}");
+    }
+}

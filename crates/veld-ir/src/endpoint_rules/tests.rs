@@ -216,6 +216,7 @@ pub(crate) fn sample_examples() -> Vec<Example> {
             store: KeyStore::Other,
         }),
         outcome: Some(ExampleOutcome::Ok(None)),
+        emitted: Some(vec![DeclId(3)]),
         docs: None,
         ..full.clone()
     };

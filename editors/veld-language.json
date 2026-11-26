@@ -71,7 +71,8 @@
     "on",
     "called",
     "rejected",
-    "once"
+    "once",
+    "emitted"
   ],
   "scalars": [
     "string",
