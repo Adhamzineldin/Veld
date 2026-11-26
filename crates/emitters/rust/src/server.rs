@@ -61,6 +61,11 @@ impl Needs {
 pub fn emit(files: &mut FileSet, tree: &Tree<'_>) -> Result<(), Vec<GenDiagnostic>> {
     for sid in &tree.services {
         let svc = tree.ir.service(*sid);
+        // A service that only publishes or subscribes has no HTTP surface: its events are in
+        // `<service>_events.rs`.
+        if !crate::events::serves_http(svc) {
+            continue;
+        }
         let here = format!(
             "{}::{}::{}",
             tree.root,

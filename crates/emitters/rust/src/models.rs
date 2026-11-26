@@ -78,18 +78,29 @@ fn emit_decl(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, d: &Decl) -> Result<(), Vec<
         DeclKind::Error(e) => emit_model(w, ctx, d, &e.fields, Some(e)),
         DeclKind::Union(u) => emit_union(w, ctx, d, u),
         DeclKind::Const(c) => return emit_const(w, d, &c.ty, &c.value),
-        // Events are not emitted in phase E1 (`spec/events.md` section 14).
-        DeclKind::Event(_) => {}
+        // An event is a record with event identity (`spec/events.md` section 3): the same struct,
+        // schema and check functions as a model. Only a server that publishes or subscribes has
+        // the declaration in its tree (`Tree::with_events`).
+        DeclKind::Event(e) => emit_model(w, ctx, d, &event_model(e), None),
     }
     if ctx.tree.rules && !d.rules().is_empty() {
-        if let DeclKind::Model(m) = &d.kind {
-            return crate::rules::emit(w, ctx, d, m);
-        }
-        if let DeclKind::Error(e) = &d.kind {
-            return crate::rules::emit(w, ctx, d, &e.fields);
+        match &d.kind {
+            DeclKind::Model(m) => return crate::rules::emit(w, ctx, d, m),
+            DeclKind::Error(e) => return crate::rules::emit(w, ctx, d, &e.fields),
+            DeclKind::Event(e) => return crate::rules::emit(w, ctx, d, &event_model(e)),
+            DeclKind::Enum(_) | DeclKind::Union(_) | DeclKind::Const(_) => {}
         }
     }
     Ok(())
+}
+
+/// An event as the model that the struct, the schema and the rules are written from.
+fn event_model(e: &veld_ir::Event) -> Model {
+    Model {
+        parent: None,
+        fields: e.fields.clone(),
+        rules: e.rules.clone(),
+    }
 }
 
 fn deprecated(w: &mut CodeWriter, d: Option<&String>) {

@@ -31,6 +31,9 @@ pub struct Tree<'a> {
     /// True when the crate has an audited rule (`@rollout(audit)`, `spec/rules.md` section 17.1): the test
     /// handler then answers with `Veld-Test-Audited`.
     pub rollout: bool,
+    /// True when some service of the tree publishes or subscribes: the tree then emits the events
+    /// of its channels (`spec/events.md` section 14).
+    events: bool,
 }
 
 impl<'a> Tree<'a> {
@@ -63,7 +66,28 @@ impl<'a> Tree<'a> {
             validate: true,
             rules: false,
             rollout: false,
+            events: false,
         }
+    }
+
+    /// Also emits the events of the tree's services and the declarations only they reach: a server
+    /// does it for a service that publishes or subscribes (`spec/events.md` section 14), a client
+    /// never does.
+    #[must_use]
+    pub fn with_events(mut self) -> Self {
+        let ir = self.ir;
+        let mut set: BTreeSet<DeclId> = self.decls.iter().copied().collect();
+        set.extend(ir.events_of(&self.services));
+        set.extend(ir.event_reachable_decls(&self.services));
+        self.events = self.services.iter().any(|s| ir.service(*s).uses_events());
+        self.decls = set.into_iter().collect();
+        self
+    }
+
+    /// Whether some service of the tree publishes or subscribes.
+    #[must_use]
+    pub fn uses_events(&self) -> bool {
+        self.events
     }
 
     /// Whether any declaration of the tree has invariants.

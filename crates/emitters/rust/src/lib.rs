@@ -8,6 +8,7 @@
 pub mod block;
 pub mod client;
 pub mod endpoints;
+pub mod events;
 pub mod guards;
 pub mod models;
 pub mod package;
@@ -83,14 +84,10 @@ fn client_frameworks() -> Vec<FrameworkInfo> {
     ]
 }
 
-/// What the generator supports for `role`. A server does not serve events yet (phase E1) and says
-/// so with `E0801`; a client supports the feature by generating nothing for it
-/// (`spec/events.md` section 14).
-fn events_capabilities(role: Role) -> Capabilities {
-    match role {
-        Role::Server => Capabilities::all_except(&[Feature::Events]).with(Feature::RulesRollout),
-        Role::Client => Capabilities::all_except(&[]).with(Feature::RulesRollout),
-    }
+/// What the generator supports: everything. A server generates events (phase E1); a client
+/// supports the feature by generating nothing for it (`spec/events.md` section 14).
+fn all_capabilities() -> Capabilities {
+    Capabilities::all_except(&[]).with(Feature::RulesRollout)
 }
 
 fn precheck(req: &GenRequest<'_>, caps: &Capabilities) -> Result<(), Vec<GenDiagnostic>> {
@@ -205,12 +202,13 @@ impl Generator for Rust {
         None
     }
 
-    fn capabilities(&self, role: Role) -> Capabilities {
-        // Everything: invariants, endpoint rules, state machines and policies are enforced
-        // (`spec/targets/rust.md` section 10). The limits that depend on the framework or the
-        // endpoint are reported as `E0801` by `generate`: the blocking `ureq` transport cannot
-        // open WebSockets, and an endpoint rule on a `ws` endpoint is not supported.
-        events_capabilities(role)
+    fn capabilities(&self, _role: Role) -> Capabilities {
+        // Everything: invariants, endpoint rules, state machines, policies and events are
+        // generated (`spec/targets/rust.md` sections 10 and 13). The limits that depend on the
+        // framework or the endpoint are reported as `E0801` by `generate`: the blocking `ureq`
+        // transport cannot open WebSockets, and an endpoint rule on a `ws` endpoint is not
+        // supported.
+        all_capabilities()
     }
 
     fn warnings(&self, req: &GenRequest<'_>, opts: &Options) -> Vec<GenDiagnostic> {
@@ -275,22 +273,30 @@ impl Generator for Rust {
         // audited rules: the rollout regions are kept for every audited rule the crate has.
         let rollout = used_features.contains(&Feature::RulesRollout) || crate_has_audited(req);
         let rules = crate_has_rules(req) || endpoint_rules || policies || rollout;
+        // A server whose services only publish or subscribe has no HTTP surface at all: no server
+        // core, no adapter, no framework dependency.
+        let serving = server
+            && req
+                .services
+                .iter()
+                .any(|s| events::serves_http(req.ir.service(*s)));
         let f = Features {
+            events: main_tree(req).uses_events(),
             rules,
             endpoint_rules,
             guards,
             policies,
             rollout,
-            server,
+            server: serving,
             client: !server || !req.consumes.is_empty(),
             sse: streaming,
-            ws_server: server
+            ws_server: serving
                 && req
                     .ir
                     .features_used(&req.services)
                     .contains(&Feature::StreamingWs),
             ws_client: client_ws,
-            axum: server && profile.framework().unwrap_or(DEFAULT_SERVER_FRAMEWORK) == "axum",
+            axum: serving && profile.framework().unwrap_or(DEFAULT_SERVER_FRAMEWORK) == "axum",
             reqwest: tr.reqwest,
             ureq: tr.ureq,
         };
@@ -299,7 +305,7 @@ impl Generator for Rust {
         package::emit_cargo(&mut files, &name, &f)?;
         package::emit_readme(&mut files, &name, req.role, &f)?;
         let validate = opts.validate != Some(false);
-        let main = Tree::new(req.ir, "crate", "src", req.services.clone(), true)
+        let main = main_tree(req)
             .with_validate(validate)
             .with_rules(rules)
             .with_rollout(rollout);
@@ -311,15 +317,22 @@ impl Generator for Rust {
         let mut mods: BTreeMap<ServiceId, Vec<String>> = BTreeMap::new();
         for sid in &req.services {
             let svc = req.ir.service(*sid);
-            let m = if server {
+            let m = if !server {
+                client::client_mod(svc)
+            } else if events::serves_http(svc) {
                 server::service_mod(svc)
             } else {
-                client::client_mod(svc)
+                continue;
             };
             mods.entry(*sid).or_default().push(m);
         }
         if server {
             server::emit(&mut files, &main)?;
+            for sid in events::emit(&mut files, &main)? {
+                mods.entry(sid)
+                    .or_default()
+                    .push(events::events_mod(req.ir.service(sid)));
+            }
             for sid in testing::emit(&mut files, &main, opts.testing == Some(true))? {
                 mods.entry(sid)
                     .or_default()
@@ -356,10 +369,21 @@ fn refuse_ws_blocks(req: &GenRequest<'_>) -> Result<(), Vec<GenDiagnostic>> {
     Ok(())
 }
 
+/// The tree of the crate's own services. A server also has the events of its channels
+/// (`spec/events.md` section 14); a client never has them.
+fn main_tree<'a>(req: &GenRequest<'a>) -> Tree<'a> {
+    let tree = Tree::new(req.ir, "crate", "src", req.services.clone(), true);
+    if req.role == Role::Server {
+        tree.with_events()
+    } else {
+        tree
+    }
+}
+
 /// Whether any declaration that the crate emits has invariants. The flag is per crate: with it,
 /// every schema carries its check function and the rules runtime is part of the crate.
 fn crate_has_rules(req: &GenRequest<'_>) -> bool {
-    let main = Tree::new(req.ir, "crate", "src", req.services.clone(), true);
+    let main = main_tree(req);
     main.has_rules()
         || req.consumes.iter().any(|sid| {
             Tree::new(
@@ -375,7 +399,7 @@ fn crate_has_rules(req: &GenRequest<'_>) -> bool {
 
 /// Whether any declaration that the crate emits has an audited invariant (`@rollout(audit)`).
 fn crate_has_audited(req: &GenRequest<'_>) -> bool {
-    let main = Tree::new(req.ir, "crate", "src", req.services.clone(), true);
+    let main = main_tree(req);
     main.has_audited()
         || req.consumes.iter().any(|sid| {
             Tree::new(
