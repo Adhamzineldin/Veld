@@ -96,6 +96,7 @@ impl Cx<'_> {
             Some(Block::AnnotationArgs(name)) => annotation_args(name),
             Some(Block::Params) => self.params(),
             Some(Block::Body(kind)) => self.body(*kind),
+            Some(Block::Endpoint | Block::Nested) => Vec::new(),
         }
     }
 
@@ -317,8 +318,10 @@ impl Cx<'_> {
             Some(Block::Body(BodyKind::Service)) => {
                 &[Target::Endpoint, Target::Require, Target::Ensure]
             }
+            Some(Block::Endpoint) => &[Target::Require, Target::Ensure],
             Some(Block::Params) => &[Target::Param],
             Some(Block::Body(BodyKind::Union))
+            | Some(Block::Nested)
             | Some(Block::Import)
             | Some(Block::AnnotationArgs(_)) => {
                 return Vec::new();
