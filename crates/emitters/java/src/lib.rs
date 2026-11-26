@@ -266,8 +266,20 @@ impl Generator for Java {
                 .ir
                 .features_used(&req.services)
                 .contains(&Feature::Timeouts),
+            // A flagged invariant of a declaration no endpoint reaches is emitted too, and calls `Flags`.
             flags: (rules || policies || rollout || output_mode || derived)
-                && req.ir.features_used(&used).contains(&Feature::RulesFlags),
+                && (req.ir.features_used(&used).contains(&Feature::RulesFlags)
+                    || !flags::invariant_flags(&tree).is_empty()
+                    || (req.role == Role::Server
+                        && req.consumes.iter().any(|sid| {
+                            !flags::invariant_flags(&Tree::new(
+                                req.ir,
+                                &base,
+                                &runtime_package,
+                                vec![*sid],
+                            ))
+                            .is_empty()
+                        }))),
             policies,
             rollout,
             events: tree.events,

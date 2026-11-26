@@ -91,7 +91,7 @@ pub fn write_runner(
         fc.rt("EndpointSpec"),
     );
     let ctx = fc.rt("RequestContext");
-    let (to_long, json) = (fc.name("java.util.function.ToLongFunction"), fc.rt("Json"));
+    let to_long = fc.name("java.util.function.ToLongFunction");
     let (given_params, pass) = given;
     let uses = conditional::service_uses(fc.tree.ir, svc);
     let args = if uses {
@@ -186,7 +186,6 @@ pub fn write_runner(
     w.close();
     w.line("throw new IllegalStateException(name + \": no such endpoint\");");
     w.close();
-    let _ = json;
     w.close();
 }
 

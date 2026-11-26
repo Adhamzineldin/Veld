@@ -681,6 +681,9 @@ public final class Router implements VeldHandler {
     EndpointSpec spec = ep.spec();
     RequestContext ctx = new RequestContext(
         "WS", normalizePath(request.path()), wsHeaders(spec, request), request.raw());
+    // #if flags
+    Flags.View enclosing = Flags.current();
+    // #endif
     try {
       Guarded guarded = guard(route, match, request, ctx, true);
       if (guarded.failure != null) {
@@ -692,6 +695,10 @@ public final class Router implements VeldHandler {
       conn.finish(1000, "done");
     } catch (Exception | StackOverflowError err) {
       conn.fail(failure(err, spec, ctx));
+      // #if flags
+    } finally {
+      Flags.restore(enclosing);
+      // #endif
     }
   }
 

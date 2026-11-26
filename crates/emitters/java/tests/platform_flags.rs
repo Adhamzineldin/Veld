@@ -147,6 +147,65 @@ fn flags_over_the_real_entry_point() {
     run_driver("flags", "FlagsHttp", Role::Server, "gen.b", false);
 }
 
+/// A client has no provider: `can<Endpoint>` and the policy functions with and without the answers
+/// of a function, `nextStates`, and the check of a value with no view or with answers.
+#[test]
+fn the_client_decides_from_the_answers_of_a_function_or_as_a_failing_provider_does() {
+    if !require_javac("the_client_decides_from_the_answers") {
+        return;
+    }
+    run_driver("flags", "FlagsClient", Role::Client, "gen.c", false);
+    run_driver(
+        "flags_rules",
+        "FlagsClientRules",
+        Role::Client,
+        "gen.c",
+        false,
+    );
+}
+
+/// `all_four.veld`: a timed edge that is also flagged, a flagged `require` and invariant, a
+/// deadline, a service level and an idempotency key, in one server and one client.
+#[test]
+fn the_four_features_together_are_snapshotted() {
+    let ir = contract("all_four");
+    let server = generate(&ir, Role::Server, "gen.b", true);
+    let mut names: Vec<String> = server
+        .paths()
+        .filter(|p| {
+            p.contains("/server/") && !p.contains("Request.java") && !p.contains("Facts.java")
+        })
+        .map(str::to_owned)
+        .collect();
+    names.sort();
+    insta::assert_snapshot!("all_four_server_files", names.join("\n"));
+    for path in names {
+        let name = path
+            .rsplit('/')
+            .next()
+            .unwrap()
+            .trim_end_matches(".java")
+            .to_owned();
+        insta::assert_snapshot!(format!("all_four_{name}"), text(&server, &path));
+    }
+    let client = generate(&ir, Role::Client, "gen.c", false);
+    let mut names: Vec<String> = client
+        .paths()
+        .filter(|p| p.contains("/client/") && p.ends_with("Client.java"))
+        .map(str::to_owned)
+        .collect();
+    names.sort();
+    for path in names {
+        let name = path
+            .rsplit('/')
+            .next()
+            .unwrap()
+            .trim_end_matches(".java")
+            .to_owned();
+        insta::assert_snapshot!(format!("all_four_client_{name}"), text(&client, &path));
+    }
+}
+
 /// Flagged invariants of a request and of a result, a failing provider, a value with no view.
 #[test]
 fn flagged_invariants_over_the_real_entry_point() {

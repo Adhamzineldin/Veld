@@ -183,6 +183,7 @@ public final class TimedHttp {
   }
 
   private static void theRunner() {
+    AUTH_CALLS.set(0);
     Instant old = NOW.minus(Duration.ofDays(2));
     put(id(10), Status.PENDING, old);
     put(id(11), Status.PAID, old); // another request was first

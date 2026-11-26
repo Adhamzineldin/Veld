@@ -9,6 +9,7 @@ import gen.b.levels.server.RoomsHooks;
 import gen.b.levels.server.RoomsService;
 import gen.b.runtime.Json;
 import gen.b.runtime.MemoryIdempotencyStore;
+import gen.b.runtime.Metric;
 import gen.b.runtime.RequestContext;
 import gen.b.runtime.VeldHandler;
 import gen.b.runtime.VeldRequest;
@@ -47,6 +48,7 @@ public final class DeadlineHttp {
   private static final CountDownLatch LATE = new CountDownLatch(1);
   private static final CountDownLatch LATE_DONE = new CountDownLatch(1);
   private static final List<Throwable> ERRORS = new CopyOnWriteArrayList<>();
+  private static final List<Metric> METRICS = new CopyOnWriteArrayList<>();
 
   private static final class Impl implements RoomsService {
     @Override
@@ -111,7 +113,7 @@ public final class DeadlineHttp {
 
   public static void main(String[] args) throws Exception {
     VeldHandler handler = RoomsHandler.create(
-        new Impl(), new RoomsHooks(new MemoryIdempotencyStore()).onError((e, ctx) -> ERRORS.add(e)));
+        new Impl(), new RoomsHooks(new MemoryIdempotencyStore()).onError((e, ctx) -> ERRORS.add(e)).metrics(METRICS::add));
 
     // In time: the context has the deadline, an endpoint without one has none.
     Instant before = Instant.now();
@@ -134,6 +136,10 @@ public final class DeadlineHttp {
     check(problem.get("type").asString().contains("/DeadlineExceeded@"), "DeadlineExceeded: " + late.body());
     check(problem.get("title").asString().equals("DeadlineExceeded"), "its title");
     check(problem.get("data").asObject().get("timeoutMs").asString().equals("200"), "timeoutMs as text: " + late.body());
+    Metric measured = METRICS.get(METRICS.size() - 1);
+    check(measured.attributes().get("http.response.status_code").equals(504)
+        && measured.attributes().get("error.type").equals("504")
+        && measured.value() < 2.0, "the 504 is what the metrics hook measures: " + measured);
     check(SLOW_SAW_EXPIRY.await(2, TimeUnit.SECONDS), "the handler was interrupted");
     check(INTERRUPTS.get() == 1 && Boolean.TRUE.equals(SEEN_EXPIRED.get()), "once, and ctx.expired() is true: " + INTERRUPTS.get());
     Thread.sleep(100);
