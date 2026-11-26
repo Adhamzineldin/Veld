@@ -20,13 +20,14 @@ A setting is plain data that a deployment chooses. Functions are not settings: t
 |---|---|---|---|
 | `services.<service>.url` | absolute `http` or `https` URL | yes | a client target, for each service it covers; a server target with `clients = true`, for each service in `consumes` |
 | `rules.output` | `strict`, `audit` or `off` | no (default `strict`) | a server target whose contract has rules (`rules.md` 5.3) |
-| `messaging` | defined by `events.md` with phase E2 | | a server target whose service publishes or subscribes |
 
 - `<service>` is the service's name as the workspace spells it (`card-service`).
 - A target whose runtime config would have no path has none: nothing in this spec is generated for it, and its output is the bytes it is today. A server without rules that consumes nothing is such a target.
 - The paths are ordered by their text. Every generated list of them (types, checks, schema, messages) uses that order.
 
 A trailing `/` of a URL is dropped, as today.
+
+A broker has no setting here: the application gives a broker adapter a configured client of the broker's library (`events.md` §10.7), so addresses and credentials never pass through generated code.
 
 ## 3. What is generated
 
