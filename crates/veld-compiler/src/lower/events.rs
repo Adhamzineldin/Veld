@@ -128,6 +128,7 @@ impl Lowerer<'_, '_> {
             returns: None,
             if_match: None,
             key: None,
+            saga: None,
             outcome: None,
             docs: ex.docs.clone(),
             event: Some(ExampleEvent {

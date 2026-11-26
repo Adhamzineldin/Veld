@@ -194,6 +194,7 @@ pub(crate) fn sample_examples() -> Vec<Example> {
         returns: Some(ExampleValue::Json(json!({"status": "PENDING"}))),
         if_match: None,
         key: None,
+        saga: None,
         outcome: Some(ExampleOutcome::Error(ExampleErrorOutcome {
             decl: DeclId(2),
             pattern: Some(capacity),
@@ -254,6 +255,7 @@ pub(crate) fn sample_event_examples() -> Vec<Example> {
         returns: None,
         if_match: None,
         key: None,
+        saga: None,
         outcome: None,
         docs: None,
         event: Some(ExampleEvent {
@@ -379,6 +381,7 @@ fn endpoint_with(rules: EndpointRules) -> Endpoint {
         errors: vec![],
         rules,
         idempotency: None,
+        saga: None,
         origin: origin(9),
     }
 }

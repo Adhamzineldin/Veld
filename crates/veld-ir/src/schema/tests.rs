@@ -406,7 +406,17 @@ fn endpoint(method: Method, binding: Binding, auth: AuthKind) -> Endpoint {
             caller: true,
             origin: origin(),
         }),
+        saga: Some(crate::saga::tests::sample_saga()),
         origin: origin(),
+    }
+}
+
+/// An example that states what the calls of a saga answer.
+fn saga_example() -> Example {
+    Example {
+        name: "a saga example".into(),
+        saga: Some(crate::saga::tests::sample_saga_example()),
+        ..crate::endpoint_rules::tests::sample_examples()[1].clone()
     }
 }
 
@@ -527,6 +537,7 @@ fn full_ir() -> Ir {
         examples: [
             crate::endpoint_rules::tests::sample_examples(),
             crate::endpoint_rules::tests::sample_event_examples(),
+            vec![saga_example()],
         ]
         .concat(),
         policies: crate::endpoint_rules::tests::sample_policies(),

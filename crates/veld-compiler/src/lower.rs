@@ -412,6 +412,7 @@ impl Lowerer<'_, '_> {
                 caller: e.auth.kind != veld_ir::AuthKind::None,
                 origin: self.origin(i.span, s.module),
             }),
+            saga: None,
             origin: self.origin(e.span, s.module),
         }
     }

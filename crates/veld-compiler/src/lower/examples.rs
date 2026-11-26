@@ -80,6 +80,7 @@ impl Lowerer<'_, '_> {
                     RKeyStore::Stored(o) => KeyStore::Stored(self.outcome(o)),
                 },
             }),
+            saga: None,
             outcome: Some(self.outcome(&ex.outcome)),
             docs: ex.docs.clone(),
             event: None,

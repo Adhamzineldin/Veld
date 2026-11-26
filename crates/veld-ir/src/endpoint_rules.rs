@@ -302,6 +302,10 @@ pub struct Example {
     /// The `key` line (`spec/rules.md` section 11.9). Omitted when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub key: Option<ExampleKey>,
+    /// What each call of a saga answers and what must have happened
+    /// (`spec/platform.md` section 18). Omitted when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub saga: Option<crate::saga::ExampleSaga>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub outcome: Option<ExampleOutcome>,
     pub docs: Option<String>,

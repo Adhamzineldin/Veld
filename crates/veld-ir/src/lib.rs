@@ -10,6 +10,7 @@ use std::fmt;
 
 pub mod endpoint_rules;
 pub mod rules;
+pub mod saga;
 pub mod schema;
 pub mod suggest;
 
@@ -23,6 +24,10 @@ pub use endpoint_rules::{
 pub use rules::{
     Always, BinExpr, Builtin, CallExpr, EnumLit, Expr, ExprKind, ExprLit, ExprType, Op, PathRef,
     QuantExpr, Quantifier, Rollout, Root, Rule, Step,
+};
+pub use saga::{
+    ExampleSaga, Saga, SagaAnswer, SagaArg, SagaCall, SagaExpect, SagaField, SagaGiven, SagaStep,
+    SagaValue,
 };
 
 pub const IR_VERSION: &str = "1.1";
@@ -314,6 +319,9 @@ impl Ir {
                 }
                 if ep.idempotency.is_some() {
                     f.insert(Feature::Idempotency);
+                }
+                if ep.saga.is_some() {
+                    f.insert(Feature::Sagas);
                 }
                 if ep.rules.transition.is_some() {
                     f.insert(Feature::RulesTransitions);
@@ -943,6 +951,10 @@ pub struct Endpoint {
     /// `@idempotent` (`spec/rules.md` section 11.8). Omitted from the JSON when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub idempotency: Option<Idempotency>,
+    /// The saga that implements the endpoint (`spec/platform.md` section 17). Omitted from the
+    /// JSON when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub saga: Option<Saga>,
     pub origin: Origin,
 }
 
@@ -1123,6 +1135,8 @@ pub enum Feature {
     RulesVersion,
     /// `@idempotent` (`spec/rules.md` section 11.8).
     Idempotency,
+    /// A `saga` endpoint (`spec/platform.md` section 17).
+    Sagas,
     /// `publishes` or `subscribes` (`spec/events.md` section 13).
     Events,
 }
@@ -1137,12 +1151,13 @@ impl Feature {
     ];
     /// Features no generator supports unless it says so: [`Feature::ALL`] minus these is what
     /// `all_except` hands out. A feature that changes what a rule means must be opted into.
-    pub const OPT_IN: [Feature; 3] = [
+    pub const OPT_IN: [Feature; 4] = [
         Feature::RulesRollout,
         Feature::RulesVersion,
         Feature::Idempotency,
+        Feature::Sagas,
     ];
-    pub const ALL: [Feature; 18] = [
+    pub const ALL: [Feature; 19] = [
         Feature::Unions,
         Feature::Constraints,
         Feature::Auth,
@@ -1160,6 +1175,7 @@ impl Feature {
         Feature::RulesRollout,
         Feature::RulesVersion,
         Feature::Idempotency,
+        Feature::Sagas,
         Feature::Events,
     ];
     #[must_use]
@@ -1182,6 +1198,7 @@ impl Feature {
             Feature::RulesRollout => "rules_rollout",
             Feature::RulesVersion => "rules_version",
             Feature::Idempotency => "idempotency",
+            Feature::Sagas => "sagas",
             Feature::Events => "events",
         }
     }
