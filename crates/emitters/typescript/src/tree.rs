@@ -29,6 +29,7 @@ pub struct Tree<'a> {
     transitions: bool,
     policies: bool,
     rollout: bool,
+    events: bool,
     decls: Vec<DeclId>,
 }
 
@@ -83,8 +84,36 @@ impl<'a> Tree<'a> {
             transitions,
             policies,
             rollout,
+            events: false,
             decls: set.into_iter().collect(),
         }
+    }
+
+    /// Also emits the events of the tree's services and the declarations only they reach: the
+    /// server target does it for a service that publishes or subscribes (`spec/events.md` section
+    /// 14), and a client never does. The rule flags are worked out again, because an invariant of
+    /// an event is an invariant of the generated package.
+    #[must_use]
+    pub fn with_events(mut self) -> Self {
+        let ir = self.ir;
+        let mut set: BTreeSet<DeclId> = self.decls.iter().copied().collect();
+        set.extend(ir.events_of(&self.services));
+        set.extend(ir.event_reachable_decls(&self.services));
+        self.events = self.services.iter().any(|s| ir.service(*s).uses_events());
+        self.rules = self.rules || set.iter().any(|id| !ir.decl(*id).rules().is_empty());
+        self.rollout = self.rollout
+            || set
+                .iter()
+                .any(|id| ir.decl(*id).rules().iter().any(veld_ir::Rule::is_audited));
+        self.decls = set.into_iter().collect();
+        self
+    }
+
+    /// Whether the tree emits events: some service of it publishes or subscribes. It adds
+    /// `runtime/events.ts` and `server/<service>-events.ts`.
+    #[must_use]
+    pub fn uses_events(&self) -> bool {
+        self.events
     }
 
     /// Whether an emitted declaration has an invariant. This one predicate decides whether the
@@ -145,6 +174,12 @@ impl<'a> Tree<'a> {
         sibling(&self.runtime, "rollout")
     }
 
+    /// Module path of the event runtime (`runtime/events.ts`): next to the runtime module.
+    #[must_use]
+    pub fn events_module(&self) -> String {
+        sibling(&self.runtime, "events")
+    }
+
     /// Module path of the rule helpers: next to the runtime module, without extension.
     #[must_use]
     pub fn rules_module(&self) -> String {
@@ -197,10 +232,13 @@ impl<'a> Tree<'a> {
         if self.ir.package(d.package).kind == PackageKind::Prelude {
             return format!("{}prelude", self.root);
         }
-        let kind = if matches!(d.kind, DeclKind::Error(_)) {
-            "errors"
-        } else {
-            "models"
+        let kind = match d.kind {
+            DeclKind::Error(_) => "errors",
+            // Events have a tree of their own: `models/` is the same in both roles.
+            DeclKind::Event(_) => "events",
+            DeclKind::Model(_) | DeclKind::Enum(_) | DeclKind::Union(_) | DeclKind::Const(_) => {
+                "models"
+            }
         };
         let module = if d.module.is_empty() {
             "root".to_string()
@@ -249,6 +287,7 @@ pub struct Imports {
     runtime: bool,
     rules: bool,
     rollout: bool,
+    events: bool,
 }
 
 impl Imports {
@@ -282,6 +321,13 @@ impl Imports {
             lines.push((
                 spec.clone(),
                 format!("import * as veldRollout from '{spec}';"),
+            ));
+        }
+        if self.events {
+            let spec = util::rel_import(from_file, &sibling(runtime_module, "events"));
+            lines.push((
+                spec.clone(),
+                format!("import * as veldEvents from '{spec}';"),
             ));
         }
         for (module, names) in &self.named {
@@ -349,6 +395,12 @@ impl<'t, 'a> FileCtx<'t, 'a> {
     pub fn rollout_ns(&mut self) -> String {
         self.imports.rollout = true;
         "veldRollout".to_string()
+    }
+
+    /// The namespace of `runtime/events.ts` (`veldEvents`), recording the import.
+    pub fn events_ns(&mut self) -> String {
+        self.imports.events = true;
+        "veldEvents".to_string()
     }
 
     /// Name of `id` used as a type; records a type-only import when it lives elsewhere.

@@ -82,8 +82,17 @@ fn write_decl(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl) {
         DeclKind::Union(u) => write_union(w, fc, d, u),
         DeclKind::Const(c) => write_const(w, fc, d, c),
         DeclKind::Error(e) => write_error(w, fc, d, e),
-        // Events are never emitted by a client (`spec/events.md` section 14).
-        DeclKind::Event(_) => {}
+        // An event is a record with event identity (`spec/events.md` section 3): the same
+        // interface and companion as a model, in `events/<module>.ts`. Only a server that
+        // publishes or subscribes has the declaration in its tree (`Tree::with_events`).
+        DeclKind::Event(e) => {
+            let m = Model {
+                parent: None,
+                fields: e.fields.clone(),
+                rules: e.rules.clone(),
+            };
+            write_model(w, fc, d, &m);
+        }
     }
 }
 
