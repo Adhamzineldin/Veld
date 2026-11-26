@@ -20,6 +20,29 @@ pub struct ServerModel {
     pub adapters_path: String,
     /// The services the server hosts. Adapters that emit per-service files (`nest`) read it.
     pub services: Vec<ServiceModel>,
+    /// The runtime config of the target (`runtime.ts`), when it has settings: the entry of an
+    /// adapter that builds the handler itself takes it as its last argument.
+    pub runtime: Option<RuntimeRef>,
+}
+
+/// The typed runtime config of the target, as an adapter that builds the handler needs it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RuntimeRef {
+    /// `BookingsRuntime`.
+    pub type_name: String,
+    /// Whether some setting is required: the argument is then required too.
+    pub required: bool,
+}
+
+impl RuntimeRef {
+    /// The reference to the runtime config of `model`.
+    #[must_use]
+    pub fn of(model: &veld_codegen::runtime_config::RuntimeModel) -> Self {
+        Self {
+            type_name: model.type_name(),
+            required: model.has_required(),
+        }
+    }
 }
 
 /// One hosted service, as the framework adapters need it.
@@ -141,6 +164,7 @@ mod tests {
         let model = ServerModel {
             adapters_path: "server/adapters.ts".into(),
             services: Vec::new(),
+            runtime: None,
         };
         let mut files = FileSet::new();
         emit(&mut files, &model, &Profile::unversioned()).unwrap();

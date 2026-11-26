@@ -19,6 +19,7 @@ pub mod policy;
 pub mod query;
 pub mod readme;
 pub mod runtime;
+pub mod runtime_config;
 pub mod tree;
 pub mod types;
 pub mod util;
@@ -26,6 +27,7 @@ pub mod validate;
 pub mod version;
 
 use serde::Deserialize;
+use veld_codegen::runtime_config::RuntimeModel;
 use veld_codegen::{
     Capabilities, FileSet, FrameworkInfo, GenDiagnostic, GenRequest, Generator, LanguageInfo,
     Profile, Role, check_capabilities,
@@ -205,12 +207,21 @@ impl Generator for TypeScript {
         profile: &Profile,
     ) -> Result<FileSet, Vec<GenDiagnostic>> {
         precheck(req, Role::Client, &self.capabilities(Role::Client))?;
+        let runtime = RuntimeModel::for_request(req, profile).map_err(|d| vec![d])?;
         let mut files = FileSet::new();
         let tree = Tree::new(req.ir, "", None, runtime::MODULE, req.services.clone())
-            .with_validate(opts.validate != Some(false));
+            .with_validate(opts.validate != Some(false))
+            .with_runtime_config(runtime.is_some());
         runtime::emit_gated(&mut files, tree.gates())?;
         let mut modules = emit_client_tree(&mut files, &tree)?;
-        modules.push(clients::emit(&mut files, &tree)?);
+        if let Some(model) = &runtime {
+            modules.push(runtime_config::emit(
+                &mut files,
+                &tree,
+                model,
+                &clients::entries(&tree),
+            )?);
+        }
         if opts.query_options == Some(true) {
             modules.extend(query::emit(&mut files, &tree)?);
         }

@@ -62,6 +62,9 @@ pub struct Gates {
     pub version: bool,
     /// An `@idempotent` endpoint: the `idempotency` regions (`spec/rules.md` section 11.8).
     pub idempotency: bool,
+    /// The target has a typed runtime config (`spec/runtime-config.md`): a client takes its
+    /// `baseUrl` from the options alone (no environment variable, no compiled-in address).
+    pub runtime_config: bool,
 }
 
 impl Gates {
@@ -87,6 +90,7 @@ impl Gates {
             rollout: self.rollout || other.rollout,
             version: self.version || other.version,
             idempotency: self.idempotency || other.idempotency,
+            runtime_config: self.runtime_config || other.runtime_config,
         }
     }
 }
@@ -133,6 +137,9 @@ pub fn source_gated(gates: Gates) -> Result<String, GateError> {
         // What a build without them has in the same place.
         "not_version" => !g.version,
         "not_idempotency" => !g.idempotency,
+        // The client's address: the option alone, or the option, the environment and the contract.
+        "runtime_config" => g.runtime_config,
+        "not_runtime_config" => !g.runtime_config,
         _ => false,
     })
 }

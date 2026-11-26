@@ -57,8 +57,9 @@ fn client_import(r: &Readme<'_>) -> String {
         names.join(", "),
         r.package
     );
-    s.push_str("// One client per service, from one set of options:\n");
-    s.push_str("const api = createClients({ baseUrl: 'https://api.example.com' });\n");
+    s.push_str("// One client per service. The addresses are settings of the deployment:\n");
+    s.push_str("// the runtime config names a URL for every service (`services.<service>.url`).\n");
+    s.push_str("const api = createClients(runtime);\n");
     if let Some((key, _)) = r.clients.first() {
         s.push_str(&format!("// api.{key}.<endpoint>(request)\n"));
     }

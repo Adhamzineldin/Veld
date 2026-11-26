@@ -1,28 +1,18 @@
-//! `clients.ts`: `createClients(opts)`, one client per service of the target.
-//!
-//! The client barrel re-exports it, so `import { createClients } from '@veld/web'` gives
-//! `{ orders: OrdersClient, iam: IamClient }` from one set of `ClientOptions`.
+//! The clients of a target by key: which client class each service of the target has and where
+//! it lives. `runtime.ts` builds them all with `createClients(runtime, options?)`
+//! (`spec/runtime-config.md` section 3.1).
 
 use std::collections::BTreeMap;
 
 use veld_codegen::naming;
-use veld_codegen::{CodeWriter, FileSet, GenDiagnostic};
 
-use crate::tree::{FileCtx, Tree};
-use crate::util::{add_file, prop_key};
-
-/// Root-relative module path (no extension) of the file.
-pub const MODULE: &str = "clients";
-
-/// One service of the aggregate.
-struct Entry {
-    key: String,
-    class: String,
-}
+use crate::runtime_config::ClientEntry;
+use crate::tree::Tree;
 
 /// The aggregate keys: the camelCase service name, qualified by the package when two packages
 /// of one target declare a service of the same name.
-fn entries(tree: &Tree<'_>) -> Vec<(Entry, String)> {
+#[must_use]
+pub fn entries(tree: &Tree<'_>) -> Vec<ClientEntry> {
     let mut counts: BTreeMap<String, usize> = BTreeMap::new();
     for sid in &tree.services {
         *counts
@@ -40,8 +30,12 @@ fn entries(tree: &Tree<'_>) -> Vec<(Entry, String)> {
         } else {
             base
         };
-        let class = format!("{}Client", naming::pascal(&svc.name));
-        out.push((Entry { key, class }, tree.client_module(svc.package)));
+        out.push(ClientEntry {
+            key,
+            class: format!("{}Client", naming::pascal(&svc.name)),
+            module: tree.client_module(svc.package),
+            package: tree.ir.package(svc.package).name.clone(),
+        });
     }
     out
 }
@@ -51,47 +45,6 @@ fn entries(tree: &Tree<'_>) -> Vec<(Entry, String)> {
 pub fn keys(tree: &Tree<'_>) -> Vec<(String, String)> {
     entries(tree)
         .into_iter()
-        .map(|(e, _)| (e.key, e.class))
+        .map(|e| (e.key, e.class))
         .collect()
-}
-
-/// Writes `clients.ts` and returns its module path.
-pub fn emit(files: &mut FileSet, tree: &Tree<'_>) -> Result<String, Vec<GenDiagnostic>> {
-    let list = entries(tree);
-    let mut fc = FileCtx::new(tree, MODULE);
-    let opts = fc.rt("ClientOptions");
-    for (e, module) in &list {
-        fc.import(module, &e.class, true);
-    }
-    let mut w = CodeWriter::new();
-    w.line("/** The clients of every service, by service name. */");
-    w.open("export interface Clients");
-    for (e, _) in &list {
-        w.line(format!("{}: {};", prop_key(&e.key), e.class));
-    }
-    w.close();
-    w.blank();
-    w.line(
-        "/** Options per service, merged over the shared options (`baseUrl` is the usual one). */",
-    );
-    w.line(format!(
-        "export type ClientOverrides = {{ [K in keyof Clients]?: {opts} }};"
-    ));
-    w.blank();
-    w.line("/** One client for every service, all created from the same options. */");
-    w.open(format!(
-        "export function createClients(opts: {opts} = {{}}, overrides: ClientOverrides = {{}}): Clients"
-    ));
-    w.open_with("return", " {");
-    for (e, _) in &list {
-        let key = prop_key(&e.key);
-        w.line(format!(
-            "{key}: new {}({{ ...opts, ...overrides.{} }}),",
-            e.class, e.key
-        ));
-    }
-    w.close_with("};");
-    w.close();
-    add_file(files, &format!("{MODULE}.ts"), fc.finish(&w.finish()))?;
-    Ok(MODULE.to_string())
 }

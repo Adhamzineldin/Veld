@@ -1,0 +1,197 @@
+/** One problem of a runtime config: the path and the message (which starts with the path). */
+export interface RuntimeProblem {
+  readonly path: string;
+  readonly message: string;
+}
+
+/** Thrown when a runtime config is not valid. `problems` lists every one of them, in path order. */
+export class VeldConfigError extends Error {
+  readonly problems: readonly RuntimeProblem[];
+
+  constructor(problems: readonly RuntimeProblem[]) {
+    super(PREFIX + problems.map((p) => p.message).join('; '));
+    this.name = 'VeldConfigError';
+    this.problems = problems;
+  }
+}
+
+interface Setting {
+  readonly path: string;
+  readonly segments: readonly string[];
+  readonly kind: 'url' | 'list';
+  readonly required: boolean;
+  readonly values?: readonly string[];
+  readonly default?: string;
+  readonly missing: string;
+  readonly invalid: string;
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** Byte order of the UTF-8 text, which is the order of the code points. */
+function byteOrder(a: string, b: string): number {
+  const x = Array.from(a);
+  const y = Array.from(b);
+  const n = Math.min(x.length, y.length);
+  for (let i = 0; i < n; i++) {
+    const p = (x[i] as string).codePointAt(0) as number;
+    const q = (y[i] as string).codePointAt(0) as number;
+    if (p !== q) return p < q ? -1 : 1;
+  }
+  return x.length === y.length ? 0 : x.length < y.length ? -1 : 1;
+}
+
+function portOk(text: string): boolean {
+  if (!text.startsWith(':')) return false;
+  const digits = text.slice(1);
+  return digits.length > 0 && digits.length <= 5 && /^[0-9]+$/.test(digits) && Number(digits) <= 65535;
+}
+
+function hostAndPortOk(hostPort: string): boolean {
+  if (hostPort.startsWith('[')) {
+    const close = hostPort.indexOf(']');
+    if (close < 0) return false;
+    const addr = hostPort.slice(1, close);
+    const after = hostPort.slice(close + 1);
+    return /^[0-9A-Fa-f:.]+$/.test(addr) && (after === '' || portOk(after));
+  }
+  const colon = hostPort.indexOf(':');
+  const host = colon < 0 ? hostPort : hostPort.slice(0, colon);
+  const port = colon < 0 ? null : hostPort.slice(colon);
+  return /^[A-Za-z0-9._-]+$/.test(host) && (port === null || portOk(port));
+}
+
+/** The URL without its trailing `/`, or `null` when it is not an absolute `http` or `https` URL. */
+function normalizeUrl(text: string): string | null {
+  if (!/^[\x21-\x7e]*$/.test(text)) return null;
+  const scheme = text.slice(0, 8).toLowerCase() === 'https://' ? 8 : text.slice(0, 7).toLowerCase() === 'http://' ? 7 : 0;
+  if (scheme === 0) return null;
+  const rest = text.slice(scheme);
+  const end = rest.search(/[/?#]/);
+  const authority = end < 0 ? rest : rest.slice(0, end);
+  const hostPort = authority.slice(authority.lastIndexOf('@') + 1);
+  return hostAndPortOk(hostPort) ? text.replace(/\/+$/, '') : null;
+}
+
+function sameSegments(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((k, i) => k === b[i]);
+}
+
+function position(prefix: readonly string[]): 'leaf' | 'branch' | 'unknown' {
+  if (SETTINGS.some((s) => sameSegments(s.segments, prefix))) return 'leaf';
+  if (SETTINGS.some((s) => prefix.every((k, i) => s.segments[i] === k))) return 'branch';
+  return 'unknown';
+}
+
+function walk(
+  map: Record<string, unknown>,
+  prefix: string[],
+  found: Map<string, unknown>,
+  problems: RuntimeProblem[],
+): void {
+  for (const key of Object.keys(map)) {
+    prefix.push(key);
+    const path = prefix.join('.');
+    const value = map[key];
+    const where = position(prefix);
+    if (where === 'leaf') {
+      found.set(path, value);
+    } else if (where === 'unknown') {
+      problems.push({ path, message: notASetting(path) });
+    } else if (isObject(value)) {
+      walk(value, prefix, found, problems);
+    } else if (value !== undefined && value !== null) {
+      problems.push({ path, message: notAnObject(path) });
+    }
+    prefix.pop();
+  }
+}
+
+/** The value of one setting, or the message of its problem. */
+function leaf(s: Setting, value: unknown): { value: string | null; problem: string | null } {
+  if (value === undefined || value === null) {
+    return s.required ? { value: null, problem: s.missing } : { value: s.default ?? null, problem: null };
+  }
+  if (typeof value !== 'string') return { value: null, problem: s.invalid };
+  if (value === '' && s.required) return { value: null, problem: s.missing };
+  if (s.kind === 'url') {
+    const url = normalizeUrl(value);
+    return url === null ? { value: null, problem: s.invalid } : { value: url, problem: null };
+  }
+  return (s.values ?? []).includes(value) ? { value, problem: null } : { value: null, problem: s.invalid };
+}
+
+/** Checks every setting against what was found, and fails once with every problem. */
+function finish(found: Map<string, unknown>, problems: RuntimeProblem[], reported: Set<string>): Map<string, string> {
+  const values = new Map<string, string>();
+  for (const s of SETTINGS) {
+    if (reported.has(s.path)) continue;
+    const r = leaf(s, found.get(s.path));
+    if (r.problem !== null) problems.push({ path: s.path, message: r.problem });
+    else if (r.value !== null) values.set(s.path, r.value);
+  }
+  if (problems.length > 0) {
+    problems.sort((a, b) => byteOrder(a.path, b.path) || byteOrder(a.message, b.message));
+    throw new VeldConfigError(problems);
+  }
+  return values;
+}
+
+/** The nested object of the checked values. */
+function nest(values: Map<string, string>): unknown {
+  const out: Record<string, unknown> = {};
+  for (const s of SETTINGS) {
+    const value = values.get(s.path);
+    if (value === undefined) continue;
+    let at = out;
+    for (const key of s.segments.slice(0, -1)) {
+      const next = at[key];
+      if (isObject(next)) {
+        at = next;
+      } else {
+        const made: Record<string, unknown> = {};
+        at[key] = made;
+        at = made;
+      }
+    }
+    at[s.segments[s.segments.length - 1] as string] = value;
+  }
+  return out;
+}
+
+function checked(value: unknown): Map<string, string> {
+  const problems: RuntimeProblem[] = [];
+  const found = new Map<string, unknown>();
+  if (isObject(value)) walk(value, [], found, problems);
+  else if (value !== undefined && value !== null) problems.push({ path: ROOT, message: notAnObject(ROOT) });
+  return finish(found, problems, new Set());
+}
+
+function processEnv(): Record<string, string | undefined> {
+  const g = globalThis as { process?: { env?: Record<string, string | undefined> } };
+  return g.process?.env ?? {};
+}
+
+function fromNames(names: unknown, env: Record<string, string | undefined>): Map<string, string> {
+  const given = (isObject(names) ? names : {}) as Record<string, unknown>;
+  const problems: RuntimeProblem[] = [];
+  const found = new Map<string, unknown>();
+  const reported = new Set<string>();
+  for (const path of Object.keys(given)) {
+    if (!SETTINGS.some((s) => s.path === path)) problems.push({ path, message: notASetting(path) });
+  }
+  for (const s of SETTINGS) {
+    const name = Object.prototype.hasOwnProperty.call(given, s.path) ? given[s.path] : undefined;
+    if (typeof name !== 'string') continue;
+    const text = env[name];
+    if (typeof text === 'string' && text !== '') {
+      found.set(s.path, text);
+    } else if (s.required) {
+      problems.push({ path: s.path, message: missingEnv(s.path, name) });
+      reported.add(s.path);
+    }
+  }
+  return finish(found, problems, reported);
+}

@@ -214,7 +214,7 @@ fn streaming_is_supported_and_the_gate_still_reports_e0801_for_a_generator_witho
         assert!(caps.supports(Feature::StreamingSse) && caps.supports(Feature::StreamingWs));
         assert!(check_capabilities(&ir, &req, &caps).is_empty());
         let files = generator
-            .generate_dyn(&req, &serde_json::Value::Null)
+            .generate_dyn(&req, &named(role, &serde_json::Value::Null))
             .unwrap();
         assert!(files.paths().any(|p| p == "runtime/veld.ts"));
         // A generator that does not declare the capability is still stopped by the gate.
@@ -264,7 +264,10 @@ fn role_and_framework_are_checked() {
         consumes: vec![],
         framework: Some("express".into()),
     };
-    assert!(Node.generate_dyn(&ok, &serde_json::Value::Null).is_ok());
+    assert!(
+        Node.generate_dyn(&ok, &named(Role::Server, &serde_json::Value::Null))
+            .is_ok()
+    );
     let bad_opts = Node
         .generate_dyn(&ok, &serde_json::json!({ "nope": true }))
         .unwrap_err();
@@ -317,10 +320,15 @@ fn typescript_edition_is_validated_centrally() {
     assert_eq!(err[0].code, "E0803");
     assert!(err[0].message.contains("no versions"), "{}", err[0].message);
     // The same output for every supported edition.
-    let base = Node.generate_dyn(&req, &serde_json::Value::Null).unwrap();
+    let base = Node
+        .generate_dyn(&req, &named(Role::Server, &serde_json::Value::Null))
+        .unwrap();
     for edition in ["es2020", "es2022"] {
         let files = Node
-            .generate_dyn(&req, &serde_json::json!({ "typescript": edition }))
+            .generate_dyn(
+                &req,
+                &named(Role::Server, &serde_json::json!({ "typescript": edition })),
+            )
             .unwrap();
         assert_eq!(base, files, "{edition}");
     }

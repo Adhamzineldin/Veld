@@ -14,16 +14,18 @@ mod rules;
 mod server;
 mod testing;
 
-pub use frameworks::{ADAPTERS, EndpointModel, ServerModel, ServiceModel};
+pub use frameworks::{ADAPTERS, EndpointModel, RuntimeRef, ServerModel, ServiceModel};
 
 use serde::Deserialize;
 use veld_codegen::naming::{self, Lang};
+use veld_codegen::runtime_config::{RULES_OUTPUT, RuntimeModel};
 use veld_codegen::{
     Capabilities, FileSet, FrameworkInfo, GenDiagnostic, GenRequest, Generator, LanguageInfo,
     Profile, Role,
 };
+use veld_emit_typescript::runtime_config::{self as runtime_ts, ClientEntry};
 use veld_emit_typescript::tree::Tree;
-use veld_emit_typescript::{barrel, emit_client_tree, models, package, precheck, runtime};
+use veld_emit_typescript::{barrel, clients, emit_client_tree, models, package, precheck, runtime};
 
 /// Options of the `node` generator.
 #[derive(Debug, Default, Clone, Deserialize)]
@@ -80,6 +82,7 @@ impl Generator for Node {
         profile: &Profile,
     ) -> Result<FileSet, Vec<GenDiagnostic>> {
         precheck(req, Role::Server, &self.capabilities(Role::Server))?;
+        let runtime_model = RuntimeModel::for_request(req, profile).map_err(|d| vec![d])?;
         let mut files = FileSet::new();
         let home = req.ir.service(req.services[0]).package;
         let tree = Tree::new(
@@ -94,11 +97,12 @@ impl Generator for Node {
         let model = ServerModel {
             adapters_path: "server/adapters.ts".to_string(),
             services: server::models(&tree),
+            runtime: runtime_model.as_ref().map(frameworks::RuntimeRef::of),
         };
         frameworks::emit(&mut files, &model, profile)?;
         let mut modules = models::emit(&mut files, &tree)?;
         modules.extend(veld_emit_typescript::policy::emit(&mut files, &tree)?);
-        modules.extend(server::emit(&mut files, &tree)?);
+        modules.extend(server::emit(&mut files, &tree, runtime_model.as_ref())?);
         modules.extend(events::emit(&mut files, &tree)?);
         modules.push("server/adapters".to_string());
         let ws = req
@@ -109,8 +113,15 @@ impl Generator for Node {
             frameworks::emit_ws(&mut files)?;
             modules.push("server/ws".to_string());
         }
-        let (extra, consumed) = emit_consumed(&mut files, req, opts.validate != Some(false))?;
-        runtime::emit_gated(&mut files, tree.gates().union(consumed))?;
+        let (extra, consumed, entries) =
+            emit_consumed(&mut files, req, opts.validate != Some(false))?;
+        let mut gates = tree.gates().union(consumed);
+        if let Some(model) = &runtime_model {
+            // `rules.output` is typed with the runtime's output mode.
+            gates.rules |= model.setting(RULES_OUTPUT).is_some();
+            modules.push(runtime_ts::emit(&mut files, &tree, model, &entries)?);
+        }
+        runtime::emit_gated(&mut files, gates)?;
         testing::emit(&mut files, &tree, opts.testing == Some(true))?;
         modules.sort();
         let mut extra = extra;
@@ -151,27 +162,46 @@ impl Generator for Node {
     }
 }
 
-/// Emits a client tree under `clients/<service>/` for each consumed service; returns the barrel lines
-/// and the runtime regions the consumed clients need.
+/// What the consumed clients add: the barrel lines, the runtime regions their code needs, and the
+/// entries `createClients` of `runtime.ts` builds.
+type Consumed = (Vec<String>, runtime::Gates, Vec<ClientEntry>);
+
+/// Emits a client tree under `clients/<service>/` for each consumed service.
 fn emit_consumed(
     files: &mut FileSet,
     req: &GenRequest<'_>,
     validate: bool,
-) -> Result<(Vec<String>, runtime::Gates), Vec<GenDiagnostic>> {
+) -> Result<Consumed, Vec<GenDiagnostic>> {
     let mut lines = Vec::new();
     let mut gates = runtime::Gates::default();
+    let mut entries = Vec::new();
     for sid in &req.consumes {
         let svc = req.ir.service(*sid);
         let dir = naming::kebab(&svc.name);
         let root = format!("clients/{dir}/");
-        let tree =
-            Tree::new(req.ir, &root, None, runtime::MODULE, vec![*sid]).with_validate(validate);
+        let tree = Tree::new(req.ir, &root, None, runtime::MODULE, vec![*sid])
+            .with_validate(validate)
+            .with_runtime_config(true);
         gates = gates.union(tree.gates());
         let modules = emit_client_tree(files, &tree)?;
+        entries.extend(clients::entries(&tree));
         barrel::write(files, &root, &modules, &[], false)?;
         let ns = naming::escape(Lang::Ts, &naming::camel(&svc.name));
         lines.push(format!("export * as {ns} from './clients/{dir}/index';"));
     }
     lines.sort();
-    Ok((lines, gates))
+    qualify_duplicates(&mut entries);
+    Ok((lines, gates, entries))
+}
+
+/// Two consumed services of one name (in two packages) get their package in the key, as the
+/// clients of a client target do.
+fn qualify_duplicates(entries: &mut [ClientEntry]) {
+    let keys: Vec<String> = entries.iter().map(|e| e.key.clone()).collect();
+    for e in entries.iter_mut() {
+        if keys.iter().filter(|k| **k == e.key).count() > 1 {
+            let pkg = e.package.trim_start_matches('@').replace('/', "-");
+            e.key = format!("{}{}", naming::camel(&pkg), naming::pascal(&e.key));
+        }
+    }
 }

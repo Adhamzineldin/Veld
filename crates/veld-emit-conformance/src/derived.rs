@@ -152,7 +152,10 @@ pub fn check_derived_is_generated(generator: &dyn DynGenerator) -> Result<(), St
                     role.name()
                 ));
             }
-            match generator.generate_dyn(&req, &serde_json::Value::Null) {
+            match generator.generate_dyn(
+                &req,
+                &veld_codegen::with_target_name(&serde_json::Value::Null, "conformance"),
+            ) {
                 Ok(files) if !files.is_empty() => {}
                 other => {
                     return Err(format!(
@@ -182,7 +185,10 @@ fn refuses(generator: &dyn DynGenerator, ir: &Ir, role: Role, line: u32) -> Resu
             "the gate reported {gate:?}, wanted one E0801 for `rules_derived` at line {line}"
         ));
     }
-    match generator.generate_dyn(&req, &serde_json::Value::Null) {
+    match generator.generate_dyn(
+        &req,
+        &veld_codegen::with_target_name(&serde_json::Value::Null, "conformance"),
+    ) {
         Err(d) if !d.is_empty() && d.iter().all(|d| d.code == "E0801") => Ok(()),
         other => Err(format!("generate did not answer E0801: {other:?}")),
     }

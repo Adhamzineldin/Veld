@@ -110,11 +110,11 @@ fn write_queries(
     let canonical = fc.rt("canonical");
     let signal = fc.rt("AbortSignalLike");
     w.line(format!(
-        "/**\n * Query keys and query options of `{}`. `defaultClient` makes the client when a call does not pass one,\n * so there is no shared instance: pass `new {class}({{ baseUrl }})` as the last argument, or build your own set.\n */",
+        "/**\n * Query keys and query options of `{}`. `defaultClient` makes the client when a call does not pass one,\n * so there is no shared instance: pass `() => new {class}({{ baseUrl }})` (or `() => createClients(runtime).{key}`), or build your own set.\n */",
         svc.name
     ));
     w.open(format!(
-        "export function create{pascal}Queries(defaultClient: () => {class} = () => new {class}())"
+        "export function create{pascal}Queries(defaultClient: () => {class})"
     ));
     w.line(format!("const all = ['veld', {}] as const;", ts_str(key)));
     w.open_with("const keys =", " {");
@@ -186,7 +186,7 @@ fn write_mutations(
         svc.name
     ));
     w.open(format!(
-        "export function create{pascal}Mutations(defaultClient: () => {class} = () => new {class}())"
+        "export function create{pascal}Mutations(defaultClient: () => {class})"
     ));
     w.open_with("return", " {");
     for ep in endpoints.iter().filter(|e| !is_query(e)) {

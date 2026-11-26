@@ -13,7 +13,7 @@ use veld_codegen::{FileSet, FrameworkAdapter, GenDiagnostic, LanguageVersion, Pr
 use veld_emit_typescript::util::{add_file, rel_import, ts_str};
 use veld_ir::Method;
 
-use super::{EndpointModel, ServerModel, ServiceModel};
+use super::{EndpointModel, RuntimeRef, ServerModel, ServiceModel};
 
 /// The framework id, as written in `veld.toml`.
 pub const ID: &str = "nest";
@@ -44,7 +44,11 @@ impl FrameworkAdapter<ServerModel> for Nest {
         }
         for svc in &model.services {
             let path = format!("server/nest/{}.ts", svc.file);
-            add_file(&mut files, &path, source(svc, &path))?;
+            add_file(
+                &mut files,
+                &path,
+                source(svc, &path, model.runtime.as_ref()),
+            )?;
         }
         Ok(files)
     }
@@ -76,7 +80,7 @@ fn route(e: &EndpointModel, decorator: &str) -> String {
     )
 }
 
-fn source(svc: &ServiceModel, path: &str) -> String {
+fn source(svc: &ServiceModel, path: &str, runtime: Option<&RuntimeRef>) -> String {
     let mut decorators: Vec<&str> =
         vec!["Controller", "HttpCode", "Inject", "Module", "Req", "Res"];
     let mut routes = String::new();
@@ -94,7 +98,15 @@ fn source(svc: &ServiceModel, path: &str) -> String {
         ts_str(&svc.prefix)
     };
     let optional = if svc.hooks_required { "" } else { "?" };
+    let rt = runtime_pieces(svc, path, runtime);
     TEMPLATE
+        .replace("__RT_IMPORT__\n", &rt.import)
+        .replace("__RT_TOKEN__\n", &rt.token)
+        .replace("__RT_OPTION__\n", &rt.option)
+        .replace("__RT_PROVIDER__\n", &rt.provider)
+        .replace("__RT_PARAM__", &rt.param)
+        .replace("__RT_ARG__", &rt.arg)
+        .replace("__RT_INJECT__", &rt.inject)
         .replace("__DECORATORS__", &decorators.join(", "))
         .replace("__RUNTIME__", &rel_import(path, "runtime/veld"))
         .replace("__SERVICE__", &rel_import(path, &svc.module))
@@ -105,4 +117,42 @@ fn source(svc: &ServiceModel, path: &str) -> String {
         .replace("__ROUTES__", &routes)
         .replace("__RAW__", &svc.raw_name)
         .replace("__NAME__", &svc.name)
+}
+
+/// The parts of the template that exist only when the target has a runtime config: the
+/// application passes it to `forRoot` and the module hands it to `create<Service>Handler`.
+#[derive(Default)]
+struct RuntimePieces {
+    import: String,
+    token: String,
+    option: String,
+    provider: String,
+    param: String,
+    arg: String,
+    inject: String,
+}
+
+fn runtime_pieces(svc: &ServiceModel, path: &str, runtime: Option<&RuntimeRef>) -> RuntimePieces {
+    let Some(rt) = runtime else {
+        return RuntimePieces::default();
+    };
+    let snake = naming::screaming_snake(&svc.raw_name);
+    let optional = if rt.required { "" } else { "?" };
+    let ty = &rt.type_name;
+    RuntimePieces {
+        import: format!(
+            "import type {{ {ty} }} from '{}';\n",
+            rel_import(path, "runtime")
+        ),
+        token: format!(
+            "/** Injection token of the `{ty}`. */\nexport const {snake}_RUNTIME: InjectionToken = Symbol('{snake}_RUNTIME');\n"
+        ),
+        option: format!(
+            "  /** The settings of the deployment (`services.<service>.url`, `rules.output`). */\n  runtime{optional}: {ty};\n"
+        ),
+        provider: format!("        {{ provide: {snake}_RUNTIME, useValue: options.runtime }},\n"),
+        param: format!(", runtime{optional}: {ty}"),
+        arg: ", runtime".to_string(),
+        inject: format!(", {snake}_RUNTIME"),
+    }
 }

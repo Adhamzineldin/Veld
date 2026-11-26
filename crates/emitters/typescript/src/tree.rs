@@ -32,6 +32,7 @@ pub struct Tree<'a> {
     version: bool,
     idempotency: bool,
     events: bool,
+    runtime_config: bool,
     decls: Vec<DeclId>,
 }
 
@@ -92,6 +93,7 @@ impl<'a> Tree<'a> {
             version,
             idempotency,
             events: false,
+            runtime_config: false,
             decls: set.into_iter().collect(),
         }
     }
@@ -174,7 +176,22 @@ impl<'a> Tree<'a> {
             rollout: self.rollout,
             version: self.version,
             idempotency: self.idempotency,
+            runtime_config: self.runtime_config,
         }
+    }
+
+    /// Marks the tree as one of a target with a typed runtime config: its clients get the
+    /// address from `baseUrl` alone (`spec/runtime-config.md` section 5).
+    #[must_use]
+    pub fn with_runtime_config(mut self, on: bool) -> Self {
+        self.runtime_config = on;
+        self
+    }
+
+    /// Whether the tree's clients take their address from `baseUrl` alone.
+    #[must_use]
+    pub fn uses_runtime_config(&self) -> bool {
+        self.runtime_config
     }
 
     /// Whether an endpoint of the tree's services has an `If-Match` guard or answers with a model

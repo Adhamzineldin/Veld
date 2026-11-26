@@ -5,6 +5,7 @@ import { __DECORATORS__ } from '@nestjs/common';
 import type { DynamicModule, InjectionToken, Provider, Type } from '@nestjs/common';
 import type { VeldHandler } from '__RUNTIME__';
 import { create__NAME__Handler } from '__SERVICE__';
+__RT_IMPORT__
 import type { __NAME__Hooks, __NAME__Service } from '__SERVICE__';
 import { toNodeHttp } from '__ADAPTERS__';
 import type { NodeHttpListener, NodeRequestLike, NodeResponseLike } from '__ADAPTERS__';
@@ -13,6 +14,7 @@ import type { NodeHttpListener, NodeRequestLike, NodeResponseLike } from '__ADAP
 export const __SNAKE___SERVICE: InjectionToken = Symbol('__SNAKE___SERVICE');
 /** Injection token of the `__NAME__Hooks`. */
 export const __SNAKE___HOOKS: InjectionToken = Symbol('__SNAKE___HOOKS');
+__RT_TOKEN__
 const __SNAKE___HANDLER: InjectionToken = Symbol('__SNAKE___HANDLER');
 
 /** How `__NAME__VeldModule.forRoot` obtains the implementation: a class, a value or a factory. */
@@ -23,6 +25,7 @@ export type __NAME__Implementation =
 
 export type __NAME__VeldOptions = __NAME__Implementation & {
   hooks__OPTIONAL__: __NAME__Hooks;
+__RT_OPTION__
   /** Modules that provide what `useFactory` injects. */
   imports?: NonNullable<DynamicModule['imports']>;
 };
@@ -53,10 +56,11 @@ export class __NAME__VeldModule {
       providers: [
         implementationProvider(options),
         { provide: __SNAKE___HOOKS, useValue: options.hooks ?? {} },
+__RT_PROVIDER__
         {
           provide: __SNAKE___HANDLER,
-          useFactory: (impl: __NAME__Service, hooks: __NAME__Hooks): VeldHandler => create__NAME__Handler(impl, hooks),
-          inject: [__SNAKE___SERVICE, __SNAKE___HOOKS],
+          useFactory: (impl: __NAME__Service, hooks: __NAME__Hooks__RT_PARAM__): VeldHandler => create__NAME__Handler(impl, hooks__RT_ARG__),
+          inject: [__SNAKE___SERVICE, __SNAKE___HOOKS__RT_INJECT__],
         },
       ],
       exports: [__SNAKE___SERVICE],
