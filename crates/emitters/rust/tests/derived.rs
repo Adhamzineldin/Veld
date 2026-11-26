@@ -103,7 +103,7 @@ fn a_derived_field_gets_a_schema_flag_a_derive_function_and_a_public_function() 
     assert!(at("// total") < at("// count"));
     assert!(order.contains("let ok_total = if ok_subtotal"), "{order}");
     // A rule that reads a derived field is skipped when the field has no value.
-    assert!(models.contains("!absent.contains(&\"total\")"));
+    assert!(models.contains("!vr::is_absent(absent, \"total\")"));
 }
 
 /// A contract without a derived field does not get one word of the feature: no flag in a schema,
@@ -122,6 +122,10 @@ fn a_contract_without_derived_fields_has_none_of_it() {
         "derive: ",
         "check_rules_absent",
         "stand_in",
+        "absent_patterns",
+        "is_absent",
+        "derive_violations",
+        "complete_principal",
     ];
     for files in [
         server_only_standard(),
@@ -163,6 +167,168 @@ fn a_derived_field_without_a_rule_still_brings_the_rules_runtime() {
         "{models}"
     );
     assert!(!models.contains("impl veld::rules::Invariants for Room"));
+}
+
+/// A rule or a derived field that reads a derived field of a nested value, through a path or a
+/// lambda over a list, is skipped when that field has no value (`spec/rules.md` section 17.2); a
+/// derived field that reaches a `@readonly` field below the first level is absent in a request.
+const NESTED: &str = "model Part {
+  seq: int @readonly
+  next: int = seq + 1
+}
+
+model Box {
+  note: string
+  part: Part
+}
+
+model Kit {
+  parts: Part[]
+  box: Box
+  rule allPositive: all(parts, p => p.next > 0)
+  rule boxed: box.part.next > 0
+  bump: int = sum(parts, p => p.next) + 1
+  serials: int = sum(parts, p => p.seq) + 1
+  viaBox: int = box.part.seq + 1
+}
+
+service Kits at \"/kits\" {
+  post \"/\" make(body: Kit) -> 200 Kit
+}
+";
+
+#[test]
+fn a_read_of_a_nested_derived_field_is_guarded_by_its_pattern() {
+    let ir = compile_text(NESTED, "nested");
+    let files = run(
+        &ir,
+        Role::Server,
+        vec![service_id(&ir, "Kits")],
+        vec![],
+        None,
+        json!({ "crate-name": "nested-server" }),
+    );
+    let models = text(&files, "src/nested/nested.rs");
+    let rules = &models[models.find("impl veld::rules::Invariants for Kit").unwrap()..];
+    // The rules: the patterns of the derived fields they read, at any depth.
+    assert!(
+        rules.contains("if !vr::is_absent(absent, \"parts[].next\")"),
+        "{rules}"
+    );
+    assert!(
+        rules.contains("if !vr::is_absent(absent, \"box.part.next\")"),
+        "{rules}"
+    );
+    assert!(rules.contains("absent: &[String]"), "{rules}");
+    // The derived fields: blocked by an absent nested value, and by a `@readonly` field below the
+    // first level, which is absent in a request.
+    let derive = &models[models.find("impl veld::rules::Derive for Kit").unwrap()..];
+    let at = |name: &str| &derive[derive.find(&format!("// {name}\n")).unwrap()..];
+    assert!(
+        at("bump").contains("let ok_bump = if !vr::is_absent(absent, \"parts[].next\") {"),
+        "{derive}"
+    );
+    assert!(
+        at("serials").contains("let ok_serials = if mode != vr::Mode::Request {"),
+        "{derive}"
+    );
+    assert!(
+        at("viaBox").contains("let ok_via_box = if mode != vr::Mode::Request {"),
+        "{derive}"
+    );
+}
+
+/// Every type but `duration` may be the type of a derived field: bytes, json, a list, a map, a
+/// model and a `Page` are copied (or built from a list literal), and the crate compiles.
+const TYPES: &str = "model Inner {
+  n: int
+}
+
+model Source {
+  a: int
+  b: int
+  blob: bytes
+  doc: json
+  tags: string[]
+  grid: int[][]
+  rows: Inner[]
+  by: Map<string, Inner>
+  inner: Inner
+  page: Page<Inner>
+  prices: decimal[]
+  whens: datetime[]
+  copyBlob: bytes = blob
+  copyDoc: json = doc
+  copyTags: string[] = tags
+  copyGrid: int[][] = grid
+  copyRows: Inner[] = rows
+  copyBy: Map<string, Inner> = by
+  copyInner: Inner = inner
+  copyPage: Page<Inner> = page
+  copyPrices: decimal[] = prices
+  copyWhens: datetime[] = whens
+  both: int[] = [a, b]
+  wide: long[] = [a, b]
+}
+
+service Sources at \"/sources\" {
+  post \"/\" go(body: Source) -> 200 Source
+}
+";
+
+#[test]
+fn a_derived_field_may_have_any_type_but_duration() {
+    let ir = compile_text(TYPES, "types");
+    let files = run(
+        &ir,
+        Role::Server,
+        vec![service_id(&ir, "Sources")],
+        vec![],
+        None,
+        json!({ "crate-name": "types-server" }),
+    );
+    let models = text(&files, "src/types/types.rs");
+    for needle in [
+        "vr::Res<Vec<u8>> { Ok((&self.blob).clone()) }",
+        "vr::Res<serde_json::Value> { Ok((&self.doc).clone()) }",
+        "vr::Res<veld::Page<Inner>> { Ok((&self.page).clone()) }",
+        "vr::Res<Vec<Vec<i32>>>",
+        "vr::Res<Vec<String>> { Ok(vr::list(&self.prices",
+        ".map(|e| vr::format_datetime(e))",
+    ] {
+        assert!(models.contains(needle), "{needle}");
+    }
+    if !cargo_or_skip() {
+        return;
+    }
+    let ws = work_dir().join("derived-types");
+    let _ = std::fs::remove_dir_all(&ws);
+    write_files(&ws.join("server"), &files);
+    std::fs::write(
+        ws.join("Cargo.toml"),
+        "[workspace]\nresolver = \"2\"\nmembers = [\"server\"]\n",
+    )
+    .unwrap();
+    let lock = repo_root().join("tests/toolchain/rust/Cargo.lock");
+    if lock.exists() {
+        std::fs::copy(&lock, ws.join("Cargo.lock")).unwrap();
+    }
+    run_ok(&mut cargo(&ws, &["build", "--workspace"]), "cargo build");
+    run_ok(
+        &mut cargo(
+            &ws,
+            &[
+                "clippy",
+                "--all-targets",
+                "-p",
+                "types-server",
+                "--",
+                "-D",
+                "warnings",
+            ],
+        ),
+        "cargo clippy",
+    );
 }
 
 // ---- the vectors -----------------------------------------------------------------------------------

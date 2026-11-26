@@ -15,11 +15,11 @@ use edges_client::edges::shop_client::{PlaceRequest as ClientPlace, ShopClient};
 use edges_client::veld::Error as ClientError;
 use edges_client::veld::client::{ClientOptions, HttpRequest, HttpResponse, HttpStream, Transport as ClientTransport};
 use edges_server::edges::billing_events::create_billing_publisher;
-use edges_server::edges::edges::{Gauge, Line, Order, Paid, Tick, User, Wallet};
+use edges_server::edges::edges::{Gauge, Kit, Line, Me, Order, Paid, Part, Tick, User, Wallet};
 use edges_server::edges::live_server::{FeedRequest, LiveHandler, LiveService};
 use edges_server::edges::receipts_events::{ReceiptsEventHandlers, subscribe_receipts_events};
 use edges_server::edges::shop_server::{
-    ENDPOINTS, GaugeFacts, GaugeRequest, LineRequest, PlaceRequest, ShopFactLoaders, ShopHandler, ShopHooks,
+    ENDPOINTS, GaugeFacts, GaugeRequest, KitRequest, LineRequest, MeRequest, PlaceRequest, ShopFactLoaders, ShopHandler, ShopHooks,
     ShopService, SpendFacts, SpendRequest,
 };
 use edges_server::runtime_config::EdgesServerRuntime;
@@ -40,6 +40,8 @@ const NO_GAUGE: &str = "00000000-0000-4000-8000-0000000000ff";
 struct App {
     orders: Mutex<Vec<Order>>,
     wallets: Mutex<Vec<Wallet>>,
+    /// The kits the handler received.
+    kits: Mutex<Vec<Kit>>,
     /// `rule/position/outcome` of every violation the hook heard.
     heard: Mutex<Vec<String>>,
     store: MemoryIdempotencyStore,
@@ -77,6 +79,16 @@ impl ShopService for Impl {
     async fn line(&self, _request: LineRequest, _ctx: &RequestContext) -> Result<(), Error> {
         Ok(())
     }
+
+    async fn kit(&self, request: KitRequest, _ctx: &RequestContext) -> Result<Kit, Error> {
+        self.0.kits.lock().unwrap().push(request.body.clone());
+        Ok(Kit { parts: vec![Part { seq: 1, next: -1 }], bump: -1, serials: -1 })
+    }
+
+    async fn me(&self, _request: MeRequest, ctx: &RequestContext) -> Result<Me, Error> {
+        // The caller as the handler sees it: with its derived field.
+        Ok(Me { limit: ctx.principal::<User>().map_or(-99, |u| u.limit) })
+    }
 }
 
 struct Loaders;
@@ -106,9 +118,11 @@ impl ShopHooks for Hooks {
         "u".into()
     }
 
-    async fn auth_bearer<'a>(&'a self, _token: &'a str, _ctx: &'a RequestContext) -> Option<User> {
-        // `limit` is derived: the server gives the principal its value.
-        Some(User { id: ID.into(), base: 5, limit: -1 })
+    async fn auth_bearer<'a>(&'a self, _token: &'a str, ctx: &'a RequestContext) -> Option<User> {
+        // `limit` is derived: the server gives the principal its value. A caller with a huge
+        // `base` has a `limit` that overflows.
+        let base = if ctx.header("x-who") == Some("big") { 2_000_000_000 } else { 5 };
+        Some(User { id: ID.into(), base, limit: -1 })
     }
 
     fn validate_requests(&self) -> bool {
@@ -282,6 +296,41 @@ async fn a_fact_that_cannot_be_computed_is_internal() {
     let heard = heard(&s);
     assert_eq!(heard.len(), 1, "{heard:?}");
     assert!(heard[0].starts_with("veld:edges/Gauge.inverse/Output/Rejected"), "{heard:?}");
+}
+
+// ---- below the first level, and the caller ----------------------------------------------------------
+
+/// A derived field that has no value in a request (it reads a `@readonly` field) is left absent
+/// at any depth with no violation (`spec/rules.md` 17.2): a rule that reads it, directly or through
+/// a lambda over a list, is skipped (it used to read the stand-in `0` and answer `422` to a valid
+/// request), a derived field of the declaration above that reads it is not computed, and one that
+/// reaches a `@readonly` field through a nested value is absent as well (it used to compute `1`
+/// from the placeholders). The handler holds the stand-in `0` for each of them.
+async fn a_derived_field_without_a_value_skips_at_any_depth_in_a_request() {
+    let s = serve(None).await;
+    let a = post(&s, "/shop/kits", &[], Some(json!({ "parts": [{}, {}] }))).await;
+    assert_eq!(a.status, 200, "a valid request: {}", a.text);
+    let seen = s.app.kits.lock().unwrap()[0].clone();
+    assert_eq!(seen.parts.iter().map(|p| p.next).collect::<Vec<_>>(), vec![0, 0], "`next` reads `seq`: absent");
+    assert_eq!((seen.bump, seen.serials), (0, 0), "both are absent: no value is invented from the stand-ins");
+    assert_eq!(heard(&s), Vec::<String>::new());
+    // In the answer every field is there: `seq` is 1, so the computed values are real.
+    assert_eq!((a.doc["parts"][0]["next"].clone(), a.doc["bump"].clone(), a.doc["serials"].clone()), (json!(2), json!(3), json!(2)));
+}
+
+/// The principal is given its derived fields once per request after authentication, for every
+/// endpoint (`me` has no rule), and that value is what the handler sees as the caller; a principal
+/// that cannot be completed is `500 Internal` and the handler is not called.
+async fn the_principal_is_completed_for_every_endpoint() {
+    let s = serve(None).await;
+    let me = post(&s, "/shop/me", &[], None).await;
+    assert_eq!(me.status, 200, "{}", me.text);
+    assert_eq!(me.doc["limit"], json!(10), "the handler saw `base * 2`, not the hook's stand-in");
+    let big = post(&s, "/shop/me", &[("x-who", "big")], None).await;
+    assert_eq!(big.status, 500, "{}", big.text);
+    let heard = heard(&s);
+    assert_eq!(heard.len(), 1, "{heard:?}");
+    assert!(heard[0].starts_with("veld:edges/User.limit/Output/Rejected"), "{heard:?}");
 }
 
 // ---- outputs ---------------------------------------------------------------------------------------
@@ -503,6 +552,44 @@ fn events_are_computed_by_both_sides() {
     });
 }
 
+/// A consumed event whose derived field cannot be computed is rejected with the reason `rule`
+/// and that field's violation, whether or not the digests match (`spec/events.md` 8).
+fn a_consumed_event_that_cannot_be_computed_is_rejected_whatever_the_digest() {
+    let memory = Arc::new(MemoryTransport::new());
+    let got: Log<Paid> = Default::default();
+    let rejected: Log<(String, Vec<String>)> = Default::default();
+    let heard = rejected.clone();
+    let options = ConsumerOptions::new().on_event_rejected(move |r| {
+        let rules = r.violations.iter().map(|v| v.rule.rsplit_once('@').map_or(v.rule.clone(), |(head, _)| head.to_string())).collect();
+        heard.lock().unwrap().push((format!("{:?}", r.reason), rules));
+    });
+    block_on(async {
+        subscribe_receipts_events(memory.clone(), Arc::new(Receipts(got.clone())), options).await.unwrap();
+        // The publisher's own message of a value that can be computed carries the digest of this contract.
+        let sent: Log<Vec<u8>> = Default::default();
+        let spy: Arc<dyn Transport> = Arc::new(Spy { inner: Arc::new(MemoryTransport::new()), sent: sent.clone() });
+        let publisher = create_billing_publisher(spy, PublisherOptions::new());
+        publisher.payments().paid(&Paid { order: ID.into(), amount: 100, fee: 30, net: 0, percent: 0 }).await.unwrap();
+        let envelope: Value = serde_json::from_slice(&sent.lock().unwrap()[0]).unwrap();
+        for (id, digest) in [("same-digest", envelope["veldrules"].clone()), ("other-digest", json!("0000000000000000"))] {
+            let mut message = envelope.clone();
+            message["id"] = json!(id);
+            message["veldrules"] = digest;
+            message["data"]["amount"] = json!(0);
+            message["data"]["fee"] = json!(0);
+            memory.publish("edges.Payments", None, message.to_string().as_bytes(), ChannelOptions::NONE).await.unwrap();
+        }
+        memory.idle().await;
+        assert!(got.lock().unwrap().is_empty(), "the handler was not called with a stand-in");
+        let heard = rejected.lock().unwrap().clone();
+        assert_eq!(heard.len(), 2, "{heard:?}");
+        for (reason, rules) in heard {
+            assert_eq!(reason, "Rule");
+            assert_eq!(rules, vec!["veld:edges/Paid.percent".to_string()]);
+        }
+    });
+}
+
 #[tokio::main]
 async fn main() {
     a_request_is_computed_and_what_was_sent_is_replaced().await;
@@ -511,6 +598,8 @@ async fn main() {
     without_validation_the_fields_are_computed_and_a_failing_one_rejects().await;
     facts_the_principal_and_errors_are_computed().await;
     a_fact_that_cannot_be_computed_is_internal().await;
+    a_derived_field_without_a_value_skips_at_any_depth_in_a_request().await;
+    the_principal_is_completed_for_every_endpoint().await;
     a_stream_item_is_computed().await;
     the_output_mode_decides_what_a_failing_result_does().await;
     the_fingerprint_covers_the_computed_values().await;
@@ -518,5 +607,6 @@ async fn main() {
     the_client_computes_before_it_checks_and_never_sends_the_field().await;
     // The memory transport needs no runtime of its own: drive it on a plain thread.
     std::thread::spawn(events_are_computed_by_both_sides).join().unwrap();
+    std::thread::spawn(a_consumed_event_that_cannot_be_computed_is_rejected_whatever_the_digest).join().unwrap();
     println!("derived ok");
 }

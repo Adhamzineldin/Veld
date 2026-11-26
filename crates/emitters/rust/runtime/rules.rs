@@ -180,10 +180,10 @@ pub trait Invariants {
     fn check_rules(&self, mode: Mode, path: &str, out: &mut Vec<Violation>);
 
     // @if derived
-    /// Like [`Self::check_rules`] for a value whose derived fields in `absent` (wire names) could
-    /// not be computed: a rule that reads one of them is skipped, the cause is already reported
+    /// Like [`Self::check_rules`] for a value whose derived fields in `absent` (patterns: wire names
+    /// from this value down, `[]` for a list, `items[].total`) could not be computed: a rule that reads one of them is skipped, the cause is already reported
     /// (`spec/rules.md` section 17.2). A declaration with derived fields overrides it.
-    fn check_rules_absent(&self, mode: Mode, path: &str, absent: &[&str], out: &mut Vec<Violation>) {
+    fn check_rules_absent(&self, mode: Mode, path: &str, absent: &[String], out: &mut Vec<Violation>) {
         let _ = absent;
         self.check_rules(mode, path, out);
     }
@@ -202,21 +202,60 @@ pub fn run<T: Invariants + DeserializeOwned>(node: &Value, mode: Mode, path: &st
 // @end
 // @if derived
 pub fn run<T: Invariants + DeserializeOwned + super::error::VeldDecl>(node: &Value, mode: Mode, path: &str, out: &mut Vec<Violation>) {
+    // A derived field that could not be computed, at any depth: a stand-in is read, and no rule
+    // that reads it is evaluated.
+    let absent = absent_patterns(T::schema(), node);
     let mut read = node.clone();
-    let mut absent: Vec<&str> = Vec::new();
-    if let (Some(model), Value::Object(map)) = (T::schema().model(), &mut read) {
-        for f in model.fields.iter().filter(|f| f.derived) {
-            // A derived field that could not be computed: a stand-in is read, and no rule that
-            // reads it is evaluated.
-            if !map.contains_key(f.wire) {
-                absent.push(f.wire);
-                map.insert(f.wire.to_string(), stand_in(f.schema));
-            }
-        }
-    }
+    fill_derived(T::schema(), &mut read);
     if let Ok(value) = serde_json::from_value::<T>(read) {
         value.check_rules_absent(mode, path, &absent, out);
     }
+}
+
+/// The patterns of the derived fields that have no value in `v`, at any depth, as a rule or a
+/// derived field names its reads: the wire names from `v` down, `.` between them and `[]` for a
+/// list (`total`, `customer.total`, `items[].total`).
+#[must_use]
+pub fn absent_patterns(schema: &Schema, v: &Value) -> Vec<String> {
+    let mut found = std::collections::BTreeSet::new();
+    collect_absent(schema, v, "", &mut found);
+    found.into_iter().collect()
+}
+
+fn collect_absent(schema: &Schema, v: &Value, at: &str, out: &mut std::collections::BTreeSet<String>) {
+    match schema {
+        Schema::List(of, _) => {
+            for x in v.as_array().into_iter().flatten() {
+                collect_absent(of, x, &format!("{at}[]"), out);
+            }
+        }
+        Schema::Model(m) => {
+            let Value::Object(map) = v else { return };
+            for f in m.fields {
+                let here = if at.is_empty() { f.wire.to_string() } else { format!("{at}.{}", f.wire) };
+                match map.get(f.wire) {
+                    Some(x) => collect_absent(f.schema, x, &here, out),
+                    None if f.derived => {
+                        out.insert(here);
+                    }
+                    None => {}
+                }
+            }
+        }
+        Schema::Union(u) => {
+            let label = v.get(u.discriminator).and_then(Value::as_str);
+            if let Some((_, arm)) = label.and_then(|l| u.arms.iter().find(|(name, _)| *name == l)) {
+                collect_absent(arm, v, at, out);
+            }
+        }
+        Schema::Scalar(..) | Schema::Enum(_) | Schema::Map(..) | Schema::Page(_) => {}
+    }
+}
+
+/// Whether the derived field named by `pattern` has no value (see [`absent_patterns`]).
+#[must_use]
+pub fn is_absent(absent: &[String], pattern: &str) -> bool {
+    absent.iter().any(|a| a == pattern)
 }
 // @end
 
@@ -731,7 +770,9 @@ pub trait Derive {
     /// Computes the derived fields of this value, in dependency order. Each value is written to
     /// `self` (so the next one can read it) and to `node`, the typed JSON of the object; a field
     /// that could not be computed is left out of `node`. `path` is the path of this value.
-    fn derive_fields(&mut self, node: &mut serde_json::Map<String, Value>, mode: Mode, path: &str, out: &mut Vec<Violation>);
+    /// `absent` holds the patterns of the derived fields of nested values that have no value
+    /// ([`absent_patterns`]); a field that reads one of them is not computed.
+    fn derive_fields(&mut self, node: &mut serde_json::Map<String, Value>, mode: Mode, path: &str, absent: &[String], out: &mut Vec<Violation>);
 }
 
 /// What the schema calls for every object of a declaration with derived fields: reads the object
@@ -744,12 +785,13 @@ pub fn derive_object<T: Derive + DeserializeOwned + super::error::VeldDecl>(node
     for f in model.fields.iter().filter(|f| f.derived) {
         map.remove(f.wire);
     }
-    let mut read = map.clone();
-    for f in model.fields.iter().filter(|f| f.derived) {
-        read.insert(f.wire.to_string(), stand_in(f.schema));
-    }
-    if let Ok(mut value) = serde_json::from_value::<T>(Value::Object(read)) {
-        value.derive_fields(map, mode, path, out);
+    // A derived field of a nested value that could not be computed has no member: a stand-in is
+    // read, and the fields of this object that read it are not computed.
+    let absent = absent_patterns(T::schema(), &Value::Object(map.clone()));
+    let mut read = Value::Object(map.clone());
+    fill_derived(T::schema(), &mut read);
+    if let Ok(mut value) = serde_json::from_value::<T>(read) {
+        value.derive_fields(map, mode, path, &absent, out);
     }
 }
 
@@ -898,6 +940,16 @@ pub fn derive_value<T: serde::Serialize + DeserializeOwned + super::error::VeldD
     if let Ok(computed) = serde_json::from_value::<T>(typed) {
         *value = computed;
     }
+    out
+}
+
+/// The violations of the derived fields of a wire value that cannot be computed, and nothing
+/// else (the invariants are not checked).
+#[must_use]
+pub fn derive_violations(schema: &Schema, wire: &Value, path: &str) -> Vec<Violation> {
+    let mut typed = schema.from_wire(wire, false);
+    let mut out = Vec::new();
+    derive_walk(schema, &mut typed, path, Mode::Full, &mut out);
     out
 }
 

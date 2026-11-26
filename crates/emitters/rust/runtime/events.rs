@@ -1506,19 +1506,30 @@ async fn decode(c: &Consumer, message: &TransportMessage, def: &EventDef, env: &
         return Some(reject(c, message, Reason::Shape, detail).await);
     }
     // #if rules
-    if env.veldrules.as_deref() == def.digest {
-        let hook = c.options.on_rule_violation.as_ref();
-        let violations = run_rules(def, &env.data, hook, super::rules::Position::Input);
-        if !violations.is_empty() {
-            let text: Vec<&str> = violations.iter().map(|v| v.message.as_str()).collect();
-            let detail = Rejection {
-                message: text.join("; "),
-                event: Some(def.name.to_string()),
-                issues: violations.iter().map(Violation::issue).collect(),
-                violations: violations.clone(),
-            };
-            return Some(reject(c, message, Reason::Rule, detail).await);
-        }
+    let hook = c.options.on_rule_violation.as_ref();
+    let violations = if env.veldrules.as_deref() == def.digest {
+        run_rules(def, &env.data, hook, super::rules::Position::Input)
+    } else {
+        // @if derived
+        // The invariants are not run, but a derived field that cannot be computed means that the
+        // consumer cannot build the value its handler is promised (`spec/rules.md` 17.2).
+        let failed = super::rules::derive_violations(def.schema, &env.data, "$");
+        report(hook, def, (super::rules::Position::Input, super::rules::Outcome::Rejected), &failed, 0);
+        failed
+        // @end
+        // @if !derived
+        Vec::new()
+        // @end
+    };
+    if !violations.is_empty() {
+        let text: Vec<&str> = violations.iter().map(|v| v.message.as_str()).collect();
+        let detail = Rejection {
+            message: text.join("; "),
+            event: Some(def.name.to_string()),
+            issues: violations.iter().map(Violation::issue).collect(),
+            violations: violations.clone(),
+        };
+        return Some(reject(c, message, Reason::Rule, detail).await);
     }
     // #endif
     None

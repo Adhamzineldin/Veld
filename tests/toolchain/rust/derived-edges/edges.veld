@@ -53,6 +53,24 @@ error TooMuch 422 {
   short: int = needed - have
 }
 
+// A derived field that has no value in a request (it reads a @readonly field), below the first
+// level of a rule and of derived fields of the declaration above it.
+model Part {
+  seq: int @readonly
+  next: int = seq + 1
+}
+
+model Kit {
+  parts: Part[]
+  rule allPositive: all(parts, p => p.next > 0)
+  bump: int = sum(parts, p => p.next) + 1
+  serials: int = sum(parts, p => p.seq) + 1
+}
+
+model Me {
+  limit: int
+}
+
 model Tick {
   n: int
   twice: int = n * 2
@@ -74,6 +92,11 @@ service Shop at "/shop" {
 
   @idempotent
   post "/lines" line(body: Line) -> 204
+
+  post "/kits" kit(body: Kit) -> 200 Kit
+
+  // No rule: the handler still sees the principal with its derived field.
+  post "/me" me() -> 200 Me
 }
 
 @auth(none)

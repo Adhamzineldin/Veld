@@ -300,7 +300,9 @@ fn post_event(url: &str, headers: &[(&str, &str)]) -> (u16, String) {
     use std::io::{Read, Write};
     let addr = url.trim_start_matches("http://");
     let mut stream = std::net::TcpStream::connect(addr).unwrap();
-    let mut request = format!("POST /__veld/test/event HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\nContent-Length: 2\r\n");
+    let mut request = format!(
+        "POST /__veld/test/event HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\nContent-Length: 2\r\n"
+    );
     for (name, value) in headers {
         request.push_str(&format!("{name}: {value}\r\n"));
     }
@@ -308,7 +310,11 @@ fn post_event(url: &str, headers: &[(&str, &str)]) -> (u16, String) {
     stream.write_all(request.as_bytes()).unwrap();
     let mut answer = String::new();
     stream.read_to_string(&mut answer).unwrap();
-    let status = answer.split(' ').nth(1).and_then(|n| n.parse().ok()).unwrap_or(0);
+    let status = answer
+        .split(' ')
+        .nth(1)
+        .and_then(|n| n.parse().ok())
+        .unwrap_or(0);
     let body = answer.split("\r\n\r\n").nth(1).unwrap_or("").to_string();
     (status, body)
 }
@@ -321,15 +327,28 @@ fn the_event_endpoint_answers_400_with_an_error_object(binary: &str) {
     let cases: [(&str, Vec<(&str, &str)>); 5] = [
         ("no topic", vec![]),
         ("an empty topic", vec![("Veld-Test-Topic", "")]),
-        ("deliveries 0", vec![("Veld-Test-Topic", "t"), ("Veld-Test-Deliveries", "0")]),
-        ("deliveries 3", vec![("Veld-Test-Topic", "t"), ("Veld-Test-Deliveries", "3")]),
-        ("deliveries text", vec![("Veld-Test-Topic", "t"), ("Veld-Test-Deliveries", "two")]),
+        (
+            "deliveries 0",
+            vec![("Veld-Test-Topic", "t"), ("Veld-Test-Deliveries", "0")],
+        ),
+        (
+            "deliveries 3",
+            vec![("Veld-Test-Topic", "t"), ("Veld-Test-Deliveries", "3")],
+        ),
+        (
+            "deliveries text",
+            vec![("Veld-Test-Topic", "t"), ("Veld-Test-Deliveries", "two")],
+        ),
     ];
     for (what, headers) in cases {
         let (status, body) = post_event(&server.url, &headers);
         assert_eq!(status, 400, "{what}: {body}");
-        let parsed: serde_json::Value = serde_json::from_str(&body).unwrap_or_else(|e| panic!("{what}: not JSON ({e}): {body}"));
-        assert!(parsed["error"].as_str().is_some_and(|m| !m.is_empty()), "{what}: {body}");
+        let parsed: serde_json::Value = serde_json::from_str(&body)
+            .unwrap_or_else(|e| panic!("{what}: not JSON ({e}): {body}"));
+        assert!(
+            parsed["error"].as_str().is_some_and(|m| !m.is_empty()),
+            "{what}: {body}"
+        );
     }
 }
 
