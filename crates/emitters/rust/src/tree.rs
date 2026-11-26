@@ -34,6 +34,9 @@ pub struct Tree<'a> {
     /// True when the crate has an `@idempotent` endpoint (`spec/rules.md` section 11.8): every
     /// `Conditional` of the server core has the `idempotency` member.
     pub idempotency: bool,
+    /// The runtime config of the target (`spec/runtime-config.md`), when it has settings: the
+    /// server entry of every served service takes it.
+    pub runtime: Option<crate::config::RuntimeCfg>,
     /// True when some service of the tree publishes or subscribes: the tree then emits the events
     /// of its channels (`spec/events.md` section 14).
     events: bool,
@@ -70,6 +73,7 @@ impl<'a> Tree<'a> {
             rules: false,
             rollout: false,
             idempotency: false,
+            runtime: None,
             events: false,
         }
     }
@@ -144,6 +148,13 @@ impl<'a> Tree<'a> {
     #[must_use]
     pub fn with_idempotency(mut self, idempotency: bool) -> Self {
         self.idempotency = idempotency;
+        self
+    }
+
+    /// Sets the runtime config of the target.
+    #[must_use]
+    pub fn with_runtime(mut self, runtime: Option<crate::config::RuntimeCfg>) -> Self {
+        self.runtime = runtime;
         self
     }
 

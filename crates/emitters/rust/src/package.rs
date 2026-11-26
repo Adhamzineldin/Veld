@@ -73,7 +73,11 @@ pub fn emit_lib(
         // `veld::Error` carries the rule part of a problem and is now 128 bytes.
         s.push_str("#![allow(clippy::result_large_err)]\n\n");
     }
-    s.push_str("pub mod prelude;\npub mod veld;\n");
+    s.push_str("pub mod prelude;\n");
+    if f.config {
+        s.push_str("pub mod runtime_config;\n");
+    }
+    s.push_str("pub mod veld;\n");
     if f.axum {
         s.push_str("pub mod adapters;\n");
     }

@@ -50,6 +50,9 @@ pub struct Features {
     pub idempotency: bool,
     /// The server core says, for each endpoint, what it owes to `@version` and `@idempotent`.
     pub conditional: bool,
+    /// The target has a runtime config (`spec/runtime-config.md`): `src/veld/config.rs` (the
+    /// engine of its check) is emitted, next to `src/runtime_config.rs`.
+    pub config: bool,
 }
 
 impl Features {
@@ -123,6 +126,7 @@ const RULES_NUM: &str = include_str!("../../../veld-rules/src/helpers/num.rs");
 const RULES_TEXT: &str = include_str!("../../../veld-rules/src/helpers/text.rs");
 const CANONICAL: &str = include_str!("../runtime/canonical.rs");
 const CLIENT: &str = include_str!("../runtime/client.rs");
+const CONFIG: &str = include_str!("../runtime/config.rs");
 const CONDITIONAL: &str = include_str!("../runtime/conditional.rs");
 const IDEMPOTENCY: &str = include_str!("../runtime/idempotency.rs");
 const ERROR: &str = include_str!("../runtime/error.rs");
@@ -149,6 +153,7 @@ pub fn mod_rs(f: &Features) -> String {
     for (name, on) in [
         ("canonical", true),
         ("client", f.client),
+        ("config", f.config),
         ("conditional", f.version),
         ("error", true),
         ("events", f.events),
@@ -188,6 +193,7 @@ pub fn emit(files: &mut FileSet, f: &Features) -> Result<(), Vec<GenDiagnostic>>
     };
     put("src/veld/canonical.rs", CANONICAL, true)?;
     put("src/veld/client.rs", CLIENT, f.client)?;
+    put("src/veld/config.rs", CONFIG, f.config)?;
     put("src/veld/conditional.rs", CONDITIONAL, f.version)?;
     put("src/veld/idempotency.rs", IDEMPOTENCY, f.idempotency)?;
     put("src/veld/error.rs", ERROR, true)?;

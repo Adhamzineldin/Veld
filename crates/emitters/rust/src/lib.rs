@@ -8,6 +8,7 @@
 pub mod block;
 pub mod client;
 pub mod conditional;
+pub mod config;
 pub mod endpoints;
 pub mod events;
 pub mod guards;
@@ -28,7 +29,7 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 use veld_codegen::{
     Capabilities, FileSet, FrameworkInfo, GenDiagnostic, GenRequest, Generator, LanguageInfo,
-    Profile, Role, check_capabilities, naming,
+    Profile, Role, check_capabilities, naming, runtime_config::RuntimeModel,
 };
 use veld_ir::{Feature, ServiceId};
 
@@ -232,6 +233,8 @@ impl Generator for Rust {
             )]);
         }
         precheck(req, &self.capabilities(req.role))?;
+        let model = RuntimeModel::for_request(req, profile).map_err(|d| vec![d])?;
+        let runtime = model.as_ref().map(config::RuntimeCfg::of);
         let name = crate_name(req, opts)?;
         let tr = transports(req, opts, profile)?;
         let mut used = req.services.clone();
@@ -285,7 +288,12 @@ impl Generator for Rust {
         // A declaration that no endpoint reaches is emitted too, and it calls `vr::audit` for its
         // audited rules: the rollout regions are kept for every audited rule the crate has.
         let rollout = used_features.contains(&Feature::RulesRollout) || crate_has_audited(req);
-        let rules = crate_has_rules(req) || endpoint_rules || policies || rollout;
+        // A runtime config with `rules.output` needs the rules runtime to carry the mode.
+        let rules = crate_has_rules(req)
+            || endpoint_rules
+            || policies
+            || rollout
+            || runtime.as_ref().is_some_and(|r| r.output);
         // A server whose services only publish or subscribe has no HTTP surface at all: no server
         // core, no adapter, no framework dependency.
         let serving = server
@@ -316,6 +324,7 @@ impl Generator for Rust {
             axum: serving && profile.framework().unwrap_or(DEFAULT_SERVER_FRAMEWORK) == "axum",
             reqwest: tr.reqwest,
             ureq: tr.ureq,
+            config: model.is_some(),
         };
         let mut files = FileSet::new();
         runtime::emit(&mut files, &f)?;
@@ -326,7 +335,11 @@ impl Generator for Rust {
             .with_validate(validate)
             .with_rules(rules)
             .with_rollout(rollout)
-            .with_idempotency(idempotency);
+            .with_idempotency(idempotency)
+            .with_runtime(runtime);
+        if let Some(model) = &model {
+            config::emit(&mut files, model, req.ir, req.role, tr)?;
+        }
         models::emit(&mut files, &main)?;
         policies::emit(&mut files, &main)?;
         if !files.contains("src/prelude.rs") {

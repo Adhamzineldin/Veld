@@ -11,7 +11,7 @@ use veld_ir::{Constraints, Service, ServiceFact};
 use crate::block;
 use crate::endpoints::{self, Kind};
 use crate::models::with_imports;
-use crate::server::{needs, service_mod, service_type};
+use crate::server::{Entry, needs, service_mod, service_type};
 use crate::tree::Tree;
 use crate::types::{Ctx, rust_type, schema_ref};
 use crate::util::{add_file, lit, method, module};
@@ -108,7 +108,7 @@ fn write_file(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service) {
     helpers(w, !svc.facts.is_empty());
     loaders(w, ctx, svc);
     dispatch(w, ctx, svc, &name);
-    handler(w, svc, &name);
+    handler(w, ctx.tree, svc, &name);
     probe(w, svc, &name);
 }
 
@@ -380,13 +380,17 @@ fn call(w: &mut CodeWriter, svc: &Service) {
     }
 }
 
-fn handler(w: &mut CodeWriter, svc: &Service, name: &str) {
+fn handler(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service, name: &str) {
     let loaders = !svc.facts.is_empty();
     let n = needs(svc);
+    let e = Entry::of(tree);
     let inner = if loaders {
-        format!("{name}Dispatch {{ service, hooks, loaders: HeaderFacts }}")
+        format!(
+            "{name}Dispatch {{ service, hooks, loaders: HeaderFacts{} }}",
+            e.member
+        )
     } else {
-        format!("{name}Dispatch {{ service, hooks }}")
+        format!("{name}Dispatch {{ service, hooks{} }}", e.member)
     };
     w.line(
         "/// Builds the test handler of the service. Creating it says so once: never mount it in",
@@ -396,24 +400,36 @@ fn handler(w: &mut CodeWriter, svc: &Service, name: &str) {
     w.line(format!("pub struct {name}TestHandler;")).blank();
     w.open(format!("impl {name}TestHandler"));
     w.line("/// The test handler for `service`, with `hooks` (their authentication and middleware are not called).");
+    e.docs(w);
+    let ret = e.result(&format!("Handler<{name}TestDispatch<S, H>>"));
     w.open(format!(
-        "pub fn create<S: {name}Service, H: {name}Hooks>(service: S, hooks: H) -> Handler<{name}TestDispatch<S, H>>"
+        "pub fn create<S: {name}Service, H: {name}Hooks>(service: S, hooks: H{}) -> {ret}",
+        e.param
     ));
+    if let Some(check) = &e.check {
+        w.line(check);
+    }
     w.line(format!(
         "eprintln!(\"veld: the test handler of `{}` is running: anyone can choose the facts, the principal and the clock of a request. Never mount it in production.\");",
         svc.name
     ));
-    w.line(format!(
-        "Handler::new({name}TestDispatch {{ inner: {inner} }})"
-    ));
+    let value = format!("Handler::new({name}TestDispatch {{ inner: {inner} }})");
+    w.line(if e.check.is_some() {
+        format!("Ok({value})")
+    } else {
+        value
+    });
     w.close();
     if !n.any() {
         w.blank();
         w.line("/// The test handler for `service` with the default hooks.");
+        e.docs(w);
         w.open(format!(
-            "pub fn plain<S: {name}Service>(service: S) -> Handler<{name}TestDispatch<S, NoHooks>>"
+            "pub fn plain<S: {name}Service>(service: S{}) -> {}",
+            e.param,
+            e.result(&format!("Handler<{name}TestDispatch<S, NoHooks>>"))
         ));
-        w.line("Self::create(service, NoHooks)");
+        w.line(format!("Self::create(service, NoHooks{})", e.pass));
         w.close();
     }
     w.close().blank();
