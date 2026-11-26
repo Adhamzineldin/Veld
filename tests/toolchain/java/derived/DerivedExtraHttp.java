@@ -22,6 +22,7 @@ import java.net.http.HttpResponse;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
@@ -38,9 +39,12 @@ public final class DerivedExtraHttp {
   private static final UUID ID = UUID.fromString("00000000-0000-4000-8000-0000000000f1");
   private static final HttpClient HTTP = HttpClient.newHttpClient();
 
+  private static final AtomicReference<Caller> SEEN = new AtomicReference<>();
+
   private static final class Impl implements ProbeService {
     @Override
     public Echo echo(EchoRequest request, RequestContext ctx) {
+      SEEN.set((Caller) ctx.principal());
       return new Echo(request.n(), 12345);
     }
 
@@ -99,6 +103,7 @@ public final class DerivedExtraHttp {
   private static void thePrincipalIsGivenItsDerivedField(HttpServer server) throws Exception {
     Answer fine = get(server, "/probe/echo?n=3", 5);
     check(fine.status() == 200, "a level of 5 gives a cap of 50: " + fine.status() + fine.text());
+    check(SEEN.get().cap() == 50, "the handler sees the caller with its derived field: " + SEEN.get());
     Answer refused = get(server, "/probe/echo?n=3", 0);
     check(refused.status() == 422, "a level of 0 gives a cap of 0, whatever the hook put there: " + refused.status());
   }

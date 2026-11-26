@@ -386,6 +386,27 @@ fn the_production_handler_computes_derived_fields_over_http() {
     assert!(out.contains("OK"), "{out}");
 }
 
+/// `validate = false` switches off the rules of the request, not the computing: a derived field of
+/// the request that fails is left absent and is not reported, not even later as an output violation.
+#[test]
+fn validate_false_still_computes_derived_fields_and_reports_nothing() {
+    if !require_javac("validate_false_still_computes_derived_fields") {
+        return;
+    }
+    let ir = endpoints_ir();
+    let mut o = options("gen.b", Some("17"));
+    o["validate"] = serde_json::json!(false);
+    let all = ir.services.iter().map(|s| s.id).collect();
+    let files = run(&ir, Role::Server, all, vec![], None, o);
+    let out = compile_and_run(
+        &files,
+        &["DerivedNoValidate.java"],
+        "veldtest.DerivedNoValidate",
+        &[],
+    );
+    assert!(out.contains("OK"), "{out}");
+}
+
 /// The principal is given its derived field, the result is computed before the invariants and
 /// under the output mode, and every item of a stream is computed.
 #[test]
