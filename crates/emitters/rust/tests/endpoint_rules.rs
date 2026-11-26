@@ -143,6 +143,43 @@ fn the_test_handler_says_at_its_top_that_it_must_never_be_mounted_in_production(
     );
 }
 
+/// `spec/runtime-config.md` section 4: the test handler takes no runtime config, and its output
+/// mode is a member of its own hooks.
+#[test]
+fn the_test_handler_takes_no_runtime_config_and_its_hooks_hold_the_output_mode() {
+    let ir = endpoints_ir();
+    let on = server_with(&ir, testing());
+    let file = text(&on, "src/bookings/bookings_test_server.rs");
+    assert!(!file.contains("runtime"), "{file}");
+    assert!(!file.contains("ConfigError"), "{file}");
+    assert!(
+        file.contains("pub trait BookingsTestHooks: BookingsHooks"),
+        "{file}"
+    );
+    assert!(
+        file.contains("let output = hooks.rules_output();"),
+        "{file}"
+    );
+    assert!(
+        file.contains("pub fn plain<S: BookingsService>(service: S) -> Handler<"),
+        "{file}"
+    );
+    assert!(
+        file.contains("impl BookingsTestHooks for NoHooks {}"),
+        "{file}"
+    );
+    // The production entry still takes the config, and its hooks have no mode.
+    let prod = text(&on, "src/bookings/bookings_server.rs");
+    assert!(
+        !prod.contains("fn rules_output(&self) -> veld::rules::RuleOutput {\n        veld"),
+        "{prod}"
+    );
+    assert!(
+        prod.contains("runtime: Option<&crate::runtime_config::BookingsServerRuntime>"),
+        "{prod}"
+    );
+}
+
 #[test]
 fn a_contract_with_invariants_only_gets_none_of_it() {
     let ir = rules_ir();

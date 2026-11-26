@@ -6,7 +6,7 @@ use bookings_server::bookings::bookings_server::{
     BookFacts, BookMineRequest, BookRequest, BookingsHooks, BookingsService, CancelRequest,
     PayRequest, ReplaceRequest, SaveRoomFacts, SaveRoomRequest,
 };
-use bookings_server::bookings::bookings_test_server::{BookingsTestHandler, router};
+use bookings_server::bookings::bookings_test_server::{BookingsTestHandler, BookingsTestHooks, router};
 use bookings_server::veld::Error;
 use bookings_server::veld::idempotency::MemoryIdempotencyStore;
 use bookings_server::veld::server::{Principal, RequestContext};
@@ -54,6 +54,8 @@ impl BookingsService for Stub {
 /// The test handler has a store of its own for every request; the hooks' is never asked.
 struct Hooks(MemoryIdempotencyStore);
 
+impl BookingsTestHooks for Hooks {}
+
 impl BookingsHooks for Hooks {
     type IdempotencyStore = MemoryIdempotencyStore;
 
@@ -72,7 +74,7 @@ impl BookingsHooks for Hooks {
 
 #[tokio::main]
 async fn main() {
-    let app = router(BookingsTestHandler::create(Stub, Hooks(MemoryIdempotencyStore::new()), None).unwrap());
+    let app = router(BookingsTestHandler::create(Stub, Hooks(MemoryIdempotencyStore::new())));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     println!("PORT={}", listener.local_addr().unwrap().port());
     axum::serve(listener, app).await.unwrap();

@@ -11,7 +11,7 @@ use veld_ir::{Constraints, Service, ServiceFact};
 use crate::block;
 use crate::endpoints::{self, Kind};
 use crate::models::with_imports;
-use crate::server::{Entry, needs, service_mod, service_type};
+use crate::server::{mode_in_runtime, needs, service_mod, service_type};
 use crate::tree::Tree;
 use crate::types::{Ctx, rust_type, schema_ref};
 use crate::util::{add_file, lit, method, module};
@@ -107,6 +107,7 @@ fn write_file(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service) {
     w.blank();
     helpers(w, !svc.facts.is_empty());
     loaders(w, ctx, svc);
+    test_hooks(w, ctx.tree, svc, &name);
     dispatch(w, ctx, svc, &name);
     handler(w, ctx.tree, svc, &name);
     probe(w, svc, &name);
@@ -383,56 +384,77 @@ fn call(w: &mut CodeWriter, svc: &Service) {
 fn handler(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service, name: &str) {
     let loaders = !svc.facts.is_empty();
     let n = needs(svc);
-    let e = Entry::of(tree);
-    let inner = if loaders {
-        format!(
-            "{name}Dispatch {{ service, hooks, loaders: HeaderFacts{} }}",
-            e.member
-        )
+    // The output mode is a member of the test handler's own hooks (`spec/runtime-config.md` 4).
+    let member = if mode_in_runtime(tree) {
+        ", output"
     } else {
-        format!("{name}Dispatch {{ service, hooks{} }}", e.member)
+        ""
+    };
+    let bound = if mode_in_runtime(tree) {
+        format!("{name}TestHooks")
+    } else {
+        format!("{name}Hooks")
+    };
+    let inner = if loaders {
+        format!("{name}Dispatch {{ service, hooks, loaders: HeaderFacts{member} }}")
+    } else {
+        format!("{name}Dispatch {{ service, hooks{member} }}")
     };
     w.line(
         "/// Builds the test handler of the service. Creating it says so once: never mount it in",
     );
-    w.line("/// production.");
+    w.line("/// production. It takes no runtime config: it calls no consumed service.");
     w.line("#[derive(Debug, Clone, Copy)]");
     w.line(format!("pub struct {name}TestHandler;")).blank();
     w.open(format!("impl {name}TestHandler"));
     w.line("/// The test handler for `service`, with `hooks` (their authentication and middleware are not called).");
-    e.docs(w);
-    let ret = e.result(&format!("Handler<{name}TestDispatch<S, H>>"));
     w.open(format!(
-        "pub fn create<S: {name}Service, H: {name}Hooks>(service: S, hooks: H{}) -> {ret}",
-        e.param
+        "pub fn create<S: {name}Service, H: {bound}>(service: S, hooks: H) -> Handler<{name}TestDispatch<S, H>>"
     ));
-    if let Some(check) = &e.check {
-        w.line(check);
+    if mode_in_runtime(tree) {
+        w.line("let output = hooks.rules_output();");
     }
     w.line(format!(
         "eprintln!(\"veld: the test handler of `{}` is running: anyone can choose the facts, the principal and the clock of a request. Never mount it in production.\");",
         svc.name
     ));
-    let value = format!("Handler::new({name}TestDispatch {{ inner: {inner} }})");
-    w.line(if e.check.is_some() {
-        format!("Ok({value})")
-    } else {
-        value
-    });
+    w.line(format!(
+        "Handler::new({name}TestDispatch {{ inner: {inner} }})"
+    ));
     w.close();
     if !n.any() {
         w.blank();
         w.line("/// The test handler for `service` with the default hooks.");
-        e.docs(w);
         w.open(format!(
-            "pub fn plain<S: {name}Service>(service: S{}) -> {}",
-            e.param,
-            e.result(&format!("Handler<{name}TestDispatch<S, NoHooks>>"))
+            "pub fn plain<S: {name}Service>(service: S) -> Handler<{name}TestDispatch<S, NoHooks>>"
         ));
-        w.line(format!("Self::create(service, NoHooks{})", e.pass));
+        w.line("Self::create(service, NoHooks)");
         w.close();
     }
     w.close().blank();
+}
+
+/// The hooks trait of the test handler: the production hooks and the output mode.
+fn test_hooks(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service, name: &str) {
+    if !mode_in_runtime(tree) {
+        return;
+    }
+    w.line(
+        "/// The hooks of the test handler: the hooks of the service, and the rule output mode the",
+    );
+    w.line("/// test handler runs in (`spec/runtime-config.md` section 4). Implement it with an empty body");
+    w.line("/// for the default, `Strict`.");
+    w.open(format!("pub trait {name}TestHooks: {name}Hooks"));
+    w.line("/// `Strict` (the default) answers `500 Internal` for a violated invariant of a result, `Audit`");
+    w.line("/// sends it and reports, `Off` does not check.");
+    w.open("fn rules_output(&self) -> veld::rules::RuleOutput");
+    w.line("veld::rules::RuleOutput::Strict");
+    w.close();
+    w.close().blank();
+    if !needs(svc).any() {
+        w.line(format!("impl {name}TestHooks for NoHooks {{}}"))
+            .blank();
+    }
 }
 
 fn probe(w: &mut CodeWriter, svc: &Service, name: &str) {
