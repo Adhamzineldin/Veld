@@ -79,6 +79,33 @@ service Mixed at "/m" {
 }
 "#;
 
+/// Two services with no endpoint rule: an `@idempotent` endpoint, and an endpoint that owes an `ETag`
+/// (`spec/rules.md` section 11.12: both get a test handler).
+const LIVE_ONLY: &str = r#"
+model Reserve { guests: int }
+
+model Booking {
+  id: uuid
+  guests: int
+}
+
+model Room {
+  id: uuid
+  name: string
+  @version
+  revision: long
+}
+
+service Bookings at "/bookings" {
+  @idempotent
+  post "/" book(body: Reserve) -> 201 Booking
+}
+
+service Rooms at "/rooms" {
+  get "/{id}" getRoom(id: uuid) -> Room | NotFound
+}
+"#;
+
 /// Parameters that the client's request would shadow.
 const CLASH_IF_MATCH: &str = r#"
 model Room {
@@ -114,6 +141,10 @@ fn idempotency_ir() -> Ir {
 
 fn fingerprint_ir() -> Ir {
     compile_source(FINGERPRINTED.to_string(), "fp", "the fingerprint contract")
+}
+
+fn live_only_ir() -> Ir {
+    compile_source(LIVE_ONLY.to_string(), "only", "the live-only contract")
 }
 
 fn combo_ir() -> Ir {
@@ -184,6 +215,56 @@ fn the_small_contract_is_snapshotted_for_the_server_the_client_and_the_test_hand
     insta::assert_snapshot!(
         "conditional_client_IfMatch",
         text(&client, "gen/b/runtime/IfMatch.java")
+    );
+}
+
+/// A service whose only rule is a key or an `ETag` gets a test handler (`spec/rules.md` 11.12),
+/// and the production files are the same with the option on or off.
+#[test]
+fn a_service_with_only_a_key_or_an_etag_gets_a_test_handler() {
+    let ir = live_only_ir();
+    let plain = generate(&ir, Role::Server, None, false);
+    let testing = generate(&ir, Role::Server, None, true);
+    for (path, bytes) in plain.iter() {
+        let other = testing
+            .get(path)
+            .unwrap_or_else(|| panic!("{path} is gone"));
+        assert_eq!(bytes, other, "{path} differs with `testing = true`");
+    }
+    let added: Vec<&str> = testing.paths().filter(|p| plain.get(p).is_none()).collect();
+    assert_eq!(
+        added,
+        [
+            "gen/b/only/server/BookingsTestHandler.java",
+            "gen/b/only/server/RoomsTestHandler.java",
+            "gen/b/runtime/TestSupport.java"
+        ]
+    );
+    let support = text(&testing, "gen/b/runtime/TestSupport.java");
+    assert!(
+        support.contains("public static Conditions.Early passed()"),
+        "a dry run ends through the conditions' own exception:\n{support}"
+    );
+    assert!(
+        !testing
+            .paths()
+            .any(|p| p.ends_with("/EndpointRules.java") || p.ends_with("/RuleWalk.java")),
+        "no rule class comes with the test handler"
+    );
+    for name in ["BookingsTestHandler", "RoomsTestHandler"] {
+        let path = format!("gen/b/only/server/{name}.java");
+        insta::assert_snapshot!(format!("conditional_only_{name}"), text(&testing, &path));
+    }
+    insta::assert_snapshot!(
+        "conditional_only_BookingsHandler",
+        text(&testing, "gen/b/only/server/BookingsHandler.java")
+    );
+    let client = generate(&ir, Role::Client, None, true);
+    assert!(
+        !client
+            .paths()
+            .any(|p| p.contains("TestHandler") || p.ends_with("/TestSupport.java")),
+        "a client has no test handler"
     );
 }
 
@@ -397,6 +478,7 @@ fn every_contract_with_the_annotations_compiles_with_every_warning_on() {
         fingerprint_ir(),
         small_ir(),
         combo_ir(),
+        live_only_ir(),
     ];
     irs.extend(conformance_irs());
     for ir in &irs {
@@ -536,6 +618,54 @@ fn the_production_handler_stores_and_replays_idempotent_answers() {
         &idempotency_ir(),
         &["IdempotencyHttp.java"],
         "veldtest.IdempotencyHttp",
+    );
+}
+
+/// The test handlers of two services without an endpoint rule: the probe, a dry run, the state of
+/// the store, the supplied result and its `ETag`.
+#[test]
+fn the_test_handlers_of_a_key_only_and_an_etag_only_service_answer() {
+    if !require_javac("the_test_handlers_of_a_key_only_service") {
+        return;
+    }
+    let ir = live_only_ir();
+    let work = tempfile::tempdir().unwrap();
+    let mut sources = write_files(work.path(), &generate(&ir, Role::Server, None, true));
+    sources.push(repo_root().join("tests/toolchain/java/rules/LiveOnlyHttp.java"));
+    for release in releases() {
+        javac_ok(work.path(), &sources, release);
+    }
+    let out = java_main(work.path(), "veldtest.LiveOnlyHttp", &[]);
+    assert!(
+        out.status.success() && String::from_utf8_lossy(&out.stdout).contains("OK"),
+        "LiveOnlyHttp failed:\n{}\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+/// `validate = false` switches off the rules of the request but not the key, the syntax of
+/// `If-Match` or the version guard (`spec/rules.md` section 11.10).
+#[test]
+fn validate_false_keeps_the_guard_and_the_key_checks() {
+    if !require_javac("validate_false_keeps_the_guard_and_the_key_checks") {
+        return;
+    }
+    let ir = idempotency_ir();
+    let mut o = options("gen.b", Some("17"));
+    o["validate"] = serde_json::json!(false);
+    let all = ir.services.iter().map(|s| s.id).collect();
+    let files = run(&ir, Role::Server, all, vec![], None, o);
+    let work = tempfile::tempdir().unwrap();
+    let mut sources = write_files(work.path(), &files);
+    sources.push(repo_root().join("tests/toolchain/java/rules/ConditionalNoValidate.java"));
+    javac_ok(work.path(), &sources, "17");
+    let out = java_main(work.path(), "veldtest.ConditionalNoValidate", &[]);
+    assert!(
+        out.status.success() && String::from_utf8_lossy(&out.stdout).contains("OK"),
+        "ConditionalNoValidate failed:\n{}\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
     );
 }
 

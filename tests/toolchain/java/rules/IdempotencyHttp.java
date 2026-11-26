@@ -45,7 +45,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  * the replay header, the handler not called and no fact loaded), other parameters and a request that
  * is still running are 409, a declared error is stored, a 500 is not, a required or malformed key is
  * 422, two callers do not replay each other, a server without the store or the caller hook fails when
- * it is created, and a store that fails is a 500 (begin) or only reported (complete, release).
+ * it is created, a store that fails is a 500 (begin) or only reported (complete, release), and a
+ * caller hook that fails is a 500 like a failing begin (spec/rules.md section 11.12).
  */
 public final class IdempotencyHttp {
   private IdempotencyHttp() {}
@@ -59,6 +60,7 @@ public final class IdempotencyHttp {
   private static final List<String> ERRORS = Collections.synchronizedList(new ArrayList<>());
 
   private static boolean failNext;
+  private static volatile boolean failCaller;
   private static CountDownLatch entered;
   private static CountDownLatch release;
 
@@ -215,7 +217,15 @@ public final class IdempotencyHttp {
   }
 
   private static HttpServer serve(Spy store) throws Exception {
-    BookingsHooks hooks = new BookingsHooks((token, ctx) -> token, store, (principal, ctx) -> (String) principal)
+    BookingsHooks hooks = new BookingsHooks(
+            (token, ctx) -> token,
+            store,
+            (principal, ctx) -> {
+              if (failCaller) {
+                throw new IllegalStateException("the caller hook is down");
+              }
+              return (String) principal;
+            })
         .onError((error, ctx) -> ERRORS.add(String.valueOf(error.getMessage())));
     return JdkHttpServerAdapter.listen(
         BookingsHandler.create(new Impl(), new Loaders(), hooks), new InetSocketAddress("127.0.0.1", 0));
@@ -234,6 +244,7 @@ public final class IdempotencyHttp {
       twoCallersDoNotReplayEachOther(server, store);
       theHeaderAndTheEmptyAnswer(server);
       aStoreThatFails(store, server);
+      aCallerHookThatFails(store, server);
       aServerThatLacksAHook();
     } finally {
       server.stop(0);
@@ -429,6 +440,28 @@ public final class IdempotencyHttp {
     check(boom.status() == 500, "the 500 is sent although release failed: " + boom.status());
     check(ERRORS.get(ERRORS.size() - 1).equals("cannot release"), "release failure reported: " + ERRORS);
     store.failRelease = false;
+  }
+
+  /** A caller hook that fails is treated like a failing begin: 500, the store not asked, the handler not called. */
+  private static void aCallerHookThatFails(Spy store, HttpServer server) throws Exception {
+    Map<String, String> headers = Map.of("Idempotency-Token", "k-caller", "Authorization", "Bearer alice");
+    String body = "{\"guests\":4}";
+    failCaller = true;
+    int calls = CALLS.get();
+    int asked = store.scopes.size();
+    int errors = ERRORS.size();
+    Answer down = send(server, "POST", "/bookings/mine", headers, body);
+    check(down.status() == 500 && title(down).equals("Internal"), "the caller hook fails: " + down.status());
+    check(CALLS.get() == calls, "the handler did not run");
+    check(store.scopes.size() == asked, "the store was not asked without a scope");
+    check(
+        ERRORS.size() == errors + 1 && ERRORS.get(errors).equals("the caller hook is down"),
+        "onError saw it: " + ERRORS);
+    check(!down.text().contains("caller hook"), "the message does not leak: " + down.text());
+    failCaller = false;
+    Answer up = send(server, "POST", "/bookings/mine", headers, body);
+    check(up.status() == 201 && !up.replayed(), "nothing was stored by the failed request: " + up.status());
+    check(CALLS.get() == calls + 1, "the handler ran once");
   }
 
   /** A hook that is missing fails when the handler is created, naming the first endpoint that needs it. */
