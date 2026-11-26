@@ -22,6 +22,7 @@ pub mod outbox;
 pub mod platform;
 pub mod policy;
 pub mod readme;
+pub mod retention;
 pub mod rule_expr;
 pub mod rules;
 pub mod runtime;
@@ -98,7 +99,8 @@ fn events_capabilities(role: Role) -> Capabilities {
             .with(Feature::Visibility)
             .with(Feature::Tenancy)
             .with(Feature::Audit)
-            .with(Feature::Limits),
+            .with(Feature::Limits)
+            .with(Feature::Retention),
         Role::Client => caps.with(Feature::Tenancy).with(Feature::Limits),
     }
 }
@@ -414,6 +416,7 @@ impl Generator for Java {
                 };
                 frameworks::emit(&mut files, &model, profile)?;
                 server::emit(&mut files, &tree)?;
+                retention::emit(&mut files, &tree, profile)?;
                 events::emit(&mut files, &tree)?;
                 brokers::emit(&mut files, &base, &brokers)?;
                 emit_consumed(

@@ -210,11 +210,11 @@ fn java_generates_message_catalogs() {
     veld_emit_conformance::check_messages_are_generated(&Java).unwrap();
 }
 
-/// Retention (`spec/platform.md` section 23): until Java implements it, its server refuses a
-/// contract with `@retain` models with `E0801`; its client is not affected.
+/// Retention (`spec/platform.md` section 23): the Java server declares `retention` and generates a
+/// contract with `@retain` models; its client, which has nothing to generate for it, is not affected.
 #[test]
-fn java_refuses_retention_in_the_server_only() {
-    veld_emit_conformance::check_retention_is_refused(&Java).unwrap();
+fn java_generates_retention_in_the_server_only() {
+    veld_emit_conformance::check_retention_is_generated(&Java).unwrap();
 }
 
 /// `emits` and the outbox (`spec/events.md` section 11): the Java server declares `events_outbox` and

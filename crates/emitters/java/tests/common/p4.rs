@@ -25,7 +25,8 @@ pub fn options_with(package: &str, extra: &serde_json::Value) -> serde_json::Val
     value
 }
 
-/// The files of every service of `ir` in `role`, with extra target options.
+/// The files of every service of `ir` in `role`, with extra target options. The name of the target
+/// is the package with `-` for `.` (`gen.b` is `gen-b`) unless `extra` has a `target-name`.
 pub fn generate(ir: &Ir, role: Role, package: &str, extra: &serde_json::Value) -> FileSet {
     let all = ir.services.iter().map(|s| s.id).collect();
     run(ir, role, all, vec![], None, options_with(package, extra))
