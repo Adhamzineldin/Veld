@@ -58,7 +58,7 @@ error Rejected 422 {
 event GuestRegistered {
   guestId: uuid
   email: string @pii
-  at: datetime
+  registeredAt: datetime
 }
 
 channel GuestEvents { carries GuestRegistered }

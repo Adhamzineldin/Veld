@@ -139,7 +139,7 @@ fn the_rules_are_named_by_the_code_table() {
 
 // ---- pii-without-retention (`L0017`, `spec/platform.md` section 23) -------------------------
 
-const GUEST_RETAINED: &str = "@retain(days(30), since: at, then: anonymize)\nmodel Guest {\n  at?: datetime\n  name: string @pii\n}\n";
+const GUEST_RETAINED: &str = "@retain(days(30), since: seen, then: anonymize)\nmodel Guest {\n  seen?: datetime\n  name: string @pii\n}\n";
 
 #[test]
 fn a_model_with_a_pii_field_and_no_retain_is_reported() {

@@ -13,10 +13,10 @@ model Guest {
   checkedOutAt?: datetime
 }
 
-@retain(days(1), since: at, then: delete)
+@retain(days(1), since: seen, then: delete)
 model Session {
   token: string @secret
-  at: datetime
+  seen: datetime
 }
 
 model Note {
@@ -66,7 +66,7 @@ The models that hold personal data (`@pii`) or secrets (`@secret`), how long eac
 ### `Session`
 
 - Secrets: `token`
-- Kept: 1 day after `at`, then deleted
+- Kept: 1 day after `seen`, then deleted
 - Travels: nowhere: no endpoint or event can carry it
 ";
 

@@ -87,35 +87,35 @@ fn delete_needs_no_pii_field_and_a_date_will_do() {
 #[test]
 fn every_mistake_of_the_arguments_is_e1310() {
     let model = |args: &str| {
-        format!("@retain({args})\nmodel M {{\n  id: uuid\n  at: datetime\n  who: string @pii\n}}\n")
+        format!("@retain({args})\nmodel M {{\n  id: uuid\n  seen: datetime\n  who: string @pii\n}}\n")
     };
     for bad in [
         "",
         "days(30)",
-        "days(30), since: at",
-        "since: at, then: delete",
+        "days(30), since: seen",
+        "since: seen, then: delete",
         "days(30), then: delete",
-        "hours(24), since: at, then: delete",
-        "weeks(1), since: at, then: delete",
-        "days(0), since: at, then: delete",
-        "days(-3), since: at, then: delete",
-        "days(1.5), since: at, then: delete",
-        "days(\"3\"), since: at, then: delete",
-        "days(1, 2), since: at, then: delete",
-        "days(), since: at, then: delete",
-        "30, since: at, then: delete",
-        "days(30), since: at, then: archive",
-        "days(30), since: at, then: \"delete\"",
-        "days(30), since: \"at\", then: delete",
-        "days(30), since: at, then: delete, extra: 1",
-        "days(30), since: at, since: at, then: delete",
-        "days(30), days(40), since: at, then: delete",
-        "days(9999999999999999), since: at, then: delete",
+        "hours(24), since: seen, then: delete",
+        "weeks(1), since: seen, then: delete",
+        "days(0), since: seen, then: delete",
+        "days(-3), since: seen, then: delete",
+        "days(1.5), since: seen, then: delete",
+        "days(\"3\"), since: seen, then: delete",
+        "days(1, 2), since: seen, then: delete",
+        "days(), since: seen, then: delete",
+        "30, since: seen, then: delete",
+        "days(30), since: seen, then: archive",
+        "days(30), since: seen, then: \"delete\"",
+        "days(30), since: \"seen\", then: delete",
+        "days(30), since: seen, then: delete, extra: 1",
+        "days(30), since: seen, since: seen, then: delete",
+        "days(30), days(40), since: seen, then: delete",
+        "days(9999999999999999), since: seen, then: delete",
     ] {
         assert_eq!(codes(&model(bad)), ["E1310"], "@retain({bad})");
     }
     assert_eq!(
-        codes(&model("days(30), since: at, then: delete")),
+        codes(&model("days(30), since: seen, then: delete")),
         Vec::<&str>::new()
     );
 }
@@ -124,10 +124,10 @@ fn every_mistake_of_the_arguments_is_e1310() {
 fn the_since_field_must_exist_and_be_a_datetime_or_a_date() {
     let model = |field: &str| {
         format!(
-            "@retain(days(7), since: {field}, then: delete)\nmodel M {{\n  id: uuid\n  at: datetime\n  n: int\n}}\n"
+            "@retain(days(7), since: {field}, then: delete)\nmodel M {{\n  id: uuid\n  seen: datetime\n  n: int\n}}\n"
         )
     };
-    assert_eq!(codes(&model("at")), Vec::<&str>::new());
+    assert_eq!(codes(&model("seen")), Vec::<&str>::new());
     assert_eq!(codes(&model("missing")), ["E1310"]);
     assert_eq!(codes(&model("n")), ["E1310"]);
     assert_eq!(codes(&model("id")), ["E1310"]);
@@ -135,25 +135,25 @@ fn the_since_field_must_exist_and_be_a_datetime_or_a_date() {
 
 #[test]
 fn an_inherited_field_can_be_the_since_field_and_an_inherited_pii_counts() {
-    let src = "model Base {\n  at: datetime\n  who: string @pii\n}\n\
-               @retain(days(7), since: at, then: anonymize)\nmodel Kid extends Base {\n  n: int\n}\n";
+    let src = "model Base {\n  seen: datetime\n  who: string @pii\n}\n\
+               @retain(days(7), since: seen, then: anonymize)\nmodel Kid extends Base {\n  n: int\n}\n";
     assert_eq!(codes(src), Vec::<&str>::new());
     let ir = build(src);
-    assert_eq!(model(&ir, "Kid").retain.unwrap().since, "at");
+    assert_eq!(model(&ir, "Kid").retain.unwrap().since, "seen");
 }
 
 #[test]
 fn anonymize_needs_a_pii_field_and_secret_is_not_enough() {
-    let src = "@retain(days(7), since: at, then: anonymize)\nmodel M {\n  at: datetime\n  key: string @secret\n}\n";
+    let src = "@retain(days(7), since: seen, then: anonymize)\nmodel M {\n  seen: datetime\n  key: string @secret\n}\n";
     assert_eq!(codes(src), ["E1310"]);
 }
 
 #[test]
 fn it_stands_on_a_model_only() {
     for src in [
-        "@retain(days(1), since: at, then: delete)\nerror E 400 { at: datetime }\n",
-        "@retain(days(1), since: at, then: delete)\nenum S { a, b }\n",
-        "model M {\n  at: datetime @retain(days(1), since: at, then: delete)\n}\n",
+        "@retain(days(1), since: seen, then: delete)\nerror E 400 { seen: datetime }\n",
+        "@retain(days(1), since: seen, then: delete)\nenum S { a, b }\n",
+        "model M {\n  seen: datetime @retain(days(1), since: seen, then: delete)\n}\n",
     ] {
         assert_eq!(codes(src), ["E0602"], "{src}");
     }

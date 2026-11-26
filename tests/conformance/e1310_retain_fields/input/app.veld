@@ -2,7 +2,7 @@
 
 @retain(days(30), since: missing, then: delete)
 model NoSuchField {
-  at: datetime
+  seen: datetime
 }
 
 @retain(days(30), since: count, then: delete)
@@ -10,8 +10,8 @@ model NotADate {
   count: int
 }
 
-@retain(days(30), since: at, then: anonymize)
+@retain(days(30), since: seen, then: anonymize)
 model NothingToAnonymize {
-  at: datetime
+  seen: datetime
   token: string @secret
 }

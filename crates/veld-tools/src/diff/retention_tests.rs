@@ -8,7 +8,7 @@ use crate::testutil::ir;
 
 fn guest(retain: &str) -> String {
     format!(
-        "{retain}\nmodel Guest {{\n  id: uuid\n  name: string @pii\n  at?: datetime\n  seen?: datetime\n}}\nservice S at \"/s\" {{ get \"/\" f() -> Guest }}\n"
+        "{retain}\nmodel Guest {{\n  id: uuid\n  name: string @pii\n  seen?: datetime\n  opened?: datetime\n}}\nservice S at \"/s\" {{ get \"/\" f() -> Guest }}\n"
     )
 }
 
@@ -21,7 +21,7 @@ fn kinds(old: &str, new: &str) -> Vec<(ChangeKind, Severity)> {
     v
 }
 
-const D30: &str = "@retain(days(30), since: at, then: anonymize)";
+const D30: &str = "@retain(days(30), since: seen, then: anonymize)";
 
 #[test]
 fn adding_a_retention_is_possibly_breaking_and_removing_it_is_not() {
@@ -31,14 +31,14 @@ fn adding_a_retention_is_possibly_breaking_and_removing_it_is_not() {
 
 #[test]
 fn a_shorter_duration_is_possibly_breaking_and_a_longer_one_is_not() {
-    let d7 = "@retain(days(7), since: at, then: anonymize)";
+    let d7 = "@retain(days(7), since: seen, then: anonymize)";
     assert_eq!(kinds(&guest(D30), &guest(d7)), [(RetentionShortened, P)]);
     assert_eq!(kinds(&guest(d7), &guest(D30)), [(RetentionLengthened, N)]);
 }
 
 #[test]
 fn another_since_field_is_possibly_breaking() {
-    let other = "@retain(days(30), since: seen, then: anonymize)";
+    let other = "@retain(days(30), since: opened, then: anonymize)";
     assert_eq!(
         kinds(&guest(D30), &guest(other)),
         [(RetentionSinceChanged, P)]
@@ -47,7 +47,7 @@ fn another_since_field_is_possibly_breaking() {
 
 #[test]
 fn anonymize_to_delete_is_possibly_breaking_and_delete_to_anonymize_is_not() {
-    let delete = "@retain(days(30), since: at, then: delete)";
+    let delete = "@retain(days(30), since: seen, then: delete)";
     assert_eq!(
         kinds(&guest(D30), &guest(delete)),
         [(RetentionThenChanged, P)]
@@ -60,7 +60,7 @@ fn anonymize_to_delete_is_possibly_breaking_and_delete_to_anonymize_is_not() {
 
 #[test]
 fn several_changes_are_reported_each() {
-    let both = "@retain(days(7), since: seen, then: delete)";
+    let both = "@retain(days(7), since: opened, then: delete)";
     assert_eq!(
         kinds(&guest(D30), &guest(both)),
         [

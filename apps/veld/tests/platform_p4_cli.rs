@@ -111,7 +111,7 @@ fn lint_levels_apply_to_the_new_rules() {
 #[test]
 fn a_wrong_retain_is_e1310() {
     let tmp =
-        project("@retain(days(0), since: nope, then: delete)\nmodel P4Bad {\n  at: datetime\n}\n");
+        project("@retain(days(0), since: nope, then: delete)\nmodel P4Bad {\n  seen: datetime\n}\n");
     veld(tmp.path())
         .arg("check")
         .assert()

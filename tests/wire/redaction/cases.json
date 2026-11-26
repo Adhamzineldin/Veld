@@ -522,9 +522,9 @@
       "value": {
         "guestId": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
         "email": "a@example.com",
-        "at": "2026-06-10T12:00:00Z"
+        "registeredAt": "2026-06-10T12:00:00Z"
       },
-      "redacted": "{\"at\":\"2026-06-10T12:00:00Z\",\"guestId\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\"}",
+      "redacted": "{\"guestId\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"registeredAt\":\"2026-06-10T12:00:00Z\"}",
       "paths": [
         "$.email"
       ]

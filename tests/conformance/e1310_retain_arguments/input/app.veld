@@ -2,45 +2,45 @@
 
 @retain
 model NoArguments {
-  at: datetime
+  seen: datetime
 }
 
-@retain(days(30), since: at)
+@retain(days(30), since: seen)
 model NoThen {
-  at: datetime
+  seen: datetime
 }
 
-@retain(since: at, then: delete)
+@retain(since: seen, then: delete)
 model NoDuration {
-  at: datetime
+  seen: datetime
 }
 
-@retain(hours(24), since: at, then: delete)
+@retain(hours(24), since: seen, then: delete)
 model Hours {
-  at: datetime
+  seen: datetime
 }
 
-@retain(days(0), since: at, then: delete)
+@retain(days(0), since: seen, then: delete)
 model Zero {
-  at: datetime
+  seen: datetime
 }
 
-@retain(days(1.5), since: at, then: delete)
+@retain(days(1.5), since: seen, then: delete)
 model Fraction {
-  at: datetime
+  seen: datetime
 }
 
-@retain(days(30), since: at, then: archive)
+@retain(days(30), since: seen, then: archive)
 model UnknownThen {
-  at: datetime
+  seen: datetime
 }
 
-@retain(days(30), since: at, then: delete, keep: true)
+@retain(days(30), since: seen, then: delete, keep: true)
 model UnknownArgument {
-  at: datetime
+  seen: datetime
 }
 
-@retain(days(30), since: at, since: at, then: delete)
+@retain(days(30), since: seen, since: seen, then: delete)
 model Twice {
-  at: datetime
+  seen: datetime
 }
