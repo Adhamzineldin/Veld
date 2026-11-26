@@ -778,6 +778,49 @@ struct Started {
     key: String,
 }
 
+/// The key a request holds while it runs. Dropping it while the key is still held (the request
+/// future was dropped or cancelled, the handler panicked) hands `release` to a task of its own:
+/// an entry must not stay "running" because the server gave up (`spec/rules.md` section 11.12).
+struct Hold<E: Endpoints> {
+    inner: Arc<Inner<E>>,
+    started: Option<Started>,
+}
+
+impl<E: Endpoints> Drop for Hold<E> {
+    fn drop(&mut self) {
+        let Some(Started { scope, key }) = self.started.take() else {
+            return;
+        };
+        let inner = Arc::clone(&self.inner);
+        spawn_release(async move {
+            // There is no request left to report a failing store to.
+            let _ = inner.endpoints.idem_release(&scope, &key).await;
+        });
+    }
+}
+
+// @if axum
+/// Runs `fut` on the tokio runtime this thread belongs to; with none, on a thread of its own.
+fn spawn_release<F: Future<Output = ()> + Send + 'static>(fut: F) {
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle) => {
+            handle.spawn(fut);
+        }
+        Err(_) => spawn_thread(fut),
+    }
+}
+// @end
+// @if !axum
+fn spawn_release<F: Future<Output = ()> + Send + 'static>(fut: F) {
+    spawn_thread(fut);
+}
+// @end
+
+/// Drives `fut` on a thread of its own (the executor of `veld::block_on`).
+fn spawn_thread<F: Future<Output = ()> + Send + 'static>(fut: F) {
+    let _ = std::thread::Builder::new().name("veld-idempotency-release".into()).spawn(move || super::util::block_on(fut));
+}
+
 /// What a response keeps in the store: the status, the bytes and the headers that matter.
 fn stored_of(resp: &Response) -> super::idempotency::StoredAnswer {
     let find = |name: &str| resp.headers.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v.clone());
@@ -1190,8 +1233,10 @@ impl<E: Endpoints> Handler<E> {
             Ok(started) => started,
             Err(resp) => return resp,
         };
+        // The hold gives the key back when this future is dropped or the handler panics.
+        let hold = Hold { inner: Arc::clone(&self.inner), started };
         let resp = self.run_after_guard(index, args, ctx.clone()).await;
-        self.idem_finish(started, resp, &ctx).await
+        self.idem_finish(hold, resp, &ctx).await
     }
 
     /// Steps 6 to 9 and the answer: what runs once an idempotency key is held.
@@ -1493,12 +1538,14 @@ impl<E: Endpoints> Handler<E> {
 
     /// The answer is below `500`: it is stored; otherwise the entry is removed. A store that fails
     /// here does not change the answer: the failure goes to `on_error`.
-    async fn idem_finish(&self, started: Option<Started>, resp: Response, ctx: &RequestContext) -> Response {
-        let Some(Started { scope, key }) = started else {
+    async fn idem_finish(&self, mut hold: Hold<E>, resp: Response, ctx: &RequestContext) -> Response {
+        let Some(Started { scope, key }) = hold.started.as_ref().map(|s| Started { scope: s.scope.clone(), key: s.key.clone() }) else {
             return resp;
         };
         let e = &self.inner.endpoints;
+        // Still held while the store is asked: a future dropped here gives the key back.
         let done = if resp.status < 500 { e.idem_complete(&scope, &key, stored_of(&resp)).await } else { e.idem_release(&scope, &key).await };
+        hold.started = None;
         if let Err(err) = done {
             e.on_error(&err, ctx);
         }

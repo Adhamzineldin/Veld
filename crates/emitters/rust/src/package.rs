@@ -92,6 +92,19 @@ pub fn emit_lib(
 
 /// `Cargo.toml`.
 pub fn emit_cargo(files: &mut FileSet, name: &str, f: &Features) -> Result<(), Vec<GenDiagnostic>> {
+    // `time` for the timeouts of the websocket server and the reqwest transport; `rt` for the
+    // task that gives an idempotency key back when a request is dropped (axum already needs tokio).
+    let mut tokio: Vec<&str> = Vec::new();
+    if f.axum && f.ws_server || f.reqwest {
+        tokio.push("\"time\"");
+    }
+    if f.axum && f.idempotency {
+        tokio.push("\"rt\"");
+    }
+    let tokio_spec = format!(
+        "{{ version = \"1\", default-features = false, features = [{}] }}",
+        tokio.join(", ")
+    );
     let mut deps: BTreeMap<&str, &str> = BTreeMap::new();
     deps.insert("serde", "{ version = \"1\", features = [\"derive\"] }");
     deps.insert("serde_json", "\"1\"");
@@ -107,19 +120,12 @@ pub fn emit_cargo(files: &mut FileSet, name: &str, f: &Features) -> Result<(), V
                 "\"0.8\""
             },
         );
-        if f.ws_server {
-            deps.insert(
-                "tokio",
-                "{ version = \"1\", default-features = false, features = [\"time\"] }",
-            );
-        }
+    }
+    if !tokio.is_empty() {
+        deps.insert("tokio", &tokio_spec);
     }
     if f.reqwest {
         deps.insert("reqwest", "\"0.13\"");
-        deps.insert(
-            "tokio",
-            "{ version = \"1\", default-features = false, features = [\"time\"] }",
-        );
     }
     if f.reqwest && f.ws_client {
         deps.insert("tokio-tungstenite", "\"0.30\"");

@@ -110,6 +110,8 @@ struct App {
     /// `book` waits while this is on, and says when it has started.
     hold: AtomicBool,
     entered: AtomicBool,
+    /// The next `book` panics.
+    panic_next: AtomicBool,
     /// What `on_error` heard.
     errors: Mutex<Vec<String>>,
 }
@@ -138,6 +140,9 @@ impl BookingsService for Impl {
         }
         if self.0.fail_next.swap(false, Ordering::SeqCst) {
             return Err(Error::other("boom"));
+        }
+        if self.0.panic_next.swap(false, Ordering::SeqCst) {
+            panic!("the handler panics");
         }
         Ok(Booking { id: uid(n), guests: request.body.guests })
     }
@@ -357,6 +362,64 @@ async fn running() {
     assert!(third.replayed());
     assert_eq!(third.text, first.text);
     assert_eq!(s.app.count("book"), 1);
+}
+
+/// Sends `book` with a key and drops the request after `ms` milliseconds, as a client that gives up.
+async fn book_and_hang_up(s: &Server, key: &str, ms: u64) {
+    let sent = reqwest::Client::new()
+        .post(format!("{}/bookings", s.base))
+        .header("idempotency-key", key)
+        .header("content-type", "application/json")
+        .body(json!({ "guests": 1 }).to_string())
+        .timeout(std::time::Duration::from_millis(ms))
+        .send()
+        .await;
+    assert!(sent.is_err(), "the request was meant to be abandoned");
+}
+
+/// The same key and the same parameters, until the key is not "running" any more (the release is
+/// handed to a task of its own, so it follows the drop by a moment).
+async fn book_when_released(s: &Server, key: &str) -> Answer {
+    for _ in 0..200 {
+        let a = book(s, Some(key), 1).await;
+        if a.status != 409 {
+            return a;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    panic!("the key `{key}` stayed running");
+}
+
+/// A request whose future is dropped while the handler runs (the client hangs up) gives its key
+/// back: the same key runs again instead of answering `409` (`spec/rules.md` section 11.12).
+async fn a_dropped_request_releases_its_key() {
+    let s = serve().await;
+    s.app.hold.store(true, Ordering::SeqCst);
+    book_and_hang_up(&s, "gone", 150).await;
+    assert!(s.app.entered.load(Ordering::SeqCst), "the handler had started");
+    s.app.hold.store(false, Ordering::SeqCst);
+    let again = book_when_released(&s, "gone").await;
+    assert_eq!(again.status, 201, "{}", again.text);
+    assert!(!again.replayed(), "nothing was stored by the abandoned request");
+    assert_eq!(s.app.count("book"), 2);
+    assert!(log(&s).iter().any(|l| l == "release"), "{:?}", log(&s));
+}
+
+/// A handler that panics gives the key back too.
+async fn a_panicking_handler_releases_its_key() {
+    let s = serve().await;
+    s.app.panic_next.store(true, Ordering::SeqCst);
+    let first = reqwest::Client::new()
+        .post(format!("{}/bookings", s.base))
+        .header("idempotency-key", "boom")
+        .header("content-type", "application/json")
+        .body(json!({ "guests": 1 }).to_string())
+        .send()
+        .await;
+    assert!(first.is_err() || first.is_ok_and(|r| r.status().as_u16() >= 500));
+    let again = book_when_released(&s, "boom").await;
+    assert_eq!(again.status, 201, "{}", again.text);
+    assert_eq!(s.app.count("book"), 2);
 }
 
 /// A declared error is stored and replayed (the room is full: `RoomFull`, from step 6).
@@ -639,6 +702,8 @@ async fn main() {
     callers_do_not_share_keys().await;
     etag_and_no_content().await;
     a_store_that_fails().await;
+    a_dropped_request_releases_its_key().await;
+    a_panicking_handler_releases_its_key().await;
     client_headers().await;
     println!("idempotency ok");
 }
