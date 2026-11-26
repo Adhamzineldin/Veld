@@ -94,6 +94,7 @@ never reused. The ranges are listed in `language.md` section 9.
 | `E0951` | error | veld-compiler | `given` names something that is not a fact of the called endpoint |
 | `E0952` | error | veld-compiler | A value in an example does not fit the type it is used at |
 | `E0953` | error | veld-rules | A value an example leaves out cannot be filled in, or the filled-in value breaks an invariant |
+| `E0970` | error | veld-prove | `--prove`: the rules contradict each other, a `require` can never pass, or a policy permits nobody |
 | `E1001` | error | veld-compiler | An event is used as a type, or an event field has an event type |
 | `E1002` | error | veld-compiler | `carries` names something that is not an event, names an event twice, or is missing |
 | `E1003` | error | veld-compiler | The topic of a channel is not a legal topic name |
@@ -116,6 +117,7 @@ never reused. The ranges are listed in `language.md` section 9.
 | `W0931` | warning | veld-compiler | A state that is not final and has no way out |
 | `W0932` | warning | veld-compiler | A variant of a state machine that takes part in no flow and is not final |
 | `W0940` | warning | veld-compiler | A policy with no `permit` permits nobody |
+| `W0970` | warning | veld-prove | `--prove`: some questions ended unknown or unsupported |
 | `W1001` | warning | veld-compiler | A published channel that nobody in the workspace subscribes to |
 | `W1002` | warning | veld-compiler | An event of a published channel that no subscription handles |
 | `L0001` | lint | veld-tools | `unused-model`: declaration is never used by any endpoint, model or constant |

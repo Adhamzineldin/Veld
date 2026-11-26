@@ -370,6 +370,11 @@ pub const CODES: &[CodeInfo] = &[
         "A value an example leaves out cannot be filled in, or the filled-in value breaks an invariant",
     ),
     e(
+        "E0970",
+        "veld-prove",
+        "`--prove`: the rules contradict each other, a `require` can never pass, or a policy permits nobody",
+    ),
+    e(
         "E1001",
         C,
         "An event is used as a type, or an event field has an event type",
@@ -443,6 +448,11 @@ pub const CODES: &[CodeInfo] = &[
         "A variant of a state machine that takes part in no flow and is not final",
     ),
     w("W0940", C, "A policy with no `permit` permits nobody"),
+    w(
+        "W0970",
+        "veld-prove",
+        "`--prove`: some questions ended unknown or unsupported",
+    ),
     w(
         "W1001",
         C,
