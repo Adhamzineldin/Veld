@@ -189,6 +189,8 @@ rule      = { doc } { annotation } "rule" IDENT ":" expr [ "message" STRING ] ;
 
 Rules and fields may be mixed in any order. The formatter prints fields first, then one blank line, then rules, each in source order.
 
+**Line width.** The formatter wraps at 100 columns, for these constructs only: a rule, `require`, `ensure`, `permit` or `forbid` whose expression is wider is broken before the binary operators of its lowest precedence level, the continuation lines indented four spaces more; an example's call has one argument per line, a record or list of an example one member per line, and the outcome after `->` hangs on the call or goes to the next line; a saga step's call is broken the same way. A line that fits is never changed.
+
 ## 5. Invariants
 
 ```veld
