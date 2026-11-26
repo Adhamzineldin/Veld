@@ -8,15 +8,24 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use events_server::veld::Error;
-use events_server::veld::events::{BoxFuture, Deliver, Transport, TransportSubscription};
+use events_server::veld::events::{BoxFuture, ChannelOptions, Deliver, Transport, TransportSubscription};
 
 /// One message a [`Recorder`] was given: the topic, the key and the bytes.
 pub type Sent = (String, Option<String>, Vec<u8>);
 
-/// A transport that keeps what is published and delivers nothing.
+/// A subscription a [`Recorder`] was given: the topic, the group, the options of the channel and
+/// the function that delivers a message to the consumer.
+pub type Subscribed = (String, String, ChannelOptions, Deliver);
+
+/// A transport that keeps what is published and what is subscribed, and delivers nothing by
+/// itself: a test calls the `deliver` function of a subscription. `fail_topic` makes `publish` to
+/// that topic fail.
 #[derive(Default)]
 pub struct Recorder {
     pub sent: Mutex<Vec<Sent>>,
+    pub options: Mutex<Vec<ChannelOptions>>,
+    pub subscribed: Mutex<Vec<Subscribed>>,
+    pub fail_topic: Mutex<Option<String>>,
 }
 
 impl Recorder {
@@ -26,6 +35,16 @@ impl Recorder {
 
     pub fn messages(&self) -> Vec<Sent> {
         self.sent.lock().unwrap().clone()
+    }
+
+    /// The `deliver` function of the first subscription.
+    pub fn deliver(&self) -> Deliver {
+        Arc::clone(&self.subscribed.lock().unwrap()[0].3)
+    }
+
+    /// From now on `publish` to `topic` fails.
+    pub fn fail(&self, topic: Option<&str>) {
+        *self.fail_topic.lock().unwrap() = topic.map(str::to_string);
     }
 }
 
@@ -38,12 +57,29 @@ impl TransportSubscription for Nop {
 }
 
 impl Transport for Recorder {
-    fn publish<'a>(&'a self, topic: &'a str, key: Option<&'a str>, bytes: &'a [u8]) -> BoxFuture<'a, Result<(), Error>> {
+    fn publish<'a>(
+        &'a self,
+        topic: &'a str,
+        key: Option<&'a str>,
+        bytes: &'a [u8],
+        options: ChannelOptions,
+    ) -> BoxFuture<'a, Result<(), Error>> {
+        if self.fail_topic.lock().unwrap().as_deref() == Some(topic) {
+            return Box::pin(ready(Err(Error::other("the transport cannot publish"))));
+        }
         self.sent.lock().unwrap().push((topic.to_string(), key.map(str::to_string), bytes.to_vec()));
+        self.options.lock().unwrap().push(options);
         Box::pin(ready(Ok(())))
     }
 
-    fn subscribe<'a>(&'a self, _topic: &'a str, _group: &'a str, _deliver: Deliver) -> BoxFuture<'a, Result<Box<dyn TransportSubscription>, Error>> {
+    fn subscribe<'a>(
+        &'a self,
+        topic: &'a str,
+        group: &'a str,
+        deliver: Deliver,
+        options: ChannelOptions,
+    ) -> BoxFuture<'a, Result<Box<dyn TransportSubscription>, Error>> {
+        self.subscribed.lock().unwrap().push((topic.to_string(), group.to_string(), options, deliver));
         Box::pin(ready(Ok(Box::new(Nop) as Box<dyn TransportSubscription>)))
     }
 }
