@@ -99,12 +99,26 @@ fn describe(a: &Analysis, h: &Hit) -> Option<String> {
                 .iter()
                 .map(|t| format!("{t:?}").to_lowercase())
                 .collect();
+            let note = annotation_note(n).map_or_else(String::new, |t| format!("\n\n{t}"));
             Some(format!(
-                "```veld\n{}\n```\nAnnotation, allowed on: {}.",
+                "```veld\n{}\n```\nAnnotation, allowed on: {}.{note}",
                 spec.usage,
                 targets.join(", ")
             ))
         }
+    }
+}
+
+/// What an annotation does, for the ones whose name does not say it.
+fn annotation_note(name: &str) -> Option<&'static str> {
+    match name {
+        "version" => Some(
+            "The version of the model: a response that is such a model carries `ETag`, and an endpoint whose first fact is one compares `If-Match` with it (`412 PreconditionFailed` when they differ).",
+        ),
+        "idempotent" => Some(
+            "A request with the key in the header (`Idempotency-Key` unless `header:` names another) is answered once: the stored answer is sent again for the same parameters, and `409 Conflict` for other parameters or a request still running. `required: true` makes the header mandatory.",
+        ),
+        _ => None,
     }
 }
 
@@ -395,5 +409,26 @@ mod tests {
             assert!(md.contains("@rollout(audit)"), "{md}");
             assert!(md.contains("rule, require, ensure"), "{md}");
         }
+    }
+
+    #[test]
+    fn version_and_idempotent_say_what_they_do() {
+        let src = "model A {\n  id: uuid\n  @version\n  revision: long\n}\nservice S at \"/s\" {\n  @idempotent(required: true)\n  put \"/{id}\" f(id: uuid) -> A {\n    fact a: A = id\n  }\n}\n";
+        let (tmp, a) = analysis(&[("veld.toml", TOML), ("c/m.veld", src)]);
+        let md = hover_at(&a, tmp.path(), "c/m.veld", "version\n  revision", 1);
+        assert!(
+            md.contains("@version") && md.contains("allowed on: field"),
+            "{md}"
+        );
+        assert!(md.contains("ETag") && md.contains("If-Match"), "{md}");
+        let md = hover_at(&a, tmp.path(), "c/m.veld", "idempotent(", 1);
+        assert!(
+            md.contains("@idempotent(header:") && md.contains("allowed on: endpoint"),
+            "{md}"
+        );
+        assert!(
+            md.contains("409 Conflict") && md.contains("required: true"),
+            "{md}"
+        );
     }
 }

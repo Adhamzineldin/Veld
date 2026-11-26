@@ -324,8 +324,11 @@ impl Cx<'_> {
                 return Vec::new();
             }
         };
+        // Before a top-level declaration an annotation for endpoints only (`@idempotent`) is no use.
+        let top_level = self.ctx.block.is_none();
         language::ANNOTATIONS
             .iter()
+            .filter(|a| !(top_level && a.targets == [Target::Endpoint]))
             .filter(|a| a.targets.iter().any(|t| want.contains(t)))
             .map(|a| {
                 snippet(
@@ -551,6 +554,8 @@ fn annotation_snippet(name: &str, shape: ArgShape) -> String {
         ArgShape::Length => format!("{name}(min: ${{1:n}}, max: ${{2:n}})"),
         ArgShape::Format => format!("{name}(${{1|email,uri,hostname,ipv4,ipv6|}})"),
         ArgShape::Rollout => format!("{name}(audit)"),
+        // The arguments are optional: `@idempotent` alone is the usual form.
+        ArgShape::Idempotent => name.to_string(),
     }
 }
 
@@ -560,6 +565,7 @@ fn annotation_args(name: &str) -> Vec<CompletionItem> {
         Some(ArgShape::Format) => &["email", "uri", "hostname", "ipv4", "ipv6"],
         Some(ArgShape::Length) => &["min", "max"],
         Some(ArgShape::Rollout) => &["audit"],
+        Some(ArgShape::Idempotent) => &["header", "required"],
         _ => &[],
     };
     let mut out: Vec<CompletionItem> = words
@@ -754,6 +760,24 @@ mod tests {
         assert_eq!(labels(&v), ["audit"]);
         let (v, _) = run("@^\nmodel A {}\n", "^");
         assert!(!labels(&v).contains(&"rollout"));
+    }
+
+    #[test]
+    fn version_is_offered_on_a_field_and_idempotent_on_an_endpoint_and_nowhere_else() {
+        let (v, _) = run("model A {\n  x: int @^\n}\n", "^");
+        let version = v.iter().find(|i| i.label == "version").unwrap();
+        assert_eq!(version.insert_text.as_deref(), Some("version"));
+        assert!(!labels(&v).contains(&"idempotent"), "{:?}", labels(&v));
+        let (v, _) = run("service S at \"/s\" {\n  @^\n}\n", "^");
+        let idem = v.iter().find(|i| i.label == "idempotent").unwrap();
+        assert_eq!(idem.insert_text.as_deref(), Some("idempotent"));
+        assert!(idem.detail.as_deref().unwrap_or("").contains("required"));
+        assert!(!labels(&v).contains(&"version"), "{:?}", labels(&v));
+        let (v, _) = run("@^\nmodel A {}\n", "^");
+        assert!(!labels(&v).contains(&"version") && !labels(&v).contains(&"idempotent"));
+        // The arguments of `@idempotent` are offered by name.
+        let (v, _) = run("service S at \"/s\" {\n  @idempotent(^)\n}\n", "^");
+        assert_eq!(labels(&v), ["header", "required"]);
     }
 
     #[test]
