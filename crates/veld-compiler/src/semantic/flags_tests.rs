@@ -28,9 +28,11 @@ fn every_flagged_statement_carries_its_flag_in_the_ir() {
     let flows: Vec<Option<&str>> = ir
         .decls
         .iter()
-        .filter_map(|d| match &d.kind {
-            DeclKind::Enum(e) => Some(e.flows.iter().map(|f| f.flag.as_deref()).collect()),
-            _ => None,
+        .filter_map(|d| {
+            let DeclKind::Enum(e) = &d.kind else {
+                return None;
+            };
+            Some(e.flows.iter().map(|f| f.flag.as_deref()).collect())
         })
         .next()
         .unwrap();

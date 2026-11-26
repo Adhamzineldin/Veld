@@ -116,11 +116,14 @@ fn errors_text(a: &Arg) -> Result<String, String> {
     let ArgValue::Literal(l) = &a.value else {
         return Err("`errors` is a number of percent, such as `0.1`".into());
     };
-    let value = match &l.kind {
+    let value = if let LitKind::Int(n) = &l.kind {
         #[allow(clippy::cast_precision_loss)]
-        LitKind::Int(n) => *n as f64,
-        LitKind::Float(f) => *f,
-        _ => return Err("`errors` is a number of percent, such as `0.1`".into()),
+        let f = *n as f64;
+        f
+    } else if let LitKind::Float(f) = &l.kind {
+        *f
+    } else {
+        return Err("`errors` is a number of percent, such as `0.1`".into());
     };
     if !(value > 0.0 && value < 100.0) {
         return Err("`errors` is above 0 and below 100 (percent)".into());

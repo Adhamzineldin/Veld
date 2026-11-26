@@ -36,9 +36,11 @@ fn transition_id(ir: &Ir) -> String {
 fn a_timed_edge_and_its_transition_compile() {
     assert!(codes(&ok()).is_empty(), "{:?}", codes(&ok()));
     let ir = ir(&ok());
-    let machine = ir.decls.iter().find_map(|d| match &d.kind {
-        DeclKind::Enum(e) if d.name == "BookingStatus" => Some(e.clone()),
-        _ => None,
+    let machine = ir.decls.iter().find_map(|d| {
+        let DeclKind::Enum(e) = &d.kind else {
+            return None;
+        };
+        (d.name == "BookingStatus").then(|| e.clone())
     });
     let machine = machine.expect("BookingStatus");
     let timed: Vec<(&str, Option<&str>)> = machine
@@ -104,9 +106,11 @@ fn durations_are_folded_with_checked_arithmetic() {
     ] {
         let flows = format!("  flow pending -> paid\n  flow pending -> cancelled after {text}");
         let ir = ir(&contract(&flows, MODEL, SINCE));
-        let after = ir.decls.iter().find_map(|d| match &d.kind {
-            DeclKind::Enum(e) => e.flows.iter().find_map(|f| f.after_ms.clone()),
-            _ => None,
+        let after = ir.decls.iter().find_map(|d| {
+            let DeclKind::Enum(e) = &d.kind else {
+                return None;
+            };
+            e.flows.iter().find_map(|f| f.after_ms.clone())
         });
         assert_eq!(after.as_deref(), Some(ms), "{text}");
     }

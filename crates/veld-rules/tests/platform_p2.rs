@@ -137,9 +137,12 @@ fn timed_moves_lists_the_timed_edges_of_a_machine_in_edge_order() {
     let machine = ir
         .decls
         .iter()
-        .find_map(|d| match &d.kind {
-            veld_ir::DeclKind::Enum(e) => Some(e),
-            _ => None,
+        .find_map(|d| {
+            if let veld_ir::DeclKind::Enum(e) = &d.kind {
+                Some(e)
+            } else {
+                None
+            }
         })
         .unwrap();
     assert_eq!(
@@ -244,9 +247,12 @@ fn a_failing_provider_restricts_and_does_not_grant() {
         "{closed:?}"
     );
     // The flagged flow counts as off: the machine has only draft -> live.
-    let machine = failed.decls.iter().find_map(|d| match &d.kind {
-        veld_ir::DeclKind::Enum(e) => Some(e),
-        _ => None,
+    let machine = failed.decls.iter().find_map(|d| {
+        if let veld_ir::DeclKind::Enum(e) = &d.kind {
+            Some(e)
+        } else {
+            None
+        }
     });
     assert_eq!(machine.unwrap().flows.len(), 1);
 }

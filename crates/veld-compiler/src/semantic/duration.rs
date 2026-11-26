@@ -47,15 +47,13 @@ pub fn const_duration_arg(a: &Arg) -> Result<i64, String> {
     let [one] = args.as_slice() else {
         return Err(format!("`{}` takes one argument", name.name));
     };
-    match &one.value {
-        ArgValue::Literal(l) => match l.kind {
-            LitKind::Int(n) => n
-                .checked_mul(unit)
-                .ok_or_else(|| "the duration is too large".to_string()),
-            _ => Err(format!("`{}` takes a whole number", name.name)),
-        },
-        _ => Err(format!("`{}` takes a whole number", name.name)),
-    }
+    let ArgValue::Literal(l) = &one.value else {
+        return Err(format!("`{}` takes a whole number", name.name));
+    };
+    let LitKind::Int(n) = &l.kind else {
+        return Err(format!("`{}` takes a whole number", name.name));
+    };
+    n.checked_mul(unit).ok_or_else(too_large)
 }
 
 fn fold(e: &Expr) -> Result<Val, String> {
@@ -70,7 +68,14 @@ fn fold(e: &Expr) -> Result<Val, String> {
         },
         ExprKind::Call { name, args } => call(&name.name, args),
         ExprKind::Binary { op, l, r } => binary(*op, fold(l)?, fold(r)?),
-        _ => Err(
+        ExprKind::Bool(_)
+        | ExprKind::Float { .. }
+        | ExprKind::Str(_)
+        | ExprKind::EnumLit(_)
+        | ExprKind::Name(_)
+        | ExprKind::Field { .. }
+        | ExprKind::List(_)
+        | ExprKind::Unary { .. } => Err(
             "this is not a constant: only `days`, `hours`, `minutes`, `seconds` and `ms` \
                   of whole numbers, joined by `+`, `-` and `*`, are"
                 .into(),

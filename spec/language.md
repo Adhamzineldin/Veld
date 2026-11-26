@@ -198,6 +198,7 @@ error Internal 500        { message?: string }
 model ValidationIssue     { path: string, code: string, message: string }
 error InvalidTransition 409 { field: string, from: string, to: string }
 error PreconditionFailed 412 { expected: long, actual: long }
+error DeadlineExceeded 504 { timeoutMs: long }
 ```
 
 Prelude errors belong to the reserved package `veld`. Their identity at runtime still includes the service and operation that raised them (see `spec/ir.md` §5). A `NotFound` raised by `orders.getOrder` therefore never compares equal to a `NotFound` raised by `payments.getPayment`.
