@@ -27,7 +27,8 @@ pub use event_rollout::{
     EventRolloutContract, compiled_event_rollout_contracts, without_the_annotation,
 };
 pub use events::{
-    check_events_are_ignored_by_clients, check_events_are_refused, compiled_events_contract,
+    check_events_are_generated, check_events_are_ignored_by_clients, check_events_are_refused,
+    compiled_events_contract,
 };
 pub use fixtures::{FIXTURES, Fixture};
 pub use rollout::{

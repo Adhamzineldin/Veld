@@ -101,6 +101,48 @@ pub fn check_events_are_refused(generator: &dyn DynGenerator) -> Result<(), Stri
     Ok(())
 }
 
+/// A server generator that supports events (the Node generator, from phase E1) must declare
+/// `events`, let the gate pass a publisher and a subscriber, and generate files for both, the same
+/// files on every run. The contract has a rule, a key and a service without endpoints.
+///
+/// # Errors
+/// A description of the first role and service for which the generator does not behave so.
+pub fn check_events_are_generated(generator: &dyn DynGenerator) -> Result<(), String> {
+    let ir = compiled_events_contract();
+    for role in generator.roles().iter().filter(|r| **r == Role::Server) {
+        if !generator.capabilities(*role).supports(Feature::Events) {
+            return Err(format!("{}: does not declare `events`", role.name()));
+        }
+        for name in ["Hello", "Audit"] {
+            let services = vec![service_id(&ir, name)?];
+            let req = GenRequest {
+                ir: &ir,
+                role: *role,
+                services: services.clone(),
+                consumes: vec![],
+                framework: None,
+            };
+            let gate = check_capabilities(&ir, &req, &generator.capabilities(*role));
+            if !gate.is_empty() {
+                return Err(format!(
+                    "{} / {name}: the gate reported {gate:?}",
+                    role.name()
+                ));
+            }
+            let first = generate(generator, &ir, *role, services.clone())
+                .map_err(|e| format!("{} / {name}: {e}", role.name()))?;
+            let second = generate(generator, &ir, *role, services)?;
+            if first.is_empty() || first != second {
+                return Err(format!(
+                    "{} / {name}: no files, or two runs gave different files",
+                    role.name()
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 fn refuses(
     generator: &dyn DynGenerator,
     ir: &Ir,
@@ -265,6 +307,56 @@ mod tests {
         assert!(ir.services.iter().any(|s| !s.publishes.is_empty()));
         assert!(ir.services.iter().any(|s| !s.subscriptions.is_empty()));
         assert!(compile("plain", NO_EVENTS_SOURCE).channels.is_empty());
+    }
+
+    #[test]
+    fn a_server_that_generates_events_conforms() {
+        let supports = Leaky {
+            caps: Capabilities::all_except(&[]),
+            role: Role::Server,
+        };
+        check_events_are_generated(&supports).unwrap();
+    }
+
+    #[test]
+    fn a_server_that_does_not_declare_events_is_caught_by_the_support_check() {
+        let refuses = Leaky {
+            caps: Capabilities::all_except(&[Feature::Events]),
+            role: Role::Server,
+        };
+        let err = check_events_are_generated(&refuses).unwrap_err();
+        assert!(err.contains("does not declare `events`"), "{err}");
+    }
+
+    /// Declares everything and answers `E0801` anyway.
+    struct Declares;
+
+    impl DynGenerator for Declares {
+        fn id(&self) -> &'static str {
+            "declares"
+        }
+        fn roles(&self) -> &'static [Role] {
+            &[Role::Server]
+        }
+        fn frameworks(&self, _: Role) -> Vec<veld_codegen::FrameworkInfo> {
+            Vec::new()
+        }
+        fn capabilities(&self, _: Role) -> Capabilities {
+            Capabilities::all_except(&[])
+        }
+        fn generate_dyn(
+            &self,
+            _: &GenRequest<'_>,
+            _: &serde_json::Value,
+        ) -> Result<FileSet, Vec<GenDiagnostic>> {
+            Err(vec![GenDiagnostic::new("E0801", "no events here")])
+        }
+    }
+
+    #[test]
+    fn a_server_that_declares_events_and_refuses_them_is_caught_by_the_support_check() {
+        let err = check_events_are_generated(&Declares).unwrap_err();
+        assert!(err.contains("generation failed"), "{err}");
     }
 
     #[test]
