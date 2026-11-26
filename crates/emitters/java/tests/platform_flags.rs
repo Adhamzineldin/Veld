@@ -116,6 +116,41 @@ fn every_flag_example_passes_through_the_generated_test_handler_on_the_jdk_serve
     assert_eq!(passed, 14, "every example of the flag contract");
 }
 
+/// A flagged invariant on a message the client sends over a WebSocket is evaluated on the socket's
+/// thread with the flags the upgrade request read. The `jdk` framework has no WebSocket server, so
+/// the contract is generated for `spring` and the driver compiles everything but the adapters (the
+/// router takes a frame from any socket); no Spring is needed.
+#[test]
+fn a_flagged_invariant_on_an_incoming_websocket_message_is_evaluated() {
+    if !require_javac("a_flagged_invariant_on_an_incoming_websocket_message") {
+        return;
+    }
+    let ir = compile_path("tests/toolchain/java/platform_p2/flags_ws.veld", "flagsws");
+    let all = ir.services.iter().map(|s| s.id).collect();
+    let files = run(
+        &ir,
+        Role::Server,
+        all,
+        vec![],
+        Some("spring"),
+        options("gen.b", Some("17")),
+    );
+    let work = tempfile::tempdir().unwrap();
+    let mut sources = write_files(work.path(), &files);
+    sources.retain(|p| !p.to_string_lossy().contains("/adapters/"));
+    sources.push(repo_root().join("tests/toolchain/java/platform_p2/FlagsWs.java"));
+    for release in releases() {
+        javac_ok(work.path(), &sources, release);
+    }
+    let out = java_main(work.path(), "veldtest.FlagsWs", &[]);
+    assert!(
+        out.status.success() && String::from_utf8_lossy(&out.stdout).contains("OK"),
+        "FlagsWs failed:\n{}\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
 fn run_driver(name: &str, driver: &str, role: Role, package: &str, testing: bool) {
     let ir = contract(name);
     let work = tempfile::tempdir().unwrap();

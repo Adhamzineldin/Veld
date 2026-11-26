@@ -32,6 +32,9 @@ final class WsConnection implements WsSession<Json, Json> {
   // #if rules
   private HandlerHooks rulesHooks;
   // #endif
+  // #if flags
+  private volatile Flags.View flagView;
+  // #endif
 
   WsConnection(
       EndpointSpec spec,
@@ -57,6 +60,13 @@ final class WsConnection implements WsSession<Json, Json> {
   /** Gives the connection the hooks that carry the rule output mode and the violation hook. */
   void rules(HandlerHooks hooks) {
     this.rulesHooks = hooks;
+  }
+
+  // #endif
+  // #if flags
+  /** Gives the connection the flags the request read, for the messages that arrive on the socket's own thread. */
+  void flags(Flags.View view) {
+    this.flagView = view;
   }
 
   // #endif
@@ -93,6 +103,10 @@ final class WsConnection implements WsSession<Json, Json> {
   }
 
   private void accept(String text) {
+    // #if flags
+    Flags.View enclosing = Flags.install(flagView);
+    try {
+    // #endif
     if (closed) {
       return;
     }
@@ -143,6 +157,11 @@ final class WsConnection implements WsSession<Json, Json> {
       }
     }
     inbox.add(Wire.fillReadonly(incomingSchema, prepared));
+    // #endif
+    // #if flags
+    } finally {
+      Flags.restore(enclosing);
+    }
     // #endif
   }
 

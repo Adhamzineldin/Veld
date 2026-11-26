@@ -690,6 +690,9 @@ public final class Router implements VeldHandler {
         conn.fail(guarded.failure);
         return;
       }
+      // #if flags
+      conn.flags(Flags.current());
+      // #endif
       conn.ready();
       ep.ws().call(new Json.Obj(guarded.bound.values), ctx, conn);
       conn.finish(1000, "done");
