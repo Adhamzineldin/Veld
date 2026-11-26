@@ -1043,6 +1043,14 @@
         "auth-required": {
           "$ref": "#/$defs/lintLevel",
           "description": "Lint rule L0014."
+        },
+        "pii-without-auth": {
+          "$ref": "#/$defs/lintLevel",
+          "description": "Lint rule L0015."
+        },
+        "secret-in-output": {
+          "$ref": "#/$defs/lintLevel",
+          "description": "Lint rule L0016."
         }
       },
       "description": "Lint rule levels (`off`, `warn`, `error`). Every rule defaults to `warn`; `veld check` reports them."

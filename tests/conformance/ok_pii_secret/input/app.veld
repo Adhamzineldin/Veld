@@ -1,0 +1,33 @@
+// `@pii` and `@secret` on fields of a model, an error and an event, alone and together
+// (spec/rules.md section 19.3). The words stay ordinary names elsewhere.
+
+model Guest {
+  id: uuid
+  name: string @pii
+  phone?: string @pii
+  password: string @secret
+  both: string @pii @secret
+  pii: string
+  secret: string
+}
+
+model Vip extends Guest {
+  tier: int
+}
+
+error Rejected 422 {
+  reason: string
+  who: string @pii
+}
+
+event GuestRegistered {
+  guestId: uuid
+  email: string @pii
+}
+
+channel GuestEvents { carries GuestRegistered }
+
+@auth(bearer)
+service Guests at "/guests" {
+  get "/{id}" one(id: uuid) -> Vip | Rejected
+}

@@ -134,3 +134,5 @@ never reused. The ranges are listed in `language.md` section 9.
 | `L0012` | lint | veld-tools | `variant-name-case`: enum variant is neither camelCase nor snake_case |
 | `L0013` | lint | veld-tools | `deprecated-declaration`: declaration or enum variant is deprecated |
 | `L0014` | lint | veld-tools | `auth-required`: an endpoint whose auth comes from neither its own `@auth` nor its service's |
+| `L0015` | lint | veld-tools | `pii-without-auth`: an endpoint with no auth can answer with a `@pii` field |
+| `L0016` | lint | veld-tools | `secret-in-output`: a `@secret` field that a response, a declared error, a stream item or an event can contain |

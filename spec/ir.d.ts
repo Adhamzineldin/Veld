@@ -152,6 +152,8 @@ export interface Field {
   default: Literal | null;
   readonly: boolean;
   version?: boolean;
+  pii?: boolean;
+  secret?: boolean;
   inherited_from: DeclId | null;
   constraints: Constraints;
   example: Literal | null;

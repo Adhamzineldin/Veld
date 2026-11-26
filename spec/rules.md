@@ -1214,13 +1214,21 @@ model Guest {
 - Both are annotations of a field of a model, an error or an event, and take no argument. Anywhere else, or with an argument, they are `E0602`. A field may have both.
 - `@pii` says the field holds personal data. `@secret` says its value must never be shown: a password, a token, a key.
 - **They change nothing on the wire.** The field's type, its validation, the declaration's signature and the rules are what they would be without the annotation, and a rule may read the field.
-- In the IR a `Field` gains `"pii": true` and `"secret": true`, each omitted when false, so a contract without them keeps its IR. The OpenAPI export marks the property with `x-veld-pii` and `x-veld-secret`.
+- In the IR a `Field` gains `"pii": true` and `"secret": true`, each omitted when false, so a contract without them keeps its IR (`spec/ir.md` §3.6). The OpenAPI export marks the property with `x-veld-pii` and `x-veld-secret`, and only the marked ones.
+- **`veld diff`.** Adding or removing either annotation on a field is **non-breaking** (kinds `pii_added`, `pii_removed`, `secret_added`, `secret_removed`): nothing on the wire changes, so no caller built against the old contract is affected. The change is listed so that a reviewer sees it. Only a field that a declaration wrote itself is compared; an inherited one follows its parent.
 
 **What generated code must not do.** Generated code already sends a caller only what the contract's types say. These two annotations are about everything else it emits:
 
 - **Messages.** The message of a validation issue, of a violation or of a generated log line never contains the value of a field, annotated or not. Messages are meant to be fixed texts with paths and names; this makes it a tested rule: each runtime gets a test that feeds a marker value through every failing path and searches every message for it, and a message that repeats a value is changed.
 - **Captures** (§17.3). A capture leaves out the value of every `@pii` and `@secret` field, in the parameters, the facts and the principal, at any depth, and lists the wire paths it left out in `redacted`. `veld test --from-violation` then prints an example in which those values are filled in (§12.2) and says which were: such an example may not reproduce the violation, and the tool says so instead of pretending.
 - **Audit events** (the platform's `@audited`) follow the same rule when they are built.
+
+**The reference.** `veld_rules::redact_decl(ir, decl, value)` and `redact_type(ir, ty, value)` (and the `_at` forms, which start the paths at a given root such as `params.body`) take a wire value and return it with every `@pii` and `@secret` field left out, and the wire paths of what was left out. This is what the generators must reproduce, and `tests/wire/redaction/` holds the byte goldens.
+
+- A marked field is removed **whole**, whatever it holds, and only its own path is listed; a field the value does not have is not listed; a field with the value `null` is removed and listed.
+- The walk goes through nested models, lists, maps, the `items` of a page and the arm of a union (chosen by the discriminator). A member the declaration does not know is kept.
+- Paths are written like the paths of violations (§7): `$` is the root, `.wire` a member, `[2]` a list item (`$.home.street`, `$.past[1].geo.lat`). The list is sorted by the bytes of the paths and has no duplicates, so `$.a[10]` comes before `$.a[2]`.
+- A value that does not have the shape of its declaration (an object where a list is declared, a union value that names no arm) is an error, not a pass: such a value cannot be known to be clean.
 
 **Lints.**
 
