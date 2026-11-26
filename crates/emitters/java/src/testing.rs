@@ -71,7 +71,7 @@ pub fn write_test_handler(
             given: &format!("{service} impl"),
             pass: "impl",
             hooks_class: &hooks,
-            needs_hooks: needs_hooks(svc),
+            needs_hooks: needs_hooks(fc.tree, svc),
             docs: (
                 "Builds the test handler with default hooks.",
                 "Builds the test handler. The auth hooks of `hooks` are never called and may be `null`.",
@@ -256,6 +256,9 @@ fn write_create_body(
         w.line(format!(
             "built = built.withIdempotency({support}.store({base}Handler.conditions()), {support}.caller());"
         ));
+    }
+    if crate::flags::service_uses(fc.tree, svc) {
+        w.line(format!("{support}.flags(built);"));
     }
     let given = if has_loaders { "new Loaders(), " } else { "" };
     let clock = if service_has_rules(svc) {

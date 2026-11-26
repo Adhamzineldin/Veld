@@ -62,6 +62,19 @@ public final class RequestContext {
     return ifMatchVersion;
   }
   // #endif
+  // #if flags
+
+  private volatile Flags.View flagView;
+
+  void setFlags(Flags.View view) {
+    this.flagView = view;
+  }
+
+  /** The flags this request read, for the checks that run outside its thread (the items of a stream). */
+  Flags.View flags() {
+    return flagView;
+  }
+  // #endif
   // #if timeouts
 
   private volatile Deadline bound;

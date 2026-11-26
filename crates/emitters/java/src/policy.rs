@@ -151,6 +151,47 @@ fn write_class(
     w.close();
 }
 
+/// The overload of the boolean policy function with an optional last argument, a function from a
+/// flag name to a boolean (`spec/platform.md` section 11); the verdict function reads the view that
+/// this puts in force, or the server's.
+fn write_with_flags(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    policy: &Policy,
+    method: &str,
+    (params, idents): (&[String], &[String]),
+    problems: &mut Vec<GenDiagnostic>,
+) {
+    if idents.iter().any(|i| i == "flags") {
+        problems.push(GenDiagnostic {
+            code: "E0801",
+            message: format!(
+                "policy `{}`: generator `java` cannot add the flags argument to `{method}`: a parameter is called `flags`",
+                policy.name
+            ),
+            origin: Some(policy.origin.clone()),
+        });
+        return;
+    }
+    let (function, flags) = (fc.name("java.util.function.Function"), fc.rt("Flags"));
+    let mut signature = params.join(", ");
+    if !signature.is_empty() {
+        signature.push_str(", ");
+    }
+    w.line(format!(
+        "/** Like `{method}`, with the answers of `flags` for the flags of the clauses; without it the method above decides as a failing provider does. */"
+    ));
+    w.open(format!(
+        "public static boolean {method}({signature}{function}<String, Boolean> flags)"
+    ));
+    w.line(format!(
+        "return {flags}.withAnswers(flags, () -> {method}({}));",
+        idents.join(", ")
+    ));
+    w.close();
+    w.blank();
+}
+
 fn write_policy(
     w: &mut CodeWriter,
     fc: &mut FileCtx<'_, '_>,
@@ -196,6 +237,9 @@ fn write_policy(
     w.line(format!("return {method}Verdict({call_args}).permitted();"));
     w.close();
     w.blank();
+    if policy.clauses.iter().any(|c| c.flag.is_some()) {
+        write_with_flags(w, fc, policy, method, (&params, &idents), problems);
+    }
     w.line(format!(
         "/** The policy `{}` at the instant `now` (epoch milliseconds), with the message of the first `forbid` that was true. */",
         policy.name
@@ -237,6 +281,19 @@ fn write_clauses(
     let mut forbids = Vec::new();
     for clause in &policy.clauses {
         let code = print_expr(&mut printer, &clause.expr).code;
+        // A flagged `permit` grants and counts as off when the provider fails; a flagged `forbid`
+        // restricts and counts as on.
+        let code = match (&clause.flag, clause.effect) {
+            (Some(f), PolicyEffect::Permit) => {
+                let flags = printer.file().rt("Flags");
+                format!("{flags}.on({}, false) && ({code})", crate::flags::quoted(f))
+            }
+            (Some(f), PolicyEffect::Forbid) => {
+                let flags = printer.file().rt("Flags");
+                format!("{flags}.on({}, true) && ({code})", crate::flags::quoted(f))
+            }
+            (None, _) => code,
+        };
         match clause.effect {
             PolicyEffect::Permit => permits.push(code),
             PolicyEffect::Forbid => forbids.push((code, clause.message.clone())),

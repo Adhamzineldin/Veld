@@ -130,6 +130,58 @@ pub fn write_can(
     w.line("return false;");
     w.close();
     w.close();
+    if crate::flags::can_depends_on_flags(fc.tree.ir, ep) {
+        write_with_flags(w, fc, svc, ep, &given, problems);
+    }
+}
+
+/// The overload of `can<Endpoint>` with a last argument, a function from a flag name to a boolean
+/// (`spec/platform.md` section 11): without it the method decides as a failing provider does.
+fn write_with_flags(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    svc: &Service,
+    ep: &Endpoint,
+    given: &Inputs<'_>,
+    problems: &mut Vec<GenDiagnostic>,
+) {
+    let names: Vec<String> = given
+        .facts
+        .iter()
+        .map(|(_, n)| n.clone())
+        .chain(given.principal.iter().map(|(n, _)| n.clone()))
+        .chain(given.params.iter().map(|(_, n)| n.clone()))
+        .collect();
+    if names.iter().any(|n| n == "flags") {
+        problems.push(GenDiagnostic::new(
+            "E0801",
+            format!(
+                "{}.{}: generator `java` cannot add the flags argument to `can{}`: a fact, the principal or a parameter is called `flags`",
+                svc.name,
+                ep.name,
+                naming::pascal(&ep.name)
+            ),
+        ));
+        return;
+    }
+    let (function, flags) = (fc.name("java.util.function.Function"), fc.rt("Flags"));
+    let mut signature = signature(fc, given);
+    if !signature.is_empty() {
+        signature.push_str(", ");
+    }
+    let name = can_name(svc, ep);
+    w.blank();
+    w.line(format!(
+        "/** Like `{name}`, with the answers of `flags` for the flags the policies and the transition use; without it the method above decides as a failing provider does. */"
+    ));
+    w.open(format!(
+        "public static boolean {name}({signature}{function}<String, Boolean> flags)"
+    ));
+    w.line(format!(
+        "return {flags}.withAnswers(flags, () -> {name}({}));",
+        names.join(", ")
+    ));
+    w.close();
 }
 
 fn signature(fc: &mut FileCtx<'_, '_>, given: &Inputs<'_>) -> String {

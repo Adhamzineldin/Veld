@@ -13,6 +13,7 @@ pub mod config;
 pub mod derived;
 pub mod endpoint;
 pub mod events;
+pub mod flags;
 pub mod frameworks;
 pub mod machine;
 pub mod models;
@@ -82,6 +83,7 @@ fn events_capabilities(_role: Role) -> Capabilities {
         .with(Feature::RulesTimed)
         .with(Feature::Slo)
         .with(Feature::Timeouts)
+        .with(Feature::RulesFlags)
 }
 
 fn precheck(req: &GenRequest<'_>, caps: &Capabilities) -> Result<(), Vec<GenDiagnostic>> {
@@ -264,6 +266,8 @@ impl Generator for Java {
                 .ir
                 .features_used(&req.services)
                 .contains(&Feature::Timeouts),
+            flags: (rules || policies || rollout || output_mode || derived)
+                && req.ir.features_used(&used).contains(&Feature::RulesFlags),
             policies,
             rollout,
             events: tree.events,

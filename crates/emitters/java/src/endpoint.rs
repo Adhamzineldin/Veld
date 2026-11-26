@@ -394,7 +394,7 @@ pub fn write_call_body(
     for r in &ep.rules.requires {
         write_require(w, &mut printer, site, r, &mut diags);
     }
-    write_saved(w, &mut printer);
+    write_saved(w, &mut printer, &ep.rules.ensures, &ensures);
     if !ep.rules.facts.is_empty() {
         let args: Vec<String> = idents.iter().map(|i| format!("fact_{i}")).collect();
         let facts = facts_name(request);
@@ -470,8 +470,16 @@ fn write_finish(
         } else {
             "ensure"
         };
+        let gate = e.flag.as_ref().map(|f| {
+            format!(
+                "if ({}.on({}, true)) ",
+                printer.file().rt("Flags"),
+                crate::flags::quoted(f)
+            )
+        });
         w.line(format!(
-            "run.{register}({}, {}, {fields}, {}, () -> {cond});",
+            "{}run.{register}({}, {}, {fields}, {}, () -> {cond});",
+            gate.unwrap_or_default(),
             java_str(&e.id),
             java_str(e.name.as_deref().unwrap_or("ensure")),
             message(
@@ -507,6 +515,29 @@ fn write_require(
 ) {
     let cond = print_expr(printer, &r.expr).code;
     let fields = list_of(printer.file(), &r.reads);
+    // A flagged `require` is not there while its flag is off (a failed reading counts as on).
+    if let Some(flag) = &r.flag {
+        let on = format!(
+            "{}.on({}, true)",
+            printer.file().rt("Flags"),
+            crate::flags::quoted(flag)
+        );
+        w.open(format!("if ({on})"));
+        write_require_statement(w, printer, site, r, (&cond, &fields), diags);
+        w.close();
+        return;
+    }
+    write_require_statement(w, printer, site, r, (&cond, &fields), diags);
+}
+
+fn write_require_statement(
+    w: &mut CodeWriter,
+    printer: &mut JavaExpr<'_, '_, '_>,
+    site: &Site<'_>,
+    r: &EndpointRequire,
+    (cond, fields): (&str, &str),
+    diags: &mut Vec<GenDiagnostic>,
+) {
     if r.rollout.is_some() {
         // An audited `require` never answers, so its `else` payload is never built: it is not
         // generated at all (`spec/rules.md` section 17.1).
@@ -540,13 +571,38 @@ fn write_require(
 }
 
 /// `Saved<Long> o0 = ...` for every `old(...)` operand, evaluated before the handler runs.
-fn write_saved(w: &mut CodeWriter, printer: &mut JavaExpr<'_, '_, '_>) {
+fn write_saved(
+    w: &mut CodeWriter,
+    printer: &mut JavaExpr<'_, '_, '_>,
+    statements: &[veld_ir::EndpointEnsure],
+    printed: &[String],
+) {
     let slots: Vec<(String, veld_ir::ExprType)> = printer.olds().to_vec();
     let rules = printer_rt(printer, "EndpointRules");
     for (i, (code, ty)) in slots.iter().enumerate() {
         let ty = rule_value_type(printer.file(), ty);
+        // An operand that only flagged `ensure` statements read is evaluated only while one of them
+        // is on: the reference removes a statement whose flag is off, operands included.
+        let read = format!("o{i}.get()");
+        let users: Vec<Option<&String>> = statements
+            .iter()
+            .zip(printed)
+            .filter(|(_, p)| p.contains(&read))
+            .map(|(s, _)| s.flag.as_ref())
+            .collect();
+        let gate = if !users.is_empty() && users.iter().all(Option::is_some) {
+            let flags = printer_rt(printer, "Flags");
+            let any: Vec<String> = users
+                .iter()
+                .flatten()
+                .map(|f| format!("{flags}.on({}, true)", crate::flags::quoted(f)))
+                .collect();
+            format!(" && ({})", any.join(" || "))
+        } else {
+            String::new()
+        };
         w.line(format!(
-            "{rules}.Saved<{ty}> o{i} = run.active() ? {rules}.Saved.of(() -> {code}) : {rules}.Saved.skipped();"
+            "{rules}.Saved<{ty}> o{i} = run.active(){gate} ? {rules}.Saved.of(() -> {code}) : {rules}.Saved.skipped();"
         ));
     }
 }

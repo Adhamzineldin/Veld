@@ -163,8 +163,8 @@ fn java_generates_timed_moves() {
 }
 
 #[test]
-fn java_refuses_flags() {
-    veld_emit_conformance::check_flags_are_refused(&Java).unwrap();
+fn java_generates_flags() {
+    veld_emit_conformance::check_flags_are_generated(&Java).unwrap();
 }
 
 #[test]

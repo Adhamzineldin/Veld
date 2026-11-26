@@ -41,6 +41,10 @@ impl Group {
 }
 
 fn vector_files(ext: &str, group: Group) -> Vec<PathBuf> {
+    // The vectors of flags wait under a `.pending` suffix until every generator declares the feature.
+    if matches!(group, Group::Only("flags")) {
+        return vec![repo_root().join(format!("tests/rules/core/flags.{ext}.pending"))];
+    }
     let stem = |p: &PathBuf| {
         p.file_stem()
             .map_or(String::new(), |s| s.to_string_lossy().into_owned())
@@ -91,7 +95,10 @@ fn vector_ir(group: Group) -> Ir {
         let text = std::fs::read_to_string(&path)
             .unwrap()
             .replace("\r\n", "\n");
-        let stem = path.file_stem().unwrap().to_string_lossy().into_owned();
+        // `flags.veld.pending` is the module `flags`, written as `flags.veld`.
+        let file = path.file_name().unwrap().to_string_lossy().into_owned();
+        let file = file.trim_end_matches(".pending").to_string();
+        let stem = file.trim_end_matches(".veld").to_string();
         let mut names = Vec::new();
         for line in text.lines() {
             let mut words = line.split_whitespace();
@@ -104,8 +111,7 @@ fn vector_ir(group: Group) -> Ir {
         if !names.is_empty() {
             uses.push_str(&format!("use {stem}.{{{}}}\n", names.join(", ")));
         }
-        let name = path.file_name().unwrap().to_string_lossy().into_owned();
-        files.push(SourceFile { path: name, text });
+        files.push(SourceFile { path: file, text });
     }
     probes.push_str("}\n");
     files.push(SourceFile {
@@ -138,6 +144,14 @@ fn the_shared_vectors_pass_on_generated_java() {
     run_vectors(Group::Core);
 }
 
+/// The vectors of flags (`tests/rules/core/flags.json.pending`): the case's flags are in force
+/// around the check, `provider: "failed"` is a failed provider; a flagged invariant with no view (a
+/// client without a provider) is the case of `partial`, which Java does not have.
+#[test]
+fn the_flag_vectors_pass_on_generated_java() {
+    run_vectors_with(Group::Only("flags"), "FlagVectors");
+}
+
 /// The vectors of audited rules: a client skips them, so only `expect` is compared here. What a
 /// server reports to `onRuleViolation` is held to `audited` by `rollout.rs`.
 #[test]
@@ -147,6 +161,12 @@ fn the_rollout_vectors_pass_on_generated_java() {
 }
 
 fn run_vectors(group: Group) {
+    run_vectors_with(group, "RuleVectors");
+}
+
+/// Like `run_vectors`, with the driver that reads the cases (`FlagVectors` also puts the flags of a
+/// case in force).
+fn run_vectors_with(group: Group, driver_class: &str) {
     if !require_javac("the_shared_vectors_pass_on_generated_java") {
         return;
     }
@@ -170,7 +190,7 @@ fn run_vectors(group: Group) {
             sources.push(target);
         }
     }
-    let driver = repo_root().join("tests/toolchain/java/rules/RuleVectors.java");
+    let driver = repo_root().join(format!("tests/toolchain/java/rules/{driver_class}.java"));
     sources.push(driver);
     let list: Vec<String> = sources
         .iter()
@@ -211,7 +231,8 @@ fn run_vectors(group: Group) {
             }
             lines.push_str(
                 &serde_json::json!({
-                    "id": cases.len(), "type": case.ty, "value": case.value, "request": case.request
+                    "id": cases.len(), "type": case.ty, "value": case.value, "request": case.request,
+                    "flags": case.flags, "provider": case.provider
                 })
                 .to_string(),
             );
@@ -239,7 +260,7 @@ fn run_vectors(group: Group) {
         .args([
             "-cp",
             "classes",
-            "veldtest.RuleVectors",
+            &format!("veldtest.{driver_class}"),
             "cases.jsonl",
             "types.tsv",
         ])

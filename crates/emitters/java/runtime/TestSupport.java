@@ -39,6 +39,27 @@ public final class TestSupport {
     return Json.parse(new String(bytes, StandardCharsets.UTF_8));
   }
 
+  // #if flags
+  /**
+   * Makes the flags come from the request header {@code Veld-Test-Flags} (spec/rules.md section 12.4):
+   * the unpadded base64url of a JSON array of the flags that are on; without the header every flag is
+   * off. The provider of the application is not asked.
+   */
+  public static void flags(HandlerHooks hooks) {
+    hooks.setFlagSource((name, request, context) -> {
+      Json on = json(request, "Veld-Test-Flags");
+      if (on instanceof Json.Arr list) {
+        for (Json item : list.items()) {
+          if (item instanceof Json.Str s && s.value().equals(name)) {
+            return true;
+          }
+        }
+      }
+      return false;
+    });
+  }
+
+  // #endif
   /**
    * The wire value of a fact the request carries, or empty when the fact is absent (missing from
    * the object, or {@code null}).

@@ -281,6 +281,10 @@ public final class Events {
     private Supplier<String> newId = () -> UUID.randomUUID().toString();
     private Supplier<Instant> clock = Instant::now;
     private RuleWalk.Hook onRuleViolation;
+    // #if flags
+    private Flags.Provider flags;
+    private Consumer<Throwable> onFlagError;
+    // #endif
 
     /** Creates the default options: random UUIDs, the system clock, no hook. */
     public PublisherOptions() {}
@@ -302,6 +306,24 @@ public final class Events {
       this.onRuleViolation = hook;
       return this;
     }
+    // #if flags
+
+    /**
+     * The provider of the flags of the invariants of the events (spec/platform.md section 11): read
+     * once per event, with a context that has no principal and the event's signature as the operation.
+     * Without one the flagged invariants are off; a provider that fails makes them count as on.
+     */
+    public PublisherOptions flags(Flags.Provider provider) {
+      this.flags = provider;
+      return this;
+    }
+
+    /** Hears the failures of the flag provider. */
+    public PublisherOptions onFlagError(Consumer<Throwable> hook) {
+      this.onFlagError = hook;
+      return this;
+    }
+    // #endif
   }
 
   /** The hooks of a generated subscriber. All are optional and a failing hook is ignored. */
@@ -310,6 +332,10 @@ public final class Events {
     private Consumer<ContractMismatch> onContractMismatch;
     private RuleWalk.Hook onRuleViolation;
     private Consumer<HandlerFailure> onHandlerError;
+    // #if flags
+    private Flags.Provider flags;
+    private Consumer<Throwable> onFlagError;
+    // #endif
     private Inbox inbox;
     private Sleeper sleep = Thread::sleep;
     private long retryDelayMs = 1000;
@@ -335,6 +361,24 @@ public final class Events {
       this.onRuleViolation = hook;
       return this;
     }
+    // #if flags
+
+    /**
+     * The provider of the flags of the invariants of the events (spec/platform.md section 11): read once
+     * per message, with a context that has no principal and the event's signature as the operation.
+     * Without one the flagged invariants are off; a provider that fails makes them count as on.
+     */
+    public ConsumerOptions flags(Flags.Provider provider) {
+      this.flags = provider;
+      return this;
+    }
+
+    /** Hears the failures of the flag provider. */
+    public ConsumerOptions onFlagError(Consumer<Throwable> hook) {
+      this.onFlagError = hook;
+      return this;
+    }
+    // #endif
 
     /** A run of a handler that failed. */
     public ConsumerOptions onHandlerError(Consumer<HandlerFailure> hook) {
@@ -400,6 +444,51 @@ public final class Events {
     }
   }
 
+  // #if flags
+
+  private static final Map<String, List<String>> EVENT_FLAGS = new ConcurrentHashMap<>();
+
+  /**
+   * Registers the flags the invariants of an event carry, by the event's signature (the generated
+   * publisher and subscriber call it once).
+   */
+  public static void flags(String sig, List<String> names) {
+    EVENT_FLAGS.put(sig, List.copyOf(names));
+  }
+
+  /** Reads the flags of the event once and runs {@code body} with the readings in force. */
+  private static <T> T withFlags(
+      EventDef<?> def, Flags.Provider provider, Consumer<Throwable> failed, Supplier<T> body) {
+    List<String> names = EVENT_FLAGS.getOrDefault(def.sig(), List.of());
+    if (names.isEmpty()) {
+      return body.get();
+    }
+    Flags.View view;
+    if (provider == null) {
+      view = new Flags.View(null);
+      for (String name : names) {
+        view.put(name, Flags.State.OFF);
+      }
+    } else {
+      view =
+          Flags.read(
+              names,
+              (name, request, context) -> provider.isOn(name, context),
+              null,
+              new Flags.Context(null, null, def.sig()),
+              error -> {
+                try {
+                  if (failed != null) {
+                    failed.accept(error);
+                  }
+                } catch (RuntimeException ignored) {
+                  // A failing hook is ignored.
+                }
+              });
+    }
+    return Flags.with(view, body);
+  }
+  // #endif
   /**
    * The invariants of an event in wire form, in full mode: the enforced violations are returned,
    * and both kinds are reported to the hook (the enforced ones first). An audited rule never
@@ -491,7 +580,17 @@ public final class Events {
     if (!issues.isEmpty()) {
       throw invalid(ctx, issues, List.of());
     }
+    // #if flags
+    List<Violation> violations =
+        withFlags(
+            def,
+            ctx.options().flags,
+            ctx.options().onFlagError,
+            () -> runRules(def, wire, ctx.options().onRuleViolation, RuleWalk.Position.OUTPUT));
+    // #endif
+    // #if no_flags
     List<Violation> violations = runRules(def, wire, ctx.options().onRuleViolation, RuleWalk.Position.OUTPUT);
+    // #endif
     if (!violations.isEmpty()) {
       throw invalid(ctx, violationIssues(violations), violations);
     }
@@ -795,7 +894,18 @@ public final class Events {
       }
       // #endif
       if (Objects.equals(env.veldrules(), def.digest())) {
+        // #if flags
+        Json checked = prepared;
+        List<Violation> violations =
+            withFlags(
+                def,
+                options.flags,
+                options.onFlagError,
+                () -> runRules(def, checked, options.onRuleViolation, RuleWalk.Position.INPUT));
+        // #endif
+        // #if no_flags
         List<Violation> violations = runRules(def, prepared, options.onRuleViolation, RuleWalk.Position.INPUT);
+        // #endif
         if (!violations.isEmpty()) {
           StringBuilder text = new StringBuilder();
           for (Violation v : violations) {

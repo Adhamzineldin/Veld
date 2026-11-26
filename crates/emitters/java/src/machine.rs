@@ -99,11 +99,7 @@ pub fn write_guard(
     let class = printer.file().decl(t.decl);
     let default = state_default(ir, &fact.ty, &t.steps);
     let from = state_read(&read, default, machine, &class);
-    let sources: Vec<String> = t
-        .from
-        .iter()
-        .filter_map(|s| state_constant(machine, &class, s))
-        .collect();
+    let sources = sources_code(printer.file(), machine, &class, t);
     let (Some(target), Some(to_wire)) = (
         state_constant(machine, &class, &t.to),
         state_wire(machine, &t.to),
@@ -114,7 +110,6 @@ pub fn write_guard(
         ));
         return;
     };
-    let list = printer.file().name("java.util.List");
     let json = printer.file().rt("Json");
     let transition = transition_type(printer.file(), t);
     let data = format!(
@@ -132,19 +127,60 @@ pub fn write_guard(
         };
         let rules = printer.file().rt("Rules");
         w.line(format!(
-            "{transition} transition = run.transitionDue({}, {}, transition_from, {list}.of({}), {target}, {after}L, () -> {rules}.toDatetime({since}), () -> {error});",
+            "{transition} transition = run.transitionDue({}, {}, transition_from, {sources}, {target}, {after}L, () -> {rules}.toDatetime({since}), () -> {error});",
             java_str(&t.id),
             java_str(&field_path(t)),
-            sources.join(", ")
         ));
         return;
     }
     w.line(format!(
-        "{transition} transition = run.transition({}, {}, transition_from, {list}.of({}), {target}, () -> {error});",
+        "{transition} transition = run.transition({}, {}, transition_from, {sources}, {target}, () -> {error});",
         java_str(&t.id),
         java_str(&field_path(t)),
-        sources.join(", ")
     ));
+}
+
+/// The sources of a `transition` as a Java list: `List.of(A, B)`, or, when an edge is flagged,
+/// `Flags.sources(new S[] {A, B}, new String[] {null, "f"})`, which leaves out an edge whose flag is
+/// off (a `flow` grants, so a failed reading is off).
+fn sources_code(
+    fc: &mut FileCtx<'_, '_>,
+    machine: &Enum,
+    class: &str,
+    t: &EndpointTransition,
+) -> String {
+    let edges: Vec<(String, Option<String>)> = t
+        .from
+        .iter()
+        .filter_map(|s| {
+            let constant = state_constant(machine, class, s)?;
+            let flag = machine
+                .flows
+                .iter()
+                .find(|f| &f.from == s && f.to == t.to)
+                .and_then(|f| f.flag.clone());
+            Some((constant, flag))
+        })
+        .collect();
+    if edges.iter().all(|(_, f)| f.is_none()) {
+        let list = fc.name("java.util.List");
+        let names: Vec<&str> = edges.iter().map(|(c, _)| c.as_str()).collect();
+        return format!("{list}.of({})", names.join(", "));
+    }
+    let flags = fc.rt("Flags");
+    let states: Vec<&str> = edges.iter().map(|(c, _)| c.as_str()).collect();
+    let names: Vec<String> = edges
+        .iter()
+        .map(|(_, f)| {
+            f.as_deref()
+                .map_or_else(|| "null".to_string(), crate::flags::quoted)
+        })
+        .collect();
+    format!(
+        "{flags}.sources(new {class}[] {{ {} }}, new String[] {{ {} }})",
+        states.join(", "),
+        names.join(", ")
+    )
 }
 
 /// The milliseconds of the timed edge a `transition` with `since` takes, in a state machine.
@@ -206,16 +242,8 @@ pub fn can_condition(
     let class = printer.file().decl(t.decl);
     let default = state_default(ir, &fact.ty, &t.steps);
     let from = state_read(&read, default, machine, &class);
-    let sources: Vec<String> = t
-        .from
-        .iter()
-        .filter_map(|s| state_constant(machine, &class, s))
-        .collect();
-    let list = printer.file().name("java.util.List");
-    Some(format!(
-        "{list}.of({}).contains({from})",
-        sources.join(", ")
-    ))
+    let sources = sources_code(printer.file(), machine, &class, t);
+    Some(format!("{sources}.contains({from})"))
 }
 
 /// The target check (step 9, after the `ensure` statements): the same field of the result must

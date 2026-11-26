@@ -277,11 +277,13 @@ fn required_hooks(fc: &mut FileCtx<'_, '_>, svc: &Service) -> Vec<Hook> {
     .into_iter()
     .flatten()
     .collect();
+    let needs_flags = crate::flags::service_uses(fc.tree, svc);
     let params = unique(
         auth.iter()
             .map(|a| a.0.to_string())
             .chain(middleware.iter().map(|m| member_ident(m)))
             .chain(idempotency.iter().map(|n| (*n).to_string()))
+            .chain(needs_flags.then(|| "flags".to_string()))
             .collect(),
     );
     let principal = match (&svc.principal, fc.tree.policies, auth.is_empty()) {
@@ -345,6 +347,10 @@ fn required_hooks(fc: &mut FileCtx<'_, '_>, svc: &Service) -> Vec<Hook> {
         let param = params[first + usize::from(needs_store)].clone();
         out.push(caller_hook(fc, &hooks, principal.as_deref(), param));
     }
+    if needs_flags {
+        let param = params[first + usize::from(needs_store) + usize::from(needs_caller)].clone();
+        out.push(flags_hook(fc, svc, param));
+    }
     out
 }
 
@@ -396,6 +402,42 @@ fn write_complete_principal(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, decl: 
     ));
     w.close();
     w.blank();
+}
+
+/// The provider of the flags (`spec/platform.md` section 11): required, because an endpoint of the
+/// service can reach a flag. It also registers the flags each endpoint reads, by operation.
+fn flags_hook(fc: &mut FileCtx<'_, '_>, svc: &Service, param: String) -> Hook {
+    let (flags, map, list) = (
+        fc.rt("Flags"),
+        fc.name("java.util.Map"),
+        fc.name("java.util.List"),
+    );
+    let entries: Vec<String> = svc
+        .endpoints
+        .iter()
+        .filter_map(|e| {
+            let names = crate::flags::endpoint_flags(fc.tree, e);
+            (!names.is_empty()).then(|| {
+                let quoted: Vec<String> = names.iter().map(|n| crate::flags::quoted(n)).collect();
+                format!(
+                    "{map}.entry({}, {list}.of({}))",
+                    java_str(&e.sig),
+                    quoted.join(", ")
+                )
+            })
+        })
+        .collect();
+    Hook {
+        ty: format!("{flags}.Provider"),
+        register: format!(
+            "builder.flags({param}, {map}.ofEntries({}));",
+            entries.join(", ")
+        ),
+        doc: "the provider of the flags the endpoints can reach (`Flags.Memory` for tests)"
+            .to_string(),
+        iface: Vec::new(),
+        param,
+    }
 }
 
 /// The hook that tells who the caller is, for the scope of an idempotency key: typed with the
@@ -617,7 +659,7 @@ fn write_handler(
         write_spec_const(w, fc, ep);
     }
     w.blank();
-    let needs_hooks = needs_hooks(svc);
+    let needs_hooks = needs_hooks(fc.tree, svc);
     let hooks_class = format!("{base}Hooks");
     let service = format!("{base}Service");
     let rules = endpoint::service_has_rules(svc);
@@ -993,11 +1035,12 @@ pub(crate) fn std_sigs(fc: &mut FileCtx<'_, '_>) -> String {
 }
 
 /// Whether any endpoint of the service needs an auth or middleware hook.
-pub(crate) fn needs_hooks(svc: &Service) -> bool {
+pub(crate) fn needs_hooks(tree: &Tree<'_>, svc: &Service) -> bool {
     svc.endpoints
         .iter()
         .any(|e| auth_kind_name(e.auth.kind).is_some() || !e.middleware.is_empty())
         || conditional::hooks_needed(svc).0
+        || crate::flags::service_uses(tree, svc)
 }
 
 /// The services of the tree as the framework adapters see them, in tree order.
@@ -1019,7 +1062,7 @@ pub fn service_models(tree: &Tree<'_>) -> Vec<ServiceModel> {
             name: naming::pascal(&svc.name),
             server_package: tree.api_package(pkg, "server"),
             adapter_package: format!("{}.adapters.{dir}", tree.base),
-            needs_hooks: needs_hooks(svc),
+            needs_hooks: needs_hooks(tree, svc),
             loaders: (!svc.facts.is_empty())
                 .then(|| endpoint::loaders_name(&naming::pascal(&svc.name))),
             endpoints: svc

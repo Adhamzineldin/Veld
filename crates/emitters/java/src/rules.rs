@@ -158,6 +158,15 @@ fn write_rule(
         .clone()
         .unwrap_or_else(|| format!("violates rule {}", rule.name));
     let skipped = rule.reads_readonly;
+    // A flagged invariant exists only while its flag is on; a client has no provider and skips it
+    // (`spec/platform.md` section 11).
+    if let Some(flag) = &rule.flag {
+        w.open(format!(
+            "if ({}.invariantOn({}))",
+            fc.rt("Flags"),
+            crate::flags::quoted(flag)
+        ));
+    }
     if skipped {
         w.open("if (!request)");
     }
@@ -179,6 +188,9 @@ fn write_rule(
     w.line(format!("() -> {});", body.code));
     w.dedent().dedent();
     if skipped {
+        w.close();
+    }
+    if rule.flag.is_some() {
         w.close();
     }
 }

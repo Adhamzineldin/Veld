@@ -128,6 +128,11 @@ public final class Router implements VeldHandler {
           throw new IllegalStateException(e.spec().name() + ": middleware " + name + " is required");
         }
       }
+      // #if flags
+      if (!hooks.flagsOf(e.spec().sig()).isEmpty() && hooks.flagSource() == null) {
+        throw new IllegalStateException(e.spec().name() + ": hooks.flags is required");
+      }
+      // #endif
     }
   }
 
@@ -311,6 +316,9 @@ public final class Router implements VeldHandler {
     // #if timeouts
     ctx.setDeadline(Deadline.current());
     // #endif
+    // #if flags
+    Flags.View enclosing = Flags.current();
+    // #endif
     try {
       Guarded guarded = guard(route, match, request, ctx, false);
       if (guarded.failure != null) {
@@ -332,6 +340,10 @@ public final class Router implements VeldHandler {
       return success(ep, ep.call().call(params, ctx));
     } catch (Exception | StackOverflowError err) {
       return failure(err, spec, ctx);
+      // #if flags
+    } finally {
+      Flags.restore(enclosing);
+      // #endif
     }
   }
   // #if conditional
@@ -535,6 +547,11 @@ public final class Router implements VeldHandler {
     if (!out.bound.issues.isEmpty()) {
       out.failure = problem(std.validation(), "ValidationError", 422, spec.sig(), issuesData(out.bound.issues));
     }
+    // #if flags
+    if (out.failure == null) {
+      readFlags(spec, ctx);
+    }
+    // #endif
     // #if rules
     if (out.failure == null && hooks.validateRequests()) {
       out.failure = RuleWalk.inputFailure(spec, hooks, out.bound.values, std);
@@ -556,6 +573,36 @@ public final class Router implements VeldHandler {
     // #endif
     return out;
   }
+  // #if flags
+
+  /**
+   * Reads every flag the endpoint can reach once, after authentication, and puts the readings in
+   * force for the rest of the request (spec/platform.md section 11). A provider that fails makes that
+   * flag a failed reading and goes to {@code onError}.
+   */
+  private void readFlags(EndpointSpec spec, RequestContext ctx) {
+    java.util.List<String> names = hooks.flagsOf(spec.sig());
+    if (names.isEmpty()) {
+      return;
+    }
+    Flags.View view = Flags.read(
+        names,
+        hooks.flagSource(),
+        ctx,
+        new Flags.Context(ctx.principal(), null, spec.sig()),
+        error -> {
+          try {
+            if (hooks.onError() != null) {
+              hooks.onError().onError(error, ctx);
+            }
+          } catch (RuntimeException ignored) {
+            // A failing hook must not change the response.
+          }
+        });
+    ctx.setFlags(view);
+    Flags.install(view);
+  }
+  // #endif
   // veld:sse
 
   /**
@@ -566,8 +613,14 @@ public final class Router implements VeldHandler {
     EndpointSpec spec = ep.spec();
     Stream<String> frames = SseFrames.open(
         source,
+        // #if flags
+        event -> Flags.with(ctx.flags(), () -> sseFrame(spec, event)),
+        err -> Flags.with(ctx.flags(), () -> SseEvent.frame(failure(err, spec, ctx).body(), null, "error", null)));
+        // #endif
+        // #if no_flags
         event -> sseFrame(spec, event),
         err -> SseEvent.frame(failure(err, spec, ctx).body(), null, "error", null));
+        // #endif
     Map<String, String> headers = Map.of(
         "content-type", "text/event-stream", "cache-control", "no-cache", "x-accel-buffering", "no");
     return new VeldResponse(spec.status(), headers, null, frames);

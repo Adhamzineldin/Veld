@@ -163,6 +163,21 @@ fn write_event_defs(
         ));
         w.dedent().dedent();
     }
+    // The flags of the invariants of the tree: read once per message (`spec/platform.md` section 11).
+    let names = crate::flags::invariant_flags(fc.tree);
+    if !names.is_empty() {
+        let list = fc.name("java.util.List");
+        let quoted: Vec<String> = names.iter().map(|n| crate::flags::quoted(n)).collect();
+        w.open("static");
+        for (id, _) in ids.iter().zip(consts) {
+            let ty = fc.decl(*id);
+            w.line(format!(
+                "{events}.flags({ty}.VELD_SIG, {list}.of({}));",
+                quoted.join(", ")
+            ));
+        }
+        w.close();
+    }
 }
 
 fn channel_doc(channel: &Channel) -> String {

@@ -87,6 +87,10 @@ public final class HandlerHooks {
   // #if timeouts
   private final Map<String, Long> timeouts;
   // #endif
+  // #if flags
+  private volatile Flags.Source flagSource;
+  private final Map<String, java.util.List<String>> flagNames;
+  // #endif
 
   private HandlerHooks(Builder b) {
     this.bearer = b.bearer;
@@ -109,6 +113,10 @@ public final class HandlerHooks {
     // #endif
     // #if timeouts
     this.timeouts = Map.copyOf(b.timeouts);
+    // #endif
+    // #if flags
+    this.flagSource = b.flagSource;
+    this.flagNames = Map.copyOf(b.flagNames);
     // #endif
   }
 
@@ -157,6 +165,22 @@ public final class HandlerHooks {
     return timeouts.getOrDefault(sig, 0L);
   }
   // #endif
+  // #if flags
+
+  Flags.Source flagSource() {
+    return flagSource;
+  }
+
+  /** The test handler asks the request's header instead of the application's provider. */
+  void setFlagSource(Flags.Source source) {
+    this.flagSource = source;
+  }
+
+  /** The flags the endpoint with this operation signature can reach, sorted. */
+  java.util.List<String> flagsOf(String sig) {
+    return flagNames.getOrDefault(sig, java.util.List.of());
+  }
+  // #endif
   // #if rules
 
   RuleWalk.OutputMode rulesOutput() {
@@ -197,6 +221,10 @@ public final class HandlerHooks {
     b.ruleHook = ruleHook;
     b.rulesOutput = mode == null ? RuleWalk.OutputMode.STRICT : mode;
     // #endif
+    // #if testing_rules_flags
+    b.flagSource = flagSource;
+    b.flagNames.putAll(flagNames);
+    // #endif
     // #if testing_rules_conditional
     b.idempotencyStore = idempotencyStore;
     b.idempotencyCaller = idempotencyCaller;
@@ -228,6 +256,10 @@ public final class HandlerHooks {
     // #endif
     // #if timeouts
     private final Map<String, Long> timeouts = new LinkedHashMap<>();
+    // #endif
+    // #if flags
+    private Flags.Source flagSource;
+    private final Map<String, java.util.List<String>> flagNames = new LinkedHashMap<>();
     // #endif
 
     private Builder() {}
@@ -315,6 +347,10 @@ public final class HandlerHooks {
       this.validateResponses = other.validateResponses;
       this.validateRequests = other.validateRequests;
       // #endif
+      // #if flags_conditional
+      this.flagSource = other.flagSource;
+      this.flagNames.putAll(other.flagNames);
+      // #endif
       // #if conditional_rules
       this.rulesOutput = other.rulesOutput;
       this.ruleHook = other.ruleHook;
@@ -336,6 +372,18 @@ public final class HandlerHooks {
     /** The deadlines of the endpoints, in milliseconds by operation signature (spec/platform.md section 12). */
     public Builder timeouts(Map<String, Long> byOperation) {
       this.timeouts.putAll(byOperation);
+      return this;
+    }
+
+    // #endif
+    // #if flags
+    /**
+     * The provider of the flags and the flags each endpoint can reach, by operation signature
+     * (spec/platform.md section 11). The server asks for them once per request, after authentication.
+     */
+    public Builder flags(Flags.Provider provider, Map<String, java.util.List<String>> byOperation) {
+      this.flagSource = provider == null ? null : (name, request, context) -> provider.isOn(name, context);
+      this.flagNames.putAll(byOperation);
       return this;
     }
 
