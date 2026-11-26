@@ -33,17 +33,28 @@ export interface TransportSubscription {
 }
 
 /**
- * What the generated publishers and subscribers depend on (spec/events.md section 9). A broker
- * adapter implements it; `MemoryTransport` is the one that ships with every target.
+ * What a channel asks of a transport (spec/events.md section 10.6): `@ordered` and `@deadLetter`.
+ * Both are false when absent. The memory transport ignores them; a transport that cannot give
+ * `ordered` must fail the call.
+ */
+export interface ChannelOptions {
+  readonly ordered?: boolean;
+  readonly deadLetter?: boolean;
+}
+
+/**
+ * What the generated publishers and subscribers depend on (spec/events.md sections 9 and 10.6). A
+ * broker adapter implements it; `MemoryTransport` is the one that ships with every target.
  */
 export interface Transport {
   /** Completes when the transport has accepted the message. */
-  publish(topic: string, key: string | null, bytes: Uint8Array): Promise<void>;
+  publish(topic: string, key: string | null, bytes: Uint8Array, options?: ChannelOptions): Promise<void>;
   /** `deliver` answers `done` or `again`. */
   subscribe(
     topic: string,
     group: string,
     deliver: (message: TransportMessage) => Promise<Outcome>,
+    options?: ChannelOptions,
   ): Promise<TransportSubscription>;
 }
 
@@ -224,6 +235,10 @@ export interface ChannelDef {
   readonly topic: string;
   /** The key field of the channel (wire name and type), or `null` when it has none. */
   readonly key: { readonly wire: string; readonly kind: 'string' | 'uuid' | 'int' | 'long' } | null;
+  /** `@ordered` (section 10.2). Absent means false. */
+  readonly ordered?: boolean;
+  /** `@deadLetter` (section 10.2). Absent means false. */
+  readonly deadLetter?: boolean;
 }
 
 /** A rule violation as the hooks report it. */
@@ -498,7 +513,8 @@ export async function publishEvent(
   };
   if (subject !== null) envelope['subject'] = subject;
   if (def.digest !== null) envelope['veldrules'] = def.digest;
-  await ctx.transport.publish(channel.topic, subject, encodeUtf8(canonical(envelope)));
+  const options: ChannelOptions = { ordered: channel.ordered === true, deadLetter: channel.deadLetter === true };
+  await ctx.transport.publish(channel.topic, subject, encodeUtf8(canonical(envelope)), options);
   return { id, source: ctx.source, type: def.sig, subject: subject ?? undefined, time };
 }
 
@@ -532,13 +548,55 @@ export interface ContractMismatch {
   readonly digest: string | null;
 }
 
-/** A handler threw: the message is not acknowledged and the transport delivers it again by its own policy. */
+/** A run of a handler failed (section 8.1). */
 export interface HandlerFailure {
   readonly event: string;
   readonly topic: string;
   readonly group: string;
   readonly meta: EventMeta;
   readonly error: unknown;
+  /** The delivery attempt of this run: `meta.attempt`. */
+  readonly attempt: number;
+  /**
+   * True when this consumer will not handle the message again (section 10.4): the last run of a
+   * channel with `@retry`. Always false on a channel without `@retry`, where the transport
+   * delivers the message again.
+   */
+  readonly final: boolean;
+}
+
+/**
+ * The application's record of the messages it has handled (section 10.3). `handle` runs `run`
+ * and records `(source, id)`, or does nothing when the pair is recorded; it answers whether it
+ * ran `run`. When `run` fails the pair MUST NOT be recorded and the failure is the handler's.
+ * An implementation that records the pair in the transaction of the handler's own writes
+ * prevents a duplicated business effect; one that cannot narrows the window and does not close it.
+ */
+export interface Inbox {
+  handle(source: string, id: string, run: () => Promise<void> | void): Promise<boolean> | boolean;
+}
+
+/** An inbox that lives in the process, for tests. */
+export class MemoryInbox implements Inbox {
+  readonly #seen = new Set<string>();
+
+  async handle(source: string, id: string, run: () => Promise<void> | void): Promise<boolean> {
+    const key = JSON.stringify([source, id]);
+    if (this.#seen.has(key)) return false;
+    await run();
+    this.#seen.add(key);
+    return true;
+  }
+
+  /** True when the pair was handled. */
+  has(source: string, id: string): boolean {
+    return this.#seen.has(JSON.stringify([source, id]));
+  }
+
+  /** How many pairs are recorded. */
+  get size(): number {
+    return this.#seen.size;
+  }
 }
 
 export interface ConsumerOptions {
@@ -548,8 +606,22 @@ export interface ConsumerOptions {
   onContractMismatch?: (event: ContractMismatch) => void;
   /** The violations of invariants of a message: the enforced ones that reject it and the audited ones. */
   onRuleViolation?: (event: EventRuleViolation) => void;
-  /** A handler that threw. */
+  /** A run of a handler that threw. */
   onHandlerError?: (event: HandlerFailure) => void;
+  /** Step 5 of section 8: a message whose `source` and `id` were handled is acknowledged and skipped. */
+  inbox?: Inbox;
+  /** Waits for the milliseconds before a run of `@retry` (section 10.4). Default: a timer. A test passes one that does not wait. */
+  sleep?: (ms: number) => Promise<void>;
+  /** The wait before the second run (default 1000). */
+  retryDelayMs?: number;
+  /** No wait is longer than this (default 60000). */
+  retryMaxDelayMs?: number;
+}
+
+/** `@retry(max: n, backoff: fixed | exponential)` of a channel (section 10.2). */
+export interface RetryPolicy {
+  readonly max: number;
+  readonly backoff: 'fixed' | 'exponential';
 }
 
 /** One `on` line: the event and the call into the application's handler. */
@@ -563,6 +635,12 @@ export interface SubscriptionDef {
   readonly topic: string;
   readonly group: string;
   readonly on: readonly EventBinding[];
+  /** `@retry` of the channel: the consumer runs the handler again by itself (section 10.4). */
+  readonly retry?: RetryPolicy;
+  /** `@deadLetter` of the channel: rejected messages and used-up retries are copied to `<topic>.dlq` (section 10.5). */
+  readonly deadLetter?: boolean;
+  /** `@ordered` of the channel: passed to the transport (section 10.6). */
+  readonly ordered?: boolean;
 }
 
 export interface SubscriptionHandle {
@@ -613,28 +691,100 @@ function parseEnvelope(bytes: Uint8Array): Envelope | string {
 }
 
 interface Consumer {
+  readonly transport: Transport;
   readonly sub: SubscriptionDef;
   readonly options: ConsumerOptions;
   readonly seen: Set<string>;
 }
 
-function reject(
+// ---------------------------------------------------------------------------
+// The dead-letter copy (section 10.5)
+// ---------------------------------------------------------------------------
+
+/** Why a message is copied to `<topic>.dlq`: the three rejections, or the used-up retries of a handler. */
+export type DeadLetterReason = EventRejected['reason'] | 'handler';
+
+/** The members a copy adds. A member of the original with one of these names is replaced or removed. */
+const COPY_MEMBERS = ['veldreason', 'veldgroup', 'veldattempts', 'veldissues', 'veldviolations'];
+
+/**
+ * The bytes of the dead-letter copy of `original` (section 10.5). When the original is a JSON
+ * object, the copy is that object with `veldreason`, `veldgroup`, `veldattempts` (the runs of the
+ * handler, 0 for a rejected message) and, when not empty, `veldissues` and `veldviolations`, each
+ * a string that holds the canonical JSON of its list, written as canonical JSON. Anything else
+ * is returned as it is. Nothing of a handler's error is in a copy.
+ */
+export function deadLetterCopy(
+  original: Uint8Array,
+  reason: DeadLetterReason,
+  group: string,
+  attempts: number,
+  issues: readonly Issue[],
+  violations: readonly EventViolation[],
+): Uint8Array {
+  let json: unknown;
+  try {
+    json = JSON.parse(decodeUtf8(original));
+  } catch {
+    return original;
+  }
+  if (!isRecord(json)) return original;
+  const copy: Record<string, unknown> = { ...json };
+  for (const name of COPY_MEMBERS) delete copy[name];
+  copy['veldreason'] = reason;
+  copy['veldgroup'] = group;
+  copy['veldattempts'] = attempts;
+  if (issues.length > 0) {
+    copy['veldissues'] = canonical(issues.map((i) => ({ path: i.path, code: i.code, message: i.message })));
+  }
+  if (violations.length > 0) {
+    copy['veldviolations'] = canonical(
+      violations.map((v) => ({ rule: v.rule, path: v.path, fields: v.fields, message: v.message, error: v.error })),
+    );
+  }
+  return encodeUtf8(canonical(copy));
+}
+
+/** Publishes the copy of a message to `<topic>.dlq` when the channel has `@deadLetter`: `again` when that fails. */
+async function copyToDeadLetter(
+  c: Consumer,
+  message: TransportMessage,
+  reason: DeadLetterReason,
+  attempts: number,
+  issues: readonly Issue[],
+  violations: readonly EventViolation[],
+): Promise<Outcome> {
+  if (c.sub.deadLetter !== true) return 'done';
+  const bytes = deadLetterCopy(message.bytes, reason, c.sub.group, attempts, issues, violations);
+  try {
+    await c.transport.publish(`${c.sub.topic}.dlq`, message.key, bytes);
+  } catch {
+    return 'again';
+  }
+  return 'done';
+}
+
+/** A rejected message (steps 1, 3 and 4) is copied when the channel has `@deadLetter`, then acknowledged and reported. */
+async function reject(
   c: Consumer,
   message: TransportMessage,
   reason: EventRejected['reason'],
   detail: { message: string; event?: string; issues?: readonly Issue[]; violations?: readonly EventViolation[] },
-): Outcome {
+): Promise<Outcome> {
+  const issues = detail.issues ?? [];
+  const violations = detail.violations ?? [];
+  const outcome = await copyToDeadLetter(c, message, reason, 0, issues, violations);
   hook(c.options.onEventRejected, {
     reason,
     message: detail.message,
     topic: c.sub.topic,
     group: c.sub.group,
     event: detail.event ?? null,
-    issues: detail.issues ?? [],
-    violations: detail.violations ?? [],
+    issues,
+    violations,
     bytes: message.bytes,
   });
-  return 'done';
+  return outcome;
 }
 
 /** Tells the application once per distinct pair that the publisher is on another version. */
@@ -654,7 +804,7 @@ function noteMismatch(c: Consumer, def: EventDef, env: Envelope): void {
 }
 
 /** Steps 3 and 4: the shape, then the invariants when the digests agree. `null`: the message goes on. */
-function decode(c: Consumer, message: TransportMessage, def: EventDef, env: Envelope): Outcome | null {
+function decode(c: Consumer, message: TransportMessage, def: EventDef, env: Envelope): Promise<Outcome> | null {
   const issues = validate(def.schema, env.data, '$', { wire: true });
   if (issues.length > 0) {
     const text = issues.map((i) => `${i.path} ${i.message}`).join('; ');
@@ -672,6 +822,74 @@ function decode(c: Consumer, message: TransportMessage, def: EventDef, env: Enve
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// Steps 5 and 6, with `@retry` (section 10.4)
+// ---------------------------------------------------------------------------
+
+function defaultSleep(ms: number): Promise<void> {
+  const set = (globalThis as { setTimeout?: (fn: () => void, ms: number) => unknown }).setTimeout;
+  if (set === undefined) return Promise.reject(new Error('veld events: this runtime has no setTimeout; pass the `sleep` option'));
+  return new Promise((resolve) => {
+    set(resolve, ms);
+  });
+}
+
+/** The wait after run `k` failed (`k` from 1): the delay for `fixed`, doubled each time for `exponential`, never more than the maximum. */
+function retryWait(c: Consumer, retry: RetryPolicy, k: number): number {
+  const delay = c.options.retryDelayMs ?? 1000;
+  const max = c.options.retryMaxDelayMs ?? 60000;
+  const wait = retry.backoff === 'fixed' ? delay : delay * 2 ** Math.min(k - 1, 63);
+  return Math.min(wait, max);
+}
+
+/** Steps 5 and 6 of one run: the inbox, then the handler. */
+async function runOnce(c: Consumer, binding: EventBinding, env: Envelope, meta: EventMeta): Promise<void> {
+  const call = async (): Promise<void> => {
+    await binding.run(fromWire(binding.def.schema, env.data), meta);
+  };
+  const inbox = c.options.inbox;
+  if (inbox === undefined) await call();
+  else await inbox.handle(env.source, env.id, call);
+}
+
+/**
+ * The handler runs until it returns or, with `@retry(max: n)`, up to `n + 1` times, waiting
+ * between the runs. A channel without `@retry` answers `again` at the first failure; the last run
+ * of one with `@retry` is copied when the channel has `@deadLetter` and acknowledged.
+ */
+async function handle(c: Consumer, message: TransportMessage, binding: EventBinding, env: Envelope): Promise<Outcome> {
+  const retry = c.sub.retry;
+  const allowed = retry === undefined ? 1 : retry.max + 1;
+  for (let run = 1; ; run += 1) {
+    const meta: EventMeta = {
+      id: env.id,
+      source: env.source,
+      type: env.type,
+      subject: env.subject,
+      time: env.time,
+      attempt: message.attempt + run - 1,
+    };
+    try {
+      await runOnce(c, binding, env, meta);
+      return 'done';
+    } catch (error) {
+      const final = retry !== undefined && run === allowed;
+      hook(c.options.onHandlerError, {
+        event: binding.def.name,
+        topic: c.sub.topic,
+        group: c.sub.group,
+        meta,
+        error,
+        attempt: meta.attempt,
+        final,
+      });
+      if (retry === undefined) return 'again';
+      if (final) return copyToDeadLetter(c, message, 'handler', run, [], []);
+      await (c.options.sleep ?? defaultSleep)(retryWait(c, retry, run));
+    }
+  }
+}
+
 async function consume(c: Consumer, message: TransportMessage): Promise<Outcome> {
   const env = parseEnvelope(message.bytes);
   if (typeof env === 'string') return reject(c, message, 'malformed', { message: env });
@@ -680,28 +898,15 @@ async function consume(c: Consumer, message: TransportMessage): Promise<Outcome>
   const rejected = decode(c, message, binding.def, env);
   if (rejected !== null) return rejected;
   noteMismatch(c, binding.def, env);
-  const meta: EventMeta = {
-    id: env.id,
-    source: env.source,
-    type: env.type,
-    subject: env.subject,
-    time: env.time,
-    attempt: message.attempt,
-  };
-  try {
-    await binding.run(fromWire(binding.def.schema, env.data), meta);
-  } catch (error) {
-    hook(c.options.onHandlerError, { event: binding.def.name, topic: c.sub.topic, group: c.sub.group, meta, error });
-    return 'again';
-  }
-  return 'done';
+  return handle(c, message, binding, env);
 }
 
 /**
  * Connects the handlers of a service to a transport, one subscription per `subscribes` line, each
  * under its group (section 8). A message the subscription has no `on` line for is acknowledged and
- * ignored; a rejected one is acknowledged and reported to `onEventRejected`; a handler that throws
- * leaves it unacknowledged.
+ * ignored; a rejected one is copied to the dead-letter topic when the channel has `@deadLetter`,
+ * acknowledged and reported to `onEventRejected`; a handler that throws is run again by the
+ * consumer with `@retry` and leaves the message unacknowledged without it.
  */
 export async function subscribeEvents(
   transport: Transport,
@@ -715,8 +920,9 @@ export async function subscribeEvents(
   };
   try {
     for (const sub of subs) {
-      const consumer: Consumer = { sub, options, seen };
-      opened.push(await transport.subscribe(sub.topic, sub.group, (message) => consume(consumer, message)));
+      const consumer: Consumer = { transport, sub, options, seen };
+      const channel: ChannelOptions = { ordered: sub.ordered === true, deadLetter: sub.deadLetter === true };
+      opened.push(await transport.subscribe(sub.topic, sub.group, (message) => consume(consumer, message), channel));
     }
   } catch (error) {
     await close();

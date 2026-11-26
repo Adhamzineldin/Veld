@@ -83,6 +83,67 @@ pub fn check_events_delivery_is_refused(generator: &dyn DynGenerator) -> Result<
     Ok(())
 }
 
+/// A server generator that has built phase E2 must declare `events_delivery`, let the gate pass
+/// the publishing and the subscribing service of a channel with `@retry`, `@deadLetter` and
+/// `@ordered` (each alone and together) and generate at least one file for each, the same files on
+/// every run.
+///
+/// # Errors
+/// A description of the first role, annotations and service for which the generator does not
+/// behave so.
+pub fn check_events_delivery_is_generated(generator: &dyn DynGenerator) -> Result<(), String> {
+    for role in generator.roles().iter().filter(|r| **r == Role::Server) {
+        if !generator
+            .capabilities(*role)
+            .supports(Feature::EventsDelivery)
+        {
+            return Err(format!(
+                "{}: does not declare `events_delivery`",
+                role.name()
+            ));
+        }
+        for annotations in VARIANTS {
+            let ir = compile("events_delivery_generated", &source(annotations));
+            for name in ["Hello", "Audit"] {
+                let services = vec![service_id(&ir, name)?];
+                generates(generator, &ir, *role, services).map_err(|e| {
+                    format!("{} / {name} / {:?}: {e}", role.name(), annotations.trim())
+                })?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn generates(
+    generator: &dyn DynGenerator,
+    ir: &Ir,
+    role: Role,
+    services: Vec<ServiceId>,
+) -> Result<(), String> {
+    let req = GenRequest {
+        ir,
+        role,
+        services,
+        consumes: vec![],
+        framework: None,
+    };
+    let gate = check_capabilities(ir, &req, &generator.capabilities(role));
+    if !gate.is_empty() {
+        return Err(format!("the gate reported {gate:?}"));
+    }
+    let first = generator
+        .generate_dyn(&req, &serde_json::Value::Null)
+        .map_err(|d| format!("generation failed: {d:?}"))?;
+    let second = generator
+        .generate_dyn(&req, &serde_json::Value::Null)
+        .map_err(|d| format!("the second generation failed: {d:?}"))?;
+    if first.is_empty() || first != second {
+        return Err("no files, or two runs gave different files".to_owned());
+    }
+    Ok(())
+}
+
 fn refuses(
     generator: &dyn DynGenerator,
     ir: &Ir,
@@ -248,6 +309,32 @@ mod tests {
     fn a_server_that_refuses_the_annotations_conforms() {
         let refuses = server(Capabilities::all_except(&[]), true);
         check_events_delivery_is_refused(&refuses).unwrap();
+    }
+
+    #[test]
+    fn a_server_that_generates_the_annotations_conforms() {
+        let supports = server(
+            Capabilities::all_except(&[]).with(Feature::EventsDelivery),
+            false,
+        );
+        check_events_delivery_is_generated(&supports).unwrap();
+    }
+
+    #[test]
+    fn a_server_that_does_not_declare_the_feature_is_caught_by_the_generated_check() {
+        let refuses = server(Capabilities::all_except(&[]), false);
+        let err = check_events_delivery_is_generated(&refuses).unwrap_err();
+        assert!(err.contains("does not declare `events_delivery`"), "{err}");
+    }
+
+    #[test]
+    fn a_server_that_declares_the_feature_and_refuses_is_caught_by_the_generated_check() {
+        let declares = server(
+            Capabilities::all_except(&[]).with(Feature::EventsDelivery),
+            true,
+        );
+        let err = check_events_delivery_is_generated(&declares).unwrap_err();
+        assert!(err.contains("generation failed"), "{err}");
     }
 
     #[test]

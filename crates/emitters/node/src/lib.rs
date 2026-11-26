@@ -7,6 +7,7 @@
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 
+mod brokers;
 mod events;
 mod frameworks;
 mod guards;
@@ -14,6 +15,7 @@ mod rules;
 mod server;
 mod testing;
 
+pub use brokers::Messaging;
 pub use frameworks::{ADAPTERS, EndpointModel, RuntimeRef, ServerModel, ServiceModel};
 
 use serde::Deserialize;
@@ -39,6 +41,9 @@ pub struct Options {
     /// second entry point that takes its facts, principal, clock and result from request headers
     /// (`spec/rules.md` section 12.4). It must never be mounted in production. Default: `false`.
     pub testing: Option<bool>,
+    /// The broker adapters to generate: `"kafka"`, `"rabbitmq"` or a list of both
+    /// (`spec/events.md` section 10.7). Default: none, the memory transport only.
+    pub messaging: Option<Messaging>,
 }
 
 /// The Node.js server generator.
@@ -69,6 +74,7 @@ impl Generator for Node {
             .with(veld_ir::Feature::RulesRollout)
             .with(veld_ir::Feature::RulesVersion)
             .with(veld_ir::Feature::Idempotency)
+            .with(veld_ir::Feature::EventsDelivery)
     }
 
     fn warnings(&self, req: &GenRequest<'_>, opts: &Options) -> Vec<GenDiagnostic> {
@@ -94,6 +100,7 @@ impl Generator for Node {
         )
         .with_validate(opts.validate != Some(false))
         .with_events();
+        let brokers = brokers::choose(opts.messaging.as_ref(), &tree)?;
         let model = ServerModel {
             adapters_path: "server/adapters.ts".to_string(),
             services: server::models(&tree),
@@ -104,6 +111,7 @@ impl Generator for Node {
         modules.extend(veld_emit_typescript::policy::emit(&mut files, &tree)?);
         modules.extend(server::emit(&mut files, &tree, runtime_model.as_ref())?);
         modules.extend(events::emit(&mut files, &tree)?);
+        modules.extend(brokers::emit(&mut files, &brokers)?);
         modules.push("server/adapters".to_string());
         let ws = req
             .ir
@@ -132,12 +140,13 @@ impl Generator for Node {
         }
         barrel::write(&mut files, "", &modules, &extra, true)?;
         // The `ws` package is a peer dependency of a server that hosts `ws` endpoints.
-        let peers: &[(&str, &str)] = if ws { &[("ws", "^8.0.0")] } else { &[] };
+        let mut peers: Vec<(&str, &str)> = if ws { vec![("ws", "^8.0.0")] } else { vec![] };
+        peers.extend(brokers::peers(&brokers));
         package::emit_with(
             &mut files,
             opts.package_name.as_deref(),
             profile.framework(),
-            peers,
+            &peers,
         )?;
         let handlers: Vec<(String, String)> = req
             .services
