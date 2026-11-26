@@ -556,6 +556,9 @@ fn annotation_snippet(name: &str, shape: ArgShape) -> String {
         ArgShape::Rollout => format!("{name}(audit)"),
         // The arguments are optional: `@idempotent` alone is the usual form.
         ArgShape::Idempotent => name.to_string(),
+        ArgShape::Retain => {
+            format!("{name}(days(${{1:30}}), since: ${{2:field}}, then: ${{3|delete,anonymize|}})")
+        }
     }
 }
 

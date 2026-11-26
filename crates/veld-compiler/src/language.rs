@@ -148,6 +148,8 @@ pub enum ArgShape {
     Rollout,
     /// Nothing, or `header: "Name"` and `required: true|false` in either order.
     Idempotent,
+    /// `days(n), since: field, then: delete | anonymize`.
+    Retain,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -169,7 +171,7 @@ const DEPRECATABLE: [Target; 12] = [
 ];
 
 /// The annotation table of `spec/language.md` section 7.
-pub const ANNOTATIONS: [AnnotationSpec; 20] = [
+pub const ANNOTATIONS: [AnnotationSpec; 21] = [
     AnnotationSpec {
         name: "auth",
         targets: &[Service, Endpoint],
@@ -289,6 +291,12 @@ pub const ANNOTATIONS: [AnnotationSpec; 20] = [
         targets: &[Field],
         args: ArgShape::None,
         usage: "@secret",
+    },
+    AnnotationSpec {
+        name: "retain",
+        targets: &[Model],
+        args: ArgShape::Retain,
+        usage: "@retain(days(30), since: checkedOutAt, then: delete | anonymize)",
     },
 ];
 

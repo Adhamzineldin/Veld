@@ -229,6 +229,7 @@ fn model(parent: Option<DeclId>, fields: Vec<Field>) -> DeclKind {
         parent,
         fields,
         rules: vec![],
+        retain: None,
     })
 }
 

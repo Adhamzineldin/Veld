@@ -90,6 +90,7 @@ fn write_decl(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl) {
                 parent: None,
                 fields: e.fields.clone(),
                 rules: e.rules.clone(),
+                retain: None,
             };
             write_model(w, fc, d, &m);
         }

@@ -106,6 +106,7 @@ fn ir() -> Ir {
         parent: None,
         fields: vec![],
         rules: vec![],
+        retain: None,
     };
     let variant = |name: &str, wire: &str| Variant {
         name: name.into(),

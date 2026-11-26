@@ -19,7 +19,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::{DeclId, Ir, PackageId, PolicyEffect};
+use crate::{Ir, PackageId, PolicyEffect};
 
 /// The text of a `transition` that is not a legal move.
 pub const TRANSITION: &str = "veld/transition";
@@ -105,9 +105,7 @@ impl Ir {
                 }
             }
         };
-        let mut decls: BTreeSet<DeclId> = self.reachable_decls(&services).into_iter().collect();
-        decls.extend(self.events_of(&services));
-        decls.extend(self.event_reachable_decls(&services));
+        let mut decls = self.member_decls(&services);
         decls.extend(self.decls.iter().filter(|d| d.package == package).map(|d| d.id));
         for id in decls {
             for r in self.decl(id).rules() {

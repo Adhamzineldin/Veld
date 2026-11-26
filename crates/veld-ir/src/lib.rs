@@ -11,6 +11,7 @@ use std::fmt;
 pub mod endpoint_rules;
 pub mod exposure;
 pub mod message_keys;
+pub mod retention;
 pub mod rules;
 pub mod schema;
 pub mod suggest;
@@ -304,6 +305,9 @@ impl Ir {
             if !self.package(s.package).messages.is_empty() {
                 f.insert(Feature::Messages);
             }
+            if !self.retention_plan(&[*sid]).is_empty() {
+                f.insert(Feature::Retention);
+            }
             for ep in &s.endpoints {
                 if ep.auth.kind != AuthKind::None {
                     f.insert(Feature::Auth);
@@ -570,6 +574,9 @@ pub struct Model {
     /// without rules is unchanged (`spec/rules.md` section 13).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub rules: Vec<Rule>,
+    /// `@retain` (`spec/platform.md` section 23). Omitted from the JSON when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retain: Option<retention::Retain>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1163,6 +1170,9 @@ pub enum Feature {
     /// A member with message catalogs (`spec/platform.md` section 22). Opt-in: a generator that
     /// does not declare it would send the contract's text where a catalog was meant to be used.
     Messages,
+    /// A server with `@retain` models (`spec/platform.md` section 23). Opt-in, and only a server
+    /// is concerned: a client generates nothing for it.
+    Retention,
 }
 
 impl Feature {
@@ -1175,13 +1185,14 @@ impl Feature {
     ];
     /// Features no generator supports unless it says so: [`Feature::ALL`] minus these is what
     /// `all_except` hands out. A feature that changes what a rule means must be opted into.
-    pub const OPT_IN: [Feature; 4] = [
+    pub const OPT_IN: [Feature; 5] = [
         Feature::RulesRollout,
         Feature::RulesVersion,
         Feature::Idempotency,
         Feature::Messages,
+        Feature::Retention,
     ];
-    pub const ALL: [Feature; 19] = [
+    pub const ALL: [Feature; 20] = [
         Feature::Unions,
         Feature::Constraints,
         Feature::Auth,
@@ -1201,6 +1212,7 @@ impl Feature {
         Feature::Idempotency,
         Feature::Events,
         Feature::Messages,
+        Feature::Retention,
     ];
     #[must_use]
     pub fn name(self) -> &'static str {
@@ -1224,6 +1236,7 @@ impl Feature {
             Feature::Idempotency => "idempotency",
             Feature::Events => "events",
             Feature::Messages => "messages",
+            Feature::Retention => "retention",
         }
     }
     #[must_use]

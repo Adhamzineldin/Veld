@@ -297,6 +297,11 @@ fn decls() -> Vec<Decl> {
         parent: Some(DeclId(0)),
         fields,
         rules: vec![sample_rule()],
+        retain: Some(crate::retention::Retain {
+            after_ms: 2_592_000_000,
+            since: "checkedOutAt".into(),
+            then: crate::retention::RetainThen::Anonymize,
+        }),
     };
     let variant = Variant {
         name: "A".into(),
@@ -312,6 +317,7 @@ fn decls() -> Vec<Decl> {
                 parent: None,
                 fields: vec![],
                 rules: vec![],
+                retain: None,
             }),
         ),
         decl(1, "B", DeclKind::Model(model.clone())),

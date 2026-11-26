@@ -19,6 +19,7 @@ mod policy;
 mod policy_tests;
 pub mod regex;
 mod resolve;
+mod retain;
 #[cfg(test)]
 mod rollout_tests;
 pub mod rules;
@@ -160,6 +161,8 @@ pub struct Resolved {
     pub cyclic: bool,
     /// Checked rules the declaration writes itself, in source order (`spec/rules.md` section 5).
     pub own_rules: Vec<RRule>,
+    /// `@retain` on a model (`spec/platform.md` section 23); checked after inheritance.
+    pub retain: Option<annotations::RetainAnn>,
 }
 
 #[derive(Debug)]

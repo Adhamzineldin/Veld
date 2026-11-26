@@ -298,6 +298,12 @@ pub fn checked_features(ir: &Ir, req: &GenRequest<'_>) -> std::collections::BTre
         from_events.retain(|f| *f == Feature::Events);
     }
     used.extend(from_events);
+    // Retention is a server's own: the models of the services it serves, not of those it only
+    // calls, and nothing for a client (`spec/platform.md` section 23).
+    used.remove(&Feature::Retention);
+    if req.role == Role::Server && !ir.retention_plan(&req.services).is_empty() {
+        used.insert(Feature::Retention);
+    }
     used
 }
 
@@ -337,6 +343,7 @@ fn first_use(
                 | Feature::Bytes
                 | Feature::Events
                 | Feature::Messages
+                | Feature::Retention
                 | Feature::RulesRollout
                 | Feature::RulesInvariants => false,
             };
@@ -365,6 +372,12 @@ fn first_use(
                 return Some(ep.origin.clone());
             }
         }
+    }
+    if feature == Feature::Retention {
+        return ir
+            .retention_plan(&req.services)
+            .first()
+            .map(|e| ir.decl(e.decl).origin.clone());
     }
     if feature == Feature::Messages {
         return services

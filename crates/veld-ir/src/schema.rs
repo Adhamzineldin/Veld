@@ -77,6 +77,7 @@ const MODEL_FIELDS: Fields = &[
     ("parent", T::Nullable(&DECL_ID)),
     ("fields", T::List(&T::Ref("Field"))),
     ("rules", RULES),
+    ("retain", T::Optional(&T::Ref("Retain"))),
 ];
 
 const DECL_COMMON: Fields = &[
@@ -535,6 +536,15 @@ pub const DEFS: &[Def] = &[
         ],
     ),
     Def::Object(
+        "Retain",
+        &[
+            ("after_ms", T::Str),
+            ("since", T::Str),
+            ("then", T::Ref("RetainThen")),
+        ],
+    ),
+    Def::Strings("RetainThen", &["delete", "anonymize"]),
+    Def::Object(
         "ServiceFact",
         &[
             ("name", T::Str),
@@ -746,6 +756,7 @@ pub const DEFS: &[Def] = &[
             "idempotency",
             "events",
             "messages",
+            "retention",
         ],
     ),
     Def::Strings("Role", &["server", "client"]),

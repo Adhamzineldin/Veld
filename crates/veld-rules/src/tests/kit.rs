@@ -438,6 +438,7 @@ impl Kit {
             parent: parent_id,
             fields,
             rules: all_rules,
+            retain: None,
         }
     }
 

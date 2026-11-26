@@ -5,6 +5,7 @@ use super::regex;
 use crate::diagnostics::{Diagnostic, Span};
 use crate::language::{self, ArgShape, Target};
 use crate::syntax::ast::{Annotation, Arg, ArgValue, LitKind, Literal};
+use veld_ir::retention::RetainThen;
 use veld_ir::{Auth, AuthKind, Constraints, Rollout, Scalar, StringFormat, Type};
 
 /// The meaning of the annotations written on one node.
@@ -30,6 +31,20 @@ pub struct Anns<'a> {
     pub secret: bool,
     /// `@idempotent` on an endpoint.
     pub idempotent: Option<Idempotent>,
+    /// `@retain` on a model (`spec/platform.md` section 23).
+    pub retain: Option<RetainAnn>,
+}
+
+/// What `@retain(days(30), since: f, then: anonymize)` says, before the field is looked up.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RetainAnn {
+    /// The duration, in milliseconds.
+    pub after_ms: i64,
+    /// The source name of the `since` field.
+    pub since: String,
+    pub since_span: Span,
+    pub then: RetainThen,
+    pub span: Span,
 }
 
 /// What `@idempotent(header: "Name", required: true)` says (`spec/rules.md` section 11.8).
@@ -233,6 +248,7 @@ fn apply<'a>(
         ("topic", _) => out.topic = Some(one_string(args)?),
         ("rollout", _) => out.rollout = Some(rollout_arg(args)?),
         ("idempotent", _) => out.idempotent = Some(idempotent_args(args, a.span)?),
+        ("retain", _) => out.retain = retain_args(args, a.span, diags),
         ("auth", _) => out.auth = Some(auth_arg(args)?.declared()),
         ("middleware", _) => out.middleware = Some(idents(args)?),
         _ => {}
@@ -380,6 +396,119 @@ fn rollout_arg(args: &[Arg]) -> Result<Rollout, String> {
             Err("expected the word `audit`".to_string())
         }
     }
+}
+
+const RETAIN_USAGE: &str = "@retain(days(30), since: checkedOutAt, then: delete | anonymize)";
+
+/// One day in milliseconds.
+const DAY_MS: i64 = 86_400_000;
+
+fn retain_error(span: Span, message: impl Into<String>) -> Diagnostic {
+    Diagnostic::error("E1310", message, span).with_help(format!("usage: {RETAIN_USAGE}"))
+}
+
+/// `@retain(days(n), since: field, then: delete | anonymize)` (`spec/platform.md` section 23):
+/// every mistake is `E1310`, and the annotation has no meaning when there is one. Whether the field
+/// exists and is a date, and whether `anonymize` has a `@pii` field to work on, are checked once
+/// the fields of the model are known.
+fn retain_args(args: &[Arg], span: Span, diags: &mut Vec<Diagnostic>) -> Option<RetainAnn> {
+    let before = diags.len();
+    let (mut after, mut since, mut then) = (None, None, None);
+    for a in args {
+        match a.name.as_ref().map(|n| n.name.as_str()) {
+            None => take_once(&mut after, retain_days(a, diags), a.span, "the duration", diags),
+            Some("since") => match &a.value {
+                ArgValue::Ident(i) => {
+                    take_once(&mut since, Some((i.name.clone(), i.span)), a.span, "`since:`", diags);
+                }
+                ArgValue::Literal(_) | ArgValue::Call { .. } => {
+                    diags.push(retain_error(a.span, "`since:` names a field of the model"));
+                }
+            },
+            Some("then") => take_once(&mut then, retain_then(a, diags), a.span, "`then:`", diags),
+            Some(other) => diags.push(retain_error(
+                a.span,
+                format!("`{other}:` is not an argument of `@retain`"),
+            )),
+        }
+    }
+    let missing: Vec<&str> = [
+        (after.is_none(), "the duration `days(n)`"),
+        (since.is_none(), "`since:`"),
+        (then.is_none(), "`then:`"),
+    ]
+    .into_iter()
+    .filter_map(|(m, what)| m.then_some(what))
+    .collect();
+    if diags.len() == before && !missing.is_empty() {
+        diags.push(retain_error(
+            span,
+            format!("`@retain` needs {}", missing.join(", ")),
+        ));
+    }
+    let ((after_ms, _), (since, since_span), (then, _)) = (after?, since?, then?);
+    (diags.len() == before).then_some(RetainAnn {
+        after_ms,
+        since,
+        since_span,
+        then,
+        span,
+    })
+}
+
+/// Keeps the first value and reports a second one.
+fn take_once<T>(
+    slot: &mut Option<T>,
+    value: Option<T>,
+    span: Span,
+    what: &str,
+    diags: &mut Vec<Diagnostic>,
+) {
+    if slot.is_some() {
+        diags.push(retain_error(span, format!("{what} is given more than once")));
+    } else if value.is_some() {
+        *slot = value;
+    }
+}
+
+/// `days(30)`: a whole, positive number of days that fits in milliseconds.
+fn retain_days(a: &Arg, diags: &mut Vec<Diagnostic>) -> Option<(i64, Span)> {
+    let fail = |diags: &mut Vec<Diagnostic>, why: &str| {
+        diags.push(retain_error(a.span, why.to_string()));
+        None
+    };
+    let ArgValue::Call { name, args } = &a.value else {
+        return fail(diags, "the first argument is a duration of whole days: `days(30)`");
+    };
+    if name.name != "days" {
+        return fail(
+            diags,
+            &format!("`{}(..)` is not a whole number of days: write `days(n)`", name.name),
+        );
+    }
+    let n = match args.as_slice() {
+        [one] if one.name.is_none() => literal_of(one).map(|l| &l.kind),
+        _ => None,
+    };
+    match n {
+        Some(LitKind::Int(n)) if *n >= 1 => match n.checked_mul(DAY_MS) {
+            Some(ms) => Some((ms, a.span)),
+            None => fail(diags, "the duration is too long"),
+        },
+        _ => fail(diags, "`days(n)` takes one whole number of days, 1 or more"),
+    }
+}
+
+fn retain_then(a: &Arg, diags: &mut Vec<Diagnostic>) -> Option<(RetainThen, Span)> {
+    let found = match &a.value {
+        ArgValue::Ident(i) if i.name == "delete" => Some(RetainThen::Delete),
+        ArgValue::Ident(i) if i.name == "anonymize" => Some(RetainThen::Anonymize),
+        ArgValue::Ident(_) | ArgValue::Literal(_) | ArgValue::Call { .. } => None,
+    };
+    if found.is_none() {
+        diags.push(retain_error(a.span, "`then:` is `delete` or `anonymize`"));
+    }
+    found.map(|t| (t, a.span))
 }
 
 /// `@idempotent`, `@idempotent(header: "Name")`, `@idempotent(required: true)` or both, in either
