@@ -155,4 +155,5 @@ pub(super) fn decorate_operation(ir: &Ir, ep: &Endpoint, o: &mut Map<String, Val
         o.insert("x-veld-transition".into(), transition(ir, t));
     }
     super::conditional::decorate_operation(ep, o);
+    super::conditional::decorate_service_levels(ep, o);
 }

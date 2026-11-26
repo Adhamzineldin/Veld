@@ -88,6 +88,32 @@ pub(super) fn decorate_operation(ep: &Endpoint, o: &mut Map<String, Value>) {
     }
 }
 
+/// `x-veld-timeout-ms` and `x-veld-slo` on an operation (`spec/platform.md` sections 12 and 13).
+/// The `504` answer is the endpoint's own error and comes from the IR like any other.
+pub(super) fn decorate_service_levels(ep: &Endpoint, o: &mut Map<String, Value>) {
+    if let Some(ms) = ep.timeout_ms.as_deref().and_then(|t| t.parse::<u64>().ok()) {
+        o.insert("x-veld-timeout-ms".into(), Value::from(ms));
+    }
+    let Some(slo) = &ep.slo else {
+        return;
+    };
+    let mut m = Map::new();
+    for (name, value) in [
+        ("p50_ms", &slo.p50_ms),
+        ("p90_ms", &slo.p90_ms),
+        ("p95_ms", &slo.p95_ms),
+        ("p99_ms", &slo.p99_ms),
+    ] {
+        if let Some(ms) = value.as_deref().and_then(|t| t.parse::<u64>().ok()) {
+            m.insert(name.into(), Value::from(ms));
+        }
+    }
+    if let Some(e) = slo.errors.as_deref().and_then(|t| t.parse::<f64>().ok()) {
+        m.insert("errors".into(), json!(e));
+    }
+    o.insert("x-veld-slo".into(), Value::Object(m));
+}
+
 /// `x-veld-version` on the schema of a model: the wire name of its version field.
 pub(super) fn decorate_decl(d: &Decl, m: &mut Map<String, Value>) {
     if let DeclKind::Model(model) = &d.kind

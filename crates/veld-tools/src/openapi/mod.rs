@@ -138,4 +138,6 @@ mod event_tests;
 #[cfg(test)]
 mod rollout_tests;
 #[cfg(test)]
+mod service_levels_tests;
+#[cfg(test)]
 mod tests;
