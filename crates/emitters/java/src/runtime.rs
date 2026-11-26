@@ -29,6 +29,8 @@ const MACHINE_FILES: &[&str] = &["Transition"];
 const TIMED_FILES: &[&str] = &["DueMoves"];
 /// The measurement of the metrics hook (`spec/platform.md` section 13).
 const SLO_FILES: &[&str] = &["Metric"];
+/// The deadline of a request (`spec/platform.md` section 12).
+const TIMEOUT_FILES: &[&str] = &["Deadline"];
 /// The runtime classes of the policies (`spec/targets/java.md` section 11).
 const POLICY_FILES: &[&str] = &["Policy"];
 /// The runtime class of audited rules (`@rollout(audit)`, `spec/rules.md` section 17.1).
@@ -76,6 +78,7 @@ runtime_files!(
     "ClientOptions",
     "Codec",
     "Conditions",
+    "Deadline",
     "Derive",
     "DigestHandler",
     "DueMoves",
@@ -256,6 +259,10 @@ pub struct Flags {
     pub timed: bool,
     /// Service levels (`slo`, `// #if slo` regions and `Metric`): the metrics hook. A server only.
     pub slo: bool,
+    /// Deadlines (`timeouts`, `// #if timeouts` regions and `Deadline`): a server runs the pipeline of
+    /// an endpoint with a `@timeout` on a worker thread; a client uses the deadline as its default
+    /// timeout.
+    pub timeouts: bool,
     /// Policies and the typed principal (`// #if policies` regions and `Policy`). Needs `rules`.
     pub policies: bool,
     /// Audited rules (`// #if rollout` regions and `Audit`). Needs `rules`.
@@ -292,6 +299,7 @@ pub fn emit_with(
             && (flags.machine || !MACHINE_FILES.contains(&name))
             && (flags.timed || !TIMED_FILES.contains(&name))
             && (flags.slo || !SLO_FILES.contains(&name))
+            && (flags.timeouts || !TIMEOUT_FILES.contains(&name))
             && (flags.policies || !POLICY_FILES.contains(&name))
             && (flags.rollout || !ROLLOUT_FILES.contains(&name))
             && (flags.events || !EVENT_FILES.contains(&name))
@@ -308,7 +316,15 @@ pub fn emit_with(
         "machine" => flags.machine,
         "timed" => flags.timed,
         "slo" => flags.slo,
-        "no_slo" => !flags.slo,
+        "timeouts" => flags.timeouts,
+        "slo_timeouts" => flags.slo && flags.timeouts,
+        "slo_only" => flags.slo && !flags.timeouts,
+        "timeouts_only" => flags.timeouts && !flags.slo,
+        "wrapped" => flags.slo || flags.timeouts,
+        "no_wrap" => !(flags.slo || flags.timeouts),
+        "timeouts_conditional" => flags.timeouts && flags.conditional,
+        "no_timeouts" => !flags.timeouts,
+        "timeouts_runtimecfg" => flags.timeouts && flags.runtime_config,
         "policies" => flags.policies,
         "rollout" => flags.rollout,
         "conditional" => flags.conditional,

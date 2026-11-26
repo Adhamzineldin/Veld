@@ -81,6 +81,7 @@ fn events_capabilities(_role: Role) -> Capabilities {
         .with(Feature::EventsDelivery)
         .with(Feature::RulesTimed)
         .with(Feature::Slo)
+        .with(Feature::Timeouts)
 }
 
 fn precheck(req: &GenRequest<'_>, caps: &Capabilities) -> Result<(), Vec<GenDiagnostic>> {
@@ -259,6 +260,10 @@ impl Generator for Java {
             machine: endpoint && endpoint::services_have_transition(req.ir, &req.services),
             timed: endpoint && machine::services_have_timed(req.ir, &req.services),
             slo: req.role == Role::Server && slo::services_have_slo(req.ir, &req.services),
+            timeouts: req
+                .ir
+                .features_used(&req.services)
+                .contains(&Feature::Timeouts),
             policies,
             rollout,
             events: tree.events,

@@ -115,6 +115,11 @@ fn write_constructor_body(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Se
         if fc.tree.validate { "" } else { ", false" }
     ));
     end_call(w);
+    for ep in svc.endpoints.iter().filter(|e| e.timeout_ms.is_some()) {
+        // The deadline of an endpoint is the default timeout of its calls (`spec/platform.md` 12).
+        let ms = ep.timeout_ms.as_deref().unwrap_or_default();
+        w.line(format!("this.core.deadline({}, {ms}L);", java_str(&ep.sig)));
+    }
     if let (Some(digest), true) = (&svc.rules_digest, fc.tree.rules) {
         w.line(format!(
             "this.core.digest({}, {});",

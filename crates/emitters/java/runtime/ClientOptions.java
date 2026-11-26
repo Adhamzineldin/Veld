@@ -35,6 +35,9 @@ public final class ClientOptions {
   private final Supplier<String> apiKey;
   private final Boolean validate;
   private final Duration timeout;
+  // #if timeouts
+  private final boolean timeoutSet;
+  // #endif
   // #if rules
   private final boolean localRules;
   private final java.util.function.Consumer<ContractMismatch> onContractMismatch;
@@ -52,6 +55,9 @@ public final class ClientOptions {
     this.apiKey = b.apiKey;
     this.validate = b.validate;
     this.timeout = b.timeout;
+    // #if timeouts
+    this.timeoutSet = b.timeoutSet;
+    // #endif
     // #if rules
     this.localRules = b.localRules;
     this.onContractMismatch = b.onContractMismatch;
@@ -87,6 +93,9 @@ public final class ClientOptions {
     b.apiKey = apiKey;
     b.validate = validate;
     b.timeout = timeout;
+  // #endif
+  // #if timeouts_runtimecfg
+    b.timeoutSet = timeoutSet;
   // #endif
   // #if runtimecfg_rules
     b.localRules = localRules;
@@ -127,6 +136,13 @@ public final class ClientOptions {
   Duration timeout() {
     return timeout;
   }
+  // #if timeouts
+
+  /** Whether the caller chose a timeout: without one, the deadline of an endpoint is its default. */
+  boolean timeoutSet() {
+    return timeoutSet;
+  }
+  // #endif
   // #if rules
 
   java.util.function.Consumer<ContractMismatch> onContractMismatch() {
@@ -154,6 +170,9 @@ public final class ClientOptions {
     private Supplier<String> apiKey;
     private Boolean validate;
     private Duration timeout = Duration.ofSeconds(30);
+    // #if timeouts
+    private boolean timeoutSet;
+    // #endif
     // #if rules
     private boolean localRules = true;
     private java.util.function.Consumer<ContractMismatch> onContractMismatch;
@@ -221,6 +240,9 @@ public final class ClientOptions {
     /** The per-request timeout (default 30 seconds). */
     public Builder timeout(Duration value) {
       this.timeout = value;
+      // #if timeouts
+      this.timeoutSet = true;
+      // #endif
       return this;
     }
 

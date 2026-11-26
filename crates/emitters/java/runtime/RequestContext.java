@@ -62,6 +62,32 @@ public final class RequestContext {
     return ifMatchVersion;
   }
   // #endif
+  // #if timeouts
+
+  private volatile Deadline bound;
+
+  void setDeadline(Deadline value) {
+    this.bound = value;
+  }
+
+  /**
+   * The instant by which the endpoint must have answered (the arrival of the request plus its
+   * {@code @timeout}), or {@code null} for an endpoint without a deadline. The handler runs on a
+   * thread that cannot be stopped: when the deadline passes the server answers {@code 504
+   * DeadlineExceeded}, drops the answer the handler gives later and interrupts the handler's thread
+   * once. A handler that writes must watch {@link #expired()} or the interrupt.
+   */
+  public java.time.Instant deadline() {
+    Deadline d = bound;
+    return d == null ? null : d.at();
+  }
+
+  /** Whether the deadline has passed (or the server has answered {@code 504}); {@code false} without one. */
+  public boolean expired() {
+    Deadline d = bound;
+    return d != null && d.expired();
+  }
+  // #endif
 
   /** The framework's request object (for example an {@code HttpExchange}). */
   public Object raw() {

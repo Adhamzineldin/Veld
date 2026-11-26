@@ -192,7 +192,14 @@ public final class Router implements VeldHandler {
   // #if slo
   private VeldResponse run(Route route, Matcher match, VeldRequest request) {
     long started = System.nanoTime();
+    // #endif
+    // #if slo_timeouts
+    VeldResponse response = bounded(route, match, request);
+    // #endif
+    // #if slo_only
     VeldResponse response = pipeline(route, match, request);
+    // #endif
+    // #if slo
     measure(route.endpoint().spec(), response, started);
     return response;
   }
@@ -221,14 +228,89 @@ public final class Router implements VeldHandler {
     }
   }
 
+  // #endif
+  // #if timeouts
+  private static final java.util.concurrent.ExecutorService WORKERS =
+      java.util.concurrent.Executors.newCachedThreadPool(task -> {
+        Thread worker = new Thread(task, "veld-request");
+        worker.setDaemon(true);
+        return worker;
+      });
+
+  /**
+   * The deadline of an endpoint (spec/platform.md section 12). A request that has one runs on a
+   * worker thread, which cannot be stopped: when the deadline passes first the answer is {@code 504
+   * DeadlineExceeded} with {@code timeoutMs}, the answer the pipeline gives later is dropped, its
+   * idempotency key is settled at the deadline and the worker's thread is interrupted once. A
+   * deadline is a declared error, not a failure: nothing goes to {@code onError}.
+   */
+  // #endif
+  // #if slo_timeouts
+  private VeldResponse bounded(Route route, Matcher match, VeldRequest request) {
+  // #endif
+  // #if timeouts_only
+  private VeldResponse run(Route route, Matcher match, VeldRequest request) {
+  // #endif
+  // #if timeouts
+    EndpointSpec spec = route.endpoint().spec();
+    long ms = hooks.timeoutMs(spec.sig());
+    if (ms <= 0) {
+      return pipeline(route, match, request);
+    }
+    Deadline bound = new Deadline(ms);
+    java.util.concurrent.Future<VeldResponse> work = WORKERS.submit(() -> {
+      bound.enter();
+      try {
+        return pipeline(route, match, request);
+      } finally {
+        Deadline.leave();
+      }
+    });
+    try {
+      return work.get(ms, java.util.concurrent.TimeUnit.MILLISECONDS);
+    } catch (java.util.concurrent.TimeoutException e) {
+      bound.fire();
+      work.cancel(true);
+      return deadlineExceeded(spec, ms);
+    } catch (java.util.concurrent.ExecutionException e) {
+      if (e.getCause() instanceof RuntimeException runtime) {
+        throw runtime;
+      }
+      if (e.getCause() instanceof Error error) {
+        throw error;
+      }
+      throw new IllegalStateException(e.getCause());
+    } catch (InterruptedException e) {
+      bound.fire();
+      work.cancel(true);
+      Thread.currentThread().interrupt();
+      return problem(std.internal(), "Internal", 500, spec.sig(), Json.object().build());
+    }
+  }
+
+  private VeldResponse deadlineExceeded(EndpointSpec spec, long ms) {
+    for (EndpointSpec.Declared d : spec.errors()) {
+      if (d.status() == 504) {
+        Json data = Json.object().put("timeoutMs", Json.of(Long.toString(ms))).build();
+        return problem(d.sig(), "DeadlineExceeded", 504, spec.sig(), data);
+      }
+    }
+    return problem(std.internal(), "Internal", 500, spec.sig(), Json.object().build());
+  }
+  // #endif
+  // #if wrapped
+
   private VeldResponse pipeline(Route route, Matcher match, VeldRequest request) {
   // #endif
-  // #if no_slo
+  // #if no_wrap
   private VeldResponse run(Route route, Matcher match, VeldRequest request) {
   // #endif
     ServerEndpoint ep = route.endpoint();
     EndpointSpec spec = ep.spec();
     RequestContext ctx = new RequestContext(spec.method(), normalizePath(request.path()), lowerHeaders(request.headers()), request.raw());
+    // #if timeouts
+    ctx.setDeadline(Deadline.current());
+    // #endif
     try {
       Guarded guarded = guard(route, match, request, ctx, false);
       if (guarded.failure != null) {
@@ -287,6 +369,21 @@ public final class Router implements VeldHandler {
       Json data = Json.object().put("message", Json.of(message)).build();
       return problem(idem.conflictSig(), "Conflict", idem.conflictStatus(), spec.sig(), data);
     }
+    // #endif
+    // #if timeouts_conditional
+    Deadline deadline = Deadline.current();
+    if (deadline != null) {
+      // A request that hits its deadline settles its key at the deadline; what it settles later is a no-op.
+      deadline.lease(() -> {
+        try {
+          store.release(scope, key);
+        } catch (Exception | StackOverflowError err) {
+          observe(err, ctx);
+        }
+      });
+    }
+    // #endif
+    // #if conditional
     boolean settled = false;
     try {
       VeldResponse response;
@@ -299,6 +396,13 @@ public final class Router implements VeldHandler {
       settled = true;
       return response;
     } finally {
+      // #endif
+      // #if timeouts_conditional
+      if (!settled && Deadline.current() != null && !Deadline.current().claim()) {
+        settled = true;
+      }
+      // #endif
+      // #if conditional
       if (!settled) {
         try {
           store.release(scope, key);
@@ -311,6 +415,13 @@ public final class Router implements VeldHandler {
 
   /** Keeps the answer when it is below 500 and forgets the key otherwise; a failing store is only reported. */
   private void settle(IdempotencyStore store, String scope, String key, VeldResponse response, RequestContext ctx) {
+    // #endif
+    // #if timeouts_conditional
+    if (Deadline.current() != null && !Deadline.current().claim()) {
+      return;
+    }
+    // #endif
+    // #if conditional
     try {
       if (response.status() < 500) {
         store.complete(scope, key, stored(response));
@@ -710,6 +821,12 @@ public final class Router implements VeldHandler {
         }
       }
     }
+    // #if timeouts
+    if (Deadline.current() != null && Deadline.current().fired()) {
+      // The answer was given at the deadline: what the handler throws now is not a failure to report.
+      return problem(std.internal(), "Internal", 500, spec.sig(), Json.object().build());
+    }
+    // #endif
     try {
       if (hooks.onError() != null) {
         hooks.onError().onError(err, ctx);

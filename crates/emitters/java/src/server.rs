@@ -19,6 +19,9 @@ use crate::tree::{FileCtx, Tree, java_path};
 use crate::types::{codec_expr, java_type};
 use crate::util::{add_file, doc_comment, end_call, java_str, member_ident, open_call, unique};
 
+/// What the Javadoc of an endpoint with a `@timeout` says about the deadline.
+pub const DEADLINE_NOTE: &str = "This endpoint has a deadline (`@timeout`). The method runs on a thread the server cannot stop: when the deadline passes first, the server answers `504 DeadlineExceeded` and drops what this method returns or throws later, and it interrupts the thread once. `ctx.deadline()` is the instant and `ctx.expired()` says whether it has passed (or the server has answered): a method that writes must watch them, or the interrupt, itself.";
+
 /// Emits the server packages of every package of the tree's services.
 pub fn emit(files: &mut FileSet, tree: &Tree<'_>) -> Result<(), Vec<GenDiagnostic>> {
     let names = RequestNames::new(tree.ir, &tree.services);
@@ -133,6 +136,7 @@ fn write_interface(
             w.blank();
         }
         let notes: Vec<&str> = [
+            ep.timeout_ms.is_some().then_some(DEADLINE_NOTE),
             ep.rules
                 .version
                 .is_some()
@@ -481,6 +485,26 @@ fn write_hooks(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service, clas
     w.open(format!("public {class}({})", sig.join(", ")));
     for h in &required {
         w.line(h.register.clone());
+    }
+    let deadlines: Vec<String> = svc
+        .endpoints
+        .iter()
+        .filter_map(|e| {
+            e.timeout_ms
+                .as_ref()
+                .map(|ms| format!("{}, {ms}L", java_str(&e.sig)))
+        })
+        .collect();
+    if !deadlines.is_empty() {
+        let map = fc.name("java.util.Map");
+        let entries: Vec<String> = deadlines
+            .iter()
+            .map(|d| format!("{map}.entry({d})"))
+            .collect();
+        w.line(format!(
+            "builder.timeouts({map}.ofEntries({}));",
+            entries.join(", ")
+        ));
     }
     w.close();
     w.blank();

@@ -84,6 +84,9 @@ public final class HandlerHooks {
   // #if slo
   private final MetricsHook metrics;
   // #endif
+  // #if timeouts
+  private final Map<String, Long> timeouts;
+  // #endif
 
   private HandlerHooks(Builder b) {
     this.bearer = b.bearer;
@@ -103,6 +106,9 @@ public final class HandlerHooks {
     // #endif
     // #if slo
     this.metrics = b.metrics;
+    // #endif
+    // #if timeouts
+    this.timeouts = Map.copyOf(b.timeouts);
     // #endif
   }
 
@@ -142,6 +148,13 @@ public final class HandlerHooks {
 
   MetricsHook metrics() {
     return metrics;
+  }
+  // #endif
+  // #if timeouts
+
+  /** The deadline of the endpoint with this operation signature in milliseconds, or 0 for none. */
+  long timeoutMs(String sig) {
+    return timeouts.getOrDefault(sig, 0L);
   }
   // #endif
   // #if rules
@@ -212,6 +225,9 @@ public final class HandlerHooks {
     // #endif
     // #if slo
     private MetricsHook metrics;
+    // #endif
+    // #if timeouts
+    private final Map<String, Long> timeouts = new LinkedHashMap<>();
     // #endif
 
     private Builder() {}
@@ -312,6 +328,14 @@ public final class HandlerHooks {
     /** Observes the duration of every request that matched an endpoint of the server. */
     public Builder metrics(MetricsHook hook) {
       this.metrics = hook;
+      return this;
+    }
+
+    // #endif
+    // #if timeouts
+    /** The deadlines of the endpoints, in milliseconds by operation signature (spec/platform.md section 12). */
+    public Builder timeouts(Map<String, Long> byOperation) {
+      this.timeouts.putAll(byOperation);
       return this;
     }
 

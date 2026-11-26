@@ -319,7 +319,12 @@ public final class ClientCore {
     String path = expandPath(ep, params);
     String qs = queryString(ep, params);
     HttpRequest.Builder builder = HttpRequest.newBuilder(uri(path + (qs.isEmpty() ? "" : "?" + qs)))
+        // #if timeouts
+        .timeout(timeoutOf(ep));
+        // #endif
+        // #if no_timeouts
         .timeout(options.timeout());
+        // #endif
     EndpointSpec.Param body = bodyParam(ep);
     HttpRequest.BodyPublisher publisher = HttpRequest.BodyPublishers.noBody();
     Map<String, String> headers = headers(ep, params, accept);
@@ -346,12 +351,35 @@ public final class ClientCore {
       // #endif
       return http.send(request, handler);
     } catch (IOException e) {
+      // #if timeouts
+      if (e instanceof java.net.http.HttpTimeoutException) {
+        throw new VeldTransportError(
+            ep.method() + " " + request.uri().getRawPath() + " timed out after " + timeoutOf(ep).toMillis() + " ms", e);
+      }
+      // #endif
       throw new VeldTransportError(ep.method() + " " + request.uri().getRawPath() + " failed", e);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       throw new VeldTransportError(ep.method() + " " + request.uri().getRawPath() + " was interrupted", e);
     }
   }
+  // #if timeouts
+
+  private final java.util.Map<String, Long> deadlines = new java.util.concurrent.ConcurrentHashMap<>();
+
+  /**
+   * Tells the core the deadline of an endpoint (spec/platform.md section 12), by operation
+   * signature: it is the default timeout of its calls when the caller did not set one.
+   */
+  public void deadline(String sig, long ms) {
+    deadlines.put(sig, ms);
+  }
+
+  private java.time.Duration timeoutOf(EndpointSpec ep) {
+    Long ms = deadlines.get(ep.sig());
+    return ms == null || options.timeoutSet() ? options.timeout() : java.time.Duration.ofMillis(ms);
+  }
+  // #endif
 
   private URI uri(String pathAndQuery) {
     return uri(baseUrl, pathAndQuery);
