@@ -7,7 +7,7 @@ use super::Parser;
 use crate::diagnostics::Span;
 use crate::syntax::ast::{
     Doc, Example, ExampleArgument, ExampleAs, ExampleAt, ExampleBody, ExampleCall, Given, Ident,
-    Outcome, Value, ValueField, ValueKind,
+    IfMatchLine, KeyLine, KeyStoreLine, Outcome, Value, ValueField, ValueKind,
 };
 use crate::syntax::lexer::Tok;
 
@@ -91,7 +91,71 @@ impl Parser<'_> {
         })
     }
 
+    /// `ifMatch` followed by a version or `any`: an endpoint called `ifMatch` is followed by `(`.
+    fn is_if_match_start(&self) -> bool {
+        self.at_word("ifMatch")
+            && matches!(self.tok_at(1), Tok::Int(_) | Tok::Ident(_) | Tok::Minus)
+    }
+
+    fn parse_if_match(&mut self) -> Option<IfMatchLine> {
+        let kw = self.advance().span;
+        let span = self.span();
+        let version = match self.peek().clone() {
+            Tok::Int(n) if n >= 0 => Some(n),
+            Tok::Ident(w) if w == "any" => None,
+            _ => {
+                self.unexpected("a version such as `3`, or `any`");
+                return None;
+            }
+        };
+        self.advance();
+        Some(IfMatchLine {
+            version,
+            span: kw.to(span),
+        })
+    }
+
+    /// `key` followed by a string: an endpoint called `key` is followed by `(`.
+    fn is_example_key_start(&self) -> bool {
+        self.at_word("key") && matches!(self.tok_at(1), Tok::Str(_))
+    }
+
+    /// `key "k"` and what the store holds. `stored`, `other` and `running` are words only when a
+    /// name follows, so an endpoint of that name is still called with `name(`.
+    fn parse_example_key(&mut self) -> Option<KeyLine> {
+        let kw = self.advance().span;
+        let key = self.expect_str("the idempotency key")?;
+        let named = matches!(self.tok_at(1), Tok::Ident(_));
+        let store = if named && self.at_word("stored") {
+            self.advance();
+            KeyStoreLine::Stored(self.parse_outcome(true)?)
+        } else if named && self.at_word("other") {
+            self.advance();
+            KeyStoreLine::Other
+        } else if named && self.at_word("running") {
+            self.advance();
+            KeyStoreLine::Running
+        } else {
+            KeyStoreLine::New
+        };
+        Some(KeyLine {
+            span: self.end_from(kw),
+            key,
+            store,
+        })
+    }
+
     fn parse_call_line(&mut self) -> Option<ExampleCall> {
+        let if_match = if self.is_if_match_start() {
+            Some(self.parse_if_match()?)
+        } else {
+            None
+        };
+        let key = if self.is_example_key_start() {
+            Some(Box::new(self.parse_example_key()?))
+        } else {
+            None
+        };
         let start = self.span();
         let (service, endpoint) = if matches!(self.tok_at(1), Tok::Dot) {
             let s = self.expect_ident("a service name")?;
@@ -121,8 +185,10 @@ impl Parser<'_> {
             None
         };
         self.expect(&Tok::Arrow, "`->` and the outcome of the call")?;
-        let outcome = self.parse_outcome()?;
+        let outcome = self.parse_outcome(false)?;
         Some(ExampleCall {
+            if_match,
+            key,
             service,
             endpoint,
             args,
@@ -132,7 +198,9 @@ impl Parser<'_> {
         })
     }
 
-    fn parse_outcome(&mut self) -> Option<Outcome> {
+    /// `ok` or an error name, and a value. After `stored` the call line follows, which could be
+    /// read as a value that is a name, so there the value must start on the line of the outcome.
+    fn parse_outcome(&mut self, same_line: bool) -> Option<Outcome> {
         let start = self.span();
         let error = if self.at_word("ok") {
             self.advance();
@@ -140,7 +208,8 @@ impl Parser<'_> {
         } else {
             Some(self.parse_typeref()?)
         };
-        let value = if self.starts_value() {
+        let value_here = !same_line || !self.newline_between(self.prev_end(), self.span().start);
+        let value = if self.starts_value() && value_here {
             Some(self.parse_value()?)
         } else {
             None

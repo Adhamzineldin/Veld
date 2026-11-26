@@ -37,6 +37,8 @@ pub struct RBlock {
     pub transition: Option<RTransition>,
     pub requires: Vec<RRequire>,
     pub ensures: Vec<REnsure>,
+    /// The `If-Match` guard (`spec/rules.md` section 11.7).
+    pub version: Option<super::RVersion>,
 }
 
 #[derive(Debug, Clone)]
@@ -136,6 +138,7 @@ fn scope_field(name: &str, ty: &Type, optional: bool, constraints: Constraints) 
         optional,
         default: None,
         readonly: false,
+        version: false,
         inherited_from: None,
         constraints,
         example: None,
@@ -223,7 +226,9 @@ pub(crate) fn check_block(
         result,
         names: BTreeMap::new(),
     };
-    bc.run(statements(e))
+    let mut block = bc.run(statements(e));
+    block.version = super::version_guard(prog, module, e);
+    block
 }
 
 struct BlockChecker<'p, 'a, 'd> {

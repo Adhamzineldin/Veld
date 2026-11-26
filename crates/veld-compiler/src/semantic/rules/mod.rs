@@ -18,6 +18,7 @@ mod policy;
 mod tests;
 mod transition;
 mod types;
+mod version;
 
 use std::collections::BTreeSet;
 
@@ -34,6 +35,7 @@ pub(super) use policy::check_policies;
 pub(crate) use transition::RTransition;
 use veld_ir::Rollout;
 use veld_ir::rules::Expr;
+pub(crate) use version::{RVersion, guard as version_guard};
 
 /// A checked rule of one declaration.
 #[derive(Debug, Clone)]

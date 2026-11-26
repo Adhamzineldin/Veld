@@ -185,6 +185,9 @@ service S at "/" {
   get "/c" example(@query given: int) -> int
   get "/d" absent(@query returns: int) -> int
   get "/e" ok(@query ok: int) -> int
+  get "/f" ifMatch(@query any: int) -> int
+  get "/g" stored(@query other: int) -> int
+  get "/h" running(@query key: int) -> int
 }
 "#;
     assert!(p(src).diagnostics.is_empty(), "{:?}", p(src).diagnostics);

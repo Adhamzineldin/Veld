@@ -3,10 +3,10 @@
 use std::collections::BTreeMap;
 
 use super::Lowerer;
-use crate::semantic::{RExample, ROutcome};
+use crate::semantic::{RExample, RKeyStore, ROutcome};
 use veld_ir::ServiceId;
 use veld_ir::endpoint_rules::{
-    Example, ExampleArg, ExampleErrorOutcome, ExampleGiven, ExampleOutcome,
+    Example, ExampleArg, ExampleErrorOutcome, ExampleGiven, ExampleKey, ExampleOutcome, KeyStore,
 };
 
 impl Lowerer<'_, '_> {
@@ -35,6 +35,16 @@ impl Lowerer<'_, '_> {
         out
     }
 
+    fn outcome(&self, o: &ROutcome) -> ExampleOutcome {
+        match o {
+            ROutcome::Ok(v) => ExampleOutcome::Ok(v.clone()),
+            ROutcome::Error(decl, pattern) => ExampleOutcome::Error(ExampleErrorOutcome {
+                decl: self.decl_id(*decl),
+                pattern: pattern.clone(),
+            }),
+        }
+    }
+
     fn example(&self, ex: &RExample, service: ServiceId) -> Example {
         Example {
             name: ex.name.clone(),
@@ -60,15 +70,17 @@ impl Lowerer<'_, '_> {
                 })
                 .collect(),
             returns: ex.returns.clone(),
-            if_match: None,
-            key: None,
-            outcome: Some(match &ex.outcome {
-                ROutcome::Ok(v) => ExampleOutcome::Ok(v.clone()),
-                ROutcome::Error(decl, pattern) => ExampleOutcome::Error(ExampleErrorOutcome {
-                    decl: self.decl_id(*decl),
-                    pattern: pattern.clone(),
-                }),
+            if_match: ex.if_match.clone(),
+            key: ex.key.as_ref().map(|k| ExampleKey {
+                value: k.value.clone(),
+                store: match &k.store {
+                    RKeyStore::New => KeyStore::New,
+                    RKeyStore::Other => KeyStore::Other,
+                    RKeyStore::Running => KeyStore::Running,
+                    RKeyStore::Stored(o) => KeyStore::Stored(self.outcome(o)),
+                },
             }),
+            outcome: Some(self.outcome(&ex.outcome)),
             docs: ex.docs.clone(),
             event: None,
             expect: None,

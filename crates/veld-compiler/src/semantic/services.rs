@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 
 use super::annotations::{self, Anns};
-use super::{DKind, Program, RBlock, REndpoint, RParam, ServiceInfo, events, rules};
+use super::{DKind, Program, RBlock, REndpoint, RIdempotent, RParam, ServiceInfo, events, rules};
 use crate::diagnostics::{Diagnostic, Span};
 use crate::language::{self, Target};
 use crate::syntax::ast::{self, DeclKind, HttpMethod, doc_text};
@@ -244,12 +244,15 @@ impl Ctx<'_, '_> {
             success_stream: false,
             errors: Vec::new(),
             rules: RBlock::default(),
+            idempotent: None,
             span: e.name.span,
         };
         self.responses(e, method, &mut ep, diags);
+        ep.idempotent = self.idempotency(&anns, &ep, diags);
         self.implicit_errors(&mut ep, e);
         if e.block.is_some() {
             ep.rules = rules::check_block(self.prog, self.module, e, &ep, diags);
+            self.check_if_match_header(e, &ep, diags);
         }
         Some(ep)
     }
@@ -663,6 +666,85 @@ impl Ctx<'_, '_> {
         ep.success_stream = item.stream;
     }
 
+    /// `E0602`: an endpoint with a version guard reads `If-Match` itself, so no parameter may be
+    /// bound to that header (`spec/rules.md` section 11.9).
+    fn check_if_match_header(
+        &self,
+        e: &ast::Endpoint,
+        ep: &REndpoint,
+        diags: &mut Vec<Diagnostic>,
+    ) {
+        if ep.rules.version.is_none() {
+            return;
+        }
+        for p in ep.params.iter().filter(|p| {
+            p.header
+                .as_deref()
+                .is_some_and(|h| h.eq_ignore_ascii_case("if-match"))
+        }) {
+            let at = e
+                .params
+                .iter()
+                .find(|x| x.name.name == p.name)
+                .map_or(ep.span, |x| x.name.span);
+            diags.push(
+                Diagnostic::error(
+                    "E0602",
+                    format!("parameter `{}` reads `If-Match`, which this endpoint's version guard already reads", p.name),
+                    at,
+                )
+                .with_help("drop the parameter: send `If-Match` and the guard compares it with the fact's version"),
+            );
+        }
+    }
+
+    /// `@idempotent` (`spec/rules.md` section 11.8): `E0602` on an endpoint with no single body to
+    /// store (a stream, a WebSocket) and on a header that another part of the endpoint owns.
+    fn idempotency(
+        &self,
+        anns: &Anns<'_>,
+        ep: &REndpoint,
+        diags: &mut Vec<Diagnostic>,
+    ) -> Option<RIdempotent> {
+        let i = anns.idempotent.as_ref()?;
+        let header = i
+            .header
+            .clone()
+            .unwrap_or_else(|| annotations::DEFAULT_IDEMPOTENCY_HEADER.to_string());
+        let streams =
+            ep.success_stream || ep.method == Method::Ws || ep.params.iter().any(|p| p.stream);
+        let owner = ep
+            .params
+            .iter()
+            .filter_map(|p| p.header.as_deref())
+            .chain(ep.auth.header.as_deref())
+            .find(|h| h.eq_ignore_ascii_case(&header));
+        let problem = if streams {
+            Some("an endpoint that streams has no single answer to store".to_string())
+        } else {
+            owner.map(|h| format!("the header `{h}` is already used by this endpoint"))
+        };
+        if let Some(why) = problem {
+            diags.push(
+                Diagnostic::error(
+                    "E0602",
+                    format!("`@idempotent` cannot be applied here: {why}"),
+                    i.span,
+                )
+                .with_help(format!(
+                    "usage: {}",
+                    language::annotation("idempotent").map_or("", |a| a.usage)
+                )),
+            );
+            return None;
+        }
+        Some(RIdempotent {
+            header,
+            required: i.required,
+            span: i.span,
+        })
+    }
+
     /// Adds the implicit errors every server response needs a declaration for:
     /// `ValidationError` (when the endpoint has parameters), `Unauthorized`
     /// (when auth is not `none`) and `Internal` (always), unless already listed.
@@ -678,6 +760,16 @@ impl Ctx<'_, '_> {
         // An `allow` that denies answers `403 Forbidden` (`spec/rules.md` section 11.3).
         if rules::has_allow(e) {
             self.add_implicit(ep, "Forbidden", 403);
+        }
+        // A stale `If-Match` answers `412 PreconditionFailed`, a malformed one `422` (11.9).
+        if rules::version_guard(self.prog, self.module, e).is_some() {
+            self.add_implicit(ep, "ValidationError", 422);
+            self.add_implicit(ep, "PreconditionFailed", 412);
+        }
+        // A key in use answers `409 Conflict`, a malformed or missing one `422` (11.8, 11.9).
+        if ep.idempotent.is_some() {
+            self.add_implicit(ep, "ValidationError", 422);
+            self.add_implicit(ep, "Conflict", 409);
         }
         // A `transition` whose guard fails answers `409 InvalidTransition` (`spec/rules.md` 10.2).
         if rules::has_transition(e) {

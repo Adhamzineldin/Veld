@@ -692,6 +692,7 @@ fn resolve_one(prog: &Program<'_>, i: usize, diags: &mut Vec<Diagnostic>) -> Res
         DeclKind::Error(e) => {
             res.default_status = error_status(e, diags);
             res.own_fields = resolve_fields(prog, module, &e.fields, diags);
+            check_version_fields("an error", &e.fields, &res.own_fields, diags);
         }
         DeclKind::Enum(e) => {
             res.variants = resolve_variants(e, diags);
@@ -708,6 +709,7 @@ fn resolve_one(prog: &Program<'_>, i: usize, diags: &mut Vec<Diagnostic>) -> Res
         DeclKind::Event(e) => {
             res.own_fields = resolve_fields(prog, module, &e.fields, diags);
             check_event_fields(&e.fields, &res.own_fields, diags);
+            check_version_fields("an event", &e.fields, &res.own_fields, diags);
         }
         DeclKind::Channel(_) => {}
         DeclKind::Service(_) => {}
@@ -836,6 +838,16 @@ fn build_field(
         );
     }
     let example = a.example.and_then(|lit| convert(prog, &ty, lit, diags));
+    if let (Some(at), true) = (a.version, f.optional) {
+        diags.push(
+            Diagnostic::error(
+                "E0602",
+                format!("`@version` field `{}` cannot be optional", f.name.name),
+                at,
+            )
+            .with_help("a version is always there: drop the `?`"),
+        );
+    }
     RField {
         name: f.name.name.clone(),
         wire: a.wire.clone().unwrap_or_else(|| f.name.name.clone()),
@@ -843,6 +855,7 @@ fn build_field(
         optional: f.optional,
         default,
         readonly: a.readonly,
+        version: a.version.is_some(),
         inherited_from: None,
         constraints: a.constraints.clone(),
         example,
@@ -998,6 +1011,28 @@ fn check_event_fields(ast: &[ast::Field], resolved: &[RField], diags: &mut Vec<D
         diags.push(Diagnostic::error(
             "E0602",
             "`@readonly` cannot be applied to an event field",
+            at,
+        ));
+    }
+}
+
+/// `@version` marks the version of a model (`spec/rules.md` section 11.7): on a field of an error
+/// or an event it has no meaning.
+fn check_version_fields(
+    owner: &str,
+    ast: &[ast::Field],
+    resolved: &[RField],
+    diags: &mut Vec<Diagnostic>,
+) {
+    for f in resolved.iter().filter(|f| f.version) {
+        let at = ast
+            .iter()
+            .find(|a| a.name.name == f.name)
+            .and_then(|a| a.annotations.iter().find(|n| n.name.name == "version"))
+            .map_or(f.span, |n| n.span);
+        diags.push(Diagnostic::error(
+            "E0602",
+            format!("`@version` cannot be applied to a field of {owner}"),
             at,
         ));
     }

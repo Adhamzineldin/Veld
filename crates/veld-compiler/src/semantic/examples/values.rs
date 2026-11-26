@@ -183,7 +183,11 @@ impl Values<'_, '_, '_> {
     }
 
     pub fn outcome(&mut self, call: &ast::ExampleCall, ep: &REndpoint) -> Option<ROutcome> {
-        let o = &call.outcome;
+        self.outcome_of(&call.outcome, ep)
+    }
+
+    /// An outcome as written: after `->`, or after `stored` on a `key` line.
+    pub fn outcome_of(&mut self, o: &ast::Outcome, ep: &REndpoint) -> Option<ROutcome> {
         let Some(te) = &o.error else {
             let value = match &o.value {
                 None => None,
@@ -204,7 +208,12 @@ impl Values<'_, '_, '_> {
     }
 
     /// The error declaration named by an outcome, if the endpoint can answer with it.
-    fn answerable(&mut self, ty: &Type, te: &ast::TypeExpr, ep: &REndpoint) -> Option<usize> {
+    pub(super) fn answerable(
+        &mut self,
+        ty: &Type,
+        te: &ast::TypeExpr,
+        ep: &REndpoint,
+    ) -> Option<usize> {
         let decl = match ty {
             Type::Decl(d) if self.prog.decls[d.index()].kind == DKind::Error => d.index(),
             Type::Decl(_) | Type::Scalar(_) | Type::List(_) | Type::Map(_) | Type::Page(_) => {
