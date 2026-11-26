@@ -341,3 +341,41 @@ It reads the system clock for `now`, never sends anything and never rejects: an 
 ### 11.7 Tests
 
 `tests/policies.rs` with `tests/toolchain/java/rules/PolicyServe.java` (the test handler on the JDK server), `spring-policies/App.java` (on Spring) and `PolicyHttp.java` against the contract `tests/fixtures/guarded.veld` (the production handler over HTTP: `403` and its messages with a `forbid`, several `allow` lines, the order missing fact, denial, transition guard, `require`, fail-closed clauses and arguments, the principal the handler sees, and `can<Endpoint>` of the generated client against the server for every caller and both states): every one of the 10 examples of `tests/rules/endpoints/policies.veld` runs through `veld_testing::Live` in dry-run mode on both adapters; the printer for the `principal` root and for policy parameters in `src/rule_expr/endpoint_tests.rs` and `src/policy.rs`; snapshots `policies__*`; `javac -Xlint:all -Werror` on both contracts, server (with and without `testing`) and client, for both releases; `tests/conformance.rs` asserts that the generator declares and generates every rules feature.
+
+## 12. Events (`spec/events.md`)
+
+The `java` server declares `events` for every framework (`jdk`, `spring`); the client generates nothing for events and keeps its bytes. A contract without events gets the bytes it got before: the three runtime classes and the files below exist only for a service that publishes or subscribes.
+
+### 12.1 Files
+
+| File | Content |
+|---|---|
+| `<base>.runtime.Events` | the envelope, `publish`, `subscribe`, the hook records and the options (`Events.PublisherOptions`, `Events.ConsumerOptions`, `Events.EventMeta`, `Events.PublishedEvent`, `Events.EventRejected`, `Events.ContractMismatch`, `Events.HandlerFailure`) |
+| `<base>.runtime.Transport` | the transport interface (`publish`, `subscribe`, `Message`, `Outcome`, `Subscription`) |
+| `<base>.runtime.MemoryTransport` | the memory transport |
+| `<base>.<package>.<module>.<Event>` | one record per event of the channels and per declaration only they reach, like a model (`VELD_SIG`, `SCHEMA`, `codec()`, `RULE_*`, `check`) |
+| `<base>.<package>.server.<Service>Publisher` | per service that publishes |
+| `<base>.<package>.server.<Service>EventHandlers`, `<Service>Subscriber` | per service that subscribes |
+
+A service with events and no endpoints has no `<Service>Service`, `Hooks`, `Handler`, no Spring controller and no README line for them. The event files are identical for `jdk` and `spring`. A server with events carries the rule classes of section 8 even when no event has a rule (the events runtime reports violations).
+
+### 12.2 API
+
+- `BookingsPublisher.create(transport[, Events.PublisherOptions])`; `publisher.bookingEvents().bookingPaid(event)` returns `Events.PublishedEvent` (`id`, `source`, `type`, `subject`, `time`). The channel accessor and the method are the camelCase names. Options: `newId(Supplier<String>)`, `clock(Supplier<Instant>)`, `onRuleViolation(RuleWalk.Hook)`. The id defaults to `UUID.randomUUID()`, the clock to `Instant.now()`.
+- A failure throws the prelude `ValidationError` when the contract has one, otherwise an `UntypedError` titled `ValidationError`, status 422, with `violations()` and `raisedLocally()`. `validate = false` does not switch any of this off.
+- `<Service>EventHandlers` has one method per `on` line: `void sendReceipt(BookingPaid event, Events.EventMeta meta) throws Exception`. `NotificationsSubscriber.subscribe(transport, handlers[, Events.ConsumerOptions])` subscribes every `subscribes` line under its group and returns a `Transport.Subscription` whose `close()` closes all.
+- Hooks (`ConsumerOptions`): `onEventRejected`, `onContractMismatch`, `onRuleViolation` (`RuleWalk.Hook`, with `RuleWalk.Event`: `operation` is the event signature, position `OUTPUT` in a publisher and `INPUT` in a consumer, outcome `REJECTED` or `AUDITED`), `onHandlerError`. The publisher takes `onRuleViolation` only. A failing hook is ignored.
+- `Transport`: `publish(topic, key, byte[])` and `subscribe(topic, group, deliver) -> Subscription`, blocking and without checked exceptions. `deliver` answers `Transport.Outcome.DONE` or `AGAIN`.
+- `MemoryTransport(maxAttempts = 3)`: one daemon thread per group delivers in publish order, one message at a time; `idle()` blocks until everything is delivered or dead-lettered (not to be called from a handler); `deadLetters()`.
+
+### 12.3 Choices where `spec/events.md` was silent
+
+- No `<Service>PublisherOptions` or `<Service>SubscriberOptions` types: Java has no type alias, the runtime option classes are used.
+- The canonical datetime is written by `Events` itself (UTC, `.fff` only when the milliseconds are not zero), not by `Wire.normalizeDatetime`, which trims zeros.
+- Hooks report the enforced violations first, then the audited ones (`spec/events.md` section 6.4). The Node runtime reports audited first; with one violation per side the goldens cannot tell.
+- A typed value that the generated codec cannot decode after step 3 is rejected as `shape`.
+- A handler that throws any `Exception` is not acknowledged; the memory transport also treats an `Error` thrown by a subscriber as `AGAIN`.
+
+### 12.4 Tests
+
+`tests/events.rs` with the drivers `tests/toolchain/java/events/*.java`, compiled with `javac -Xlint:all -Werror` for both releases: every case of `tests/wire/events/envelopes.json` and `consume.json` (publisher bytes equal the golden, the consumer takes them back; this is also the cross-target check with Node), the 11 event examples of `tests/events/bookings.veld` against the reference evaluator, two services in one process, audited event rules, events without rules, the prelude error, snapshots, and the capability check.
