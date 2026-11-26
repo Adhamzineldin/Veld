@@ -156,8 +156,6 @@ pub struct Open {
 pub struct Site {
     /// The tokens before the cursor, without the word that is being typed.
     pub toks: Vec<Tk>,
-    /// The word being typed.
-    pub partial: String,
     /// The innermost block, and the blocks around it, outermost first.
     pub frames: Vec<Frame>,
     /// Index in `toks` of the first token of the current statement.
@@ -317,11 +315,9 @@ fn pop_brace(stack: &mut Vec<Level>, next: usize) {
 pub fn site(prefix: &str) -> Site {
     let (mut toks, inert) = lex(prefix);
     let typing = prefix.ends_with(is_word_char) && toks.last().is_some_and(Tk::is_word);
-    let partial = if typing {
-        toks.pop().map_or(String::new(), |t| t.text)
-    } else {
-        String::new()
-    };
+    if typing {
+        toks.pop();
+    }
     let cursor_line = prefix.matches('\n').count();
     let line_start = toks.last().is_none_or(|t| t.line < cursor_line);
     let mut stack = vec![Level::Brace {
@@ -345,7 +341,6 @@ pub fn site(prefix: &str) -> Site {
     }
     Site {
         toks,
-        partial,
         frames,
         stmt,
         opens,
@@ -455,7 +450,6 @@ mod tests {
             }
         );
         assert_eq!(s.first(), Some("require"));
-        assert_eq!(s.partial, "cap");
         assert!(s.endpoint().is_some());
         assert!(s.opens.is_empty());
     }

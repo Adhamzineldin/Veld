@@ -25,6 +25,8 @@ pub(crate) enum TypePos {
     Parent,
     /// After `carries`, `on` and `given event`: events.
     Event,
+    /// After `else` and `->` in an example: errors.
+    Error,
 }
 
 #[must_use]
@@ -63,7 +65,12 @@ pub(crate) fn item(label: &str, kind: CompletionItemKind, detail: Option<&str>) 
     }
 }
 
-fn snippet(label: &str, kind: CompletionItemKind, detail: &str, body: &str) -> CompletionItem {
+pub(crate) fn snippet(
+    label: &str,
+    kind: CompletionItemKind,
+    detail: &str,
+    body: &str,
+) -> CompletionItem {
     CompletionItem {
         insert_text: Some(body.to_string()),
         insert_text_format: Some(InsertTextFormat::SNIPPET),
@@ -85,6 +92,9 @@ impl Cx<'_> {
             return self.annotations();
         }
         if let Some(found) = self.event_position() {
+            return found;
+        }
+        if let Some(found) = self.rules_position() {
             return found;
         }
         if self.ctx.at_top_level && self.ctx.use_stmt.is_some() {
@@ -430,6 +440,7 @@ fn accepts(pos: TypePos, kind: DKind) -> bool {
         TypePos::Response => !matches!(kind, DKind::Const | DKind::Event),
         TypePos::Parent => kind == DKind::Model,
         TypePos::Event => kind == DKind::Event,
+        TypePos::Error => kind == DKind::Error,
     }
 }
 
@@ -457,7 +468,7 @@ fn decl_item_named(label: &str, d: &DeclEntry, edit: Option<TextEdit>) -> Comple
 
 fn decl_keywords() -> Vec<CompletionItem> {
     let k = CompletionItemKind::KEYWORD;
-    vec![
+    let mut out = vec![
         item("use", k, Some("import declarations")),
         snippet(
             "event",
@@ -502,7 +513,14 @@ fn decl_keywords() -> Vec<CompletionItem> {
             "const NAME: type = value",
             "const ${1:NAME}: ${2:string} = $0",
         ),
-    ]
+    ];
+    out.extend(
+        ["policy", "principal", "example"]
+            .iter()
+            .filter_map(|w| crate::words::word(w))
+            .map(crate::complete_rules::word_item),
+    );
+    out
 }
 
 fn method_words() -> Vec<CompletionItem> {

@@ -47,11 +47,230 @@ pub fn document_symbols(a: &Analysis, file: FileId) -> Vec<DocumentSymbol> {
     let (Some(f), Some(lines)) = (a.index.file(file), a.lines(file)) else {
         return Vec::new();
     };
-    f.ast
+    let ix = &a.index;
+    let mut all: Vec<DocumentSymbol> = f
+        .ast
         .decls
         .iter()
-        .map(|d| decl_symbol(&a.index, lines, d))
+        .map(|d| decl_symbol(ix, lines, d))
+        .collect();
+    all.extend(f.ast.policies.iter().map(|p| policy_symbol(ix, lines, p)));
+    all.extend(
+        f.ast
+            .principals
+            .iter()
+            .map(|p| principal_symbol(ix, lines, p)),
+    );
+    all.extend(f.ast.examples.iter().map(|x| example_symbol(ix, lines, x)));
+    all.sort_by_key(|s| (s.range.start.line, s.range.start.character));
+    all
+}
+
+/// An expression as one line of text.
+fn one_line(ix: &Index, span: Span) -> String {
+    src(ix, span)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn word_span(start: u32, word: &str) -> Span {
+    let end = start.saturating_add(u32::try_from(word.len()).unwrap_or(0));
+    Span {
+        file: FileId::NONE,
+        start,
+        end,
+    }
+}
+
+/// The invariants of a model or error, as symbols.
+fn rule_symbols(ix: &Index, lines: &LineIndex, rules: &[ast::Rule]) -> Vec<DocumentSymbol> {
+    rules
+        .iter()
+        .map(|r| {
+            let audited = r.annotations.iter().any(|a| a.name.name == "rollout");
+            let text = one_line(ix, r.expr.span);
+            let detail = if audited {
+                format!("{text} (audit)")
+            } else {
+                text
+            };
+            let spans = (r.span, r.name.span);
+            let kind = SymbolKind::BOOLEAN;
+            symbol(lines, &r.name.name, Some(detail), kind, spans, Vec::new())
+        })
         .collect()
+}
+
+/// A field and rule list in source order.
+fn members(
+    ix: &Index,
+    lines: &LineIndex,
+    fs: &[ast::Field],
+    rules: &[ast::Rule],
+) -> Vec<DocumentSymbol> {
+    let mut all = fields(ix, lines, fs);
+    all.extend(rule_symbols(ix, lines, rules));
+    all.sort_by_key(|s| (s.range.start.line, s.range.start.character));
+    all
+}
+
+fn statement_symbols(ix: &Index, lines: &LineIndex, ep: &ast::Endpoint) -> Vec<DocumentSymbol> {
+    let Some(block) = &ep.block else {
+        return Vec::new();
+    };
+    block
+        .stmts
+        .iter()
+        .map(|st| match st {
+            ast::Stmt::Fact(f) => {
+                let detail = format!(
+                    "{}: {}",
+                    if f.optional { "?" } else { "" },
+                    src(ix, f.ty.span)
+                );
+                let spans = (f.span, f.name.span);
+                symbol(
+                    lines,
+                    &f.name.name,
+                    Some(detail),
+                    SymbolKind::VARIABLE,
+                    spans,
+                    Vec::new(),
+                )
+            }
+            ast::Stmt::Require(r) => {
+                let sel = Span {
+                    file: r.span.file,
+                    ..word_span(r.span.start, "require")
+                };
+                let name = r.name.as_ref().map_or("require", |n| n.name.as_str());
+                let spans = (r.span, r.name.as_ref().map_or(sel, |n| n.span));
+                let detail = Some(one_line(ix, r.expr.span));
+                symbol(lines, name, detail, SymbolKind::BOOLEAN, spans, Vec::new())
+            }
+            ast::Stmt::Ensure(e) => {
+                let sel = Span {
+                    file: e.span.file,
+                    ..word_span(e.span.start, "ensure")
+                };
+                let name = e.name.as_ref().map_or("ensure", |n| n.name.as_str());
+                let spans = (e.span, e.name.as_ref().map_or(sel, |n| n.span));
+                let detail = Some(one_line(ix, e.expr.span));
+                symbol(lines, name, detail, SymbolKind::BOOLEAN, spans, Vec::new())
+            }
+            ast::Stmt::Transition(t) => {
+                let path: Vec<&str> = t.path.iter().map(|p| p.name.as_str()).collect();
+                let from: Vec<&str> = t.from.iter().map(|p| p.name.as_str()).collect();
+                let name = format!("transition {}", path.join("."));
+                let detail = format!("{} -> {}", from.join(", "), t.to.name);
+                let sel = Span {
+                    file: t.span.file,
+                    ..word_span(t.span.start, "transition")
+                };
+                symbol(
+                    lines,
+                    &name,
+                    Some(detail),
+                    SymbolKind::OPERATOR,
+                    (t.span, sel),
+                    Vec::new(),
+                )
+            }
+            ast::Stmt::Allow(a) => {
+                let name = format!("allow {}", a.policy.name);
+                let args: Vec<String> = a.args.iter().map(|x| one_line(ix, x.span)).collect();
+                let sel = Span {
+                    file: a.span.file,
+                    ..word_span(a.span.start, "allow")
+                };
+                symbol(
+                    lines,
+                    &name,
+                    Some(args.join(", ")),
+                    SymbolKind::KEY,
+                    (a.span, sel),
+                    Vec::new(),
+                )
+            }
+        })
+        .collect()
+}
+
+fn policy_symbol(ix: &Index, lines: &LineIndex, p: &ast::PolicyDecl) -> DocumentSymbol {
+    let params: Vec<String> = p
+        .params
+        .iter()
+        .map(|x| format!("{}: {}", x.name.name, src(ix, x.ty.span)))
+        .collect();
+    let kids = p
+        .clauses
+        .iter()
+        .map(|c| {
+            let word = if c.forbid { "forbid" } else { "permit" };
+            let sel = Span {
+                file: c.span.file,
+                ..word_span(c.span.start, word)
+            };
+            let detail = Some(one_line(ix, c.expr.span));
+            symbol(
+                lines,
+                word,
+                detail,
+                SymbolKind::BOOLEAN,
+                (c.span, sel),
+                Vec::new(),
+            )
+        })
+        .collect();
+    let detail = Some(format!("({})", params.join(", ")));
+    symbol(
+        lines,
+        &p.name.name,
+        detail,
+        SymbolKind::FUNCTION,
+        (p.span, p.name.span),
+        kids,
+    )
+}
+
+fn principal_symbol(ix: &Index, lines: &LineIndex, p: &ast::PrincipalDecl) -> DocumentSymbol {
+    let detail = match &p.name {
+        Some(n) => format!("{} as {}", src(ix, p.ty.span), n.name),
+        None => src(ix, p.ty.span).to_owned(),
+    };
+    let sel = Span {
+        file: p.span.file,
+        ..word_span(p.span.start, "principal")
+    };
+    symbol(
+        lines,
+        "principal",
+        Some(detail),
+        SymbolKind::OBJECT,
+        (p.span, sel),
+        Vec::new(),
+    )
+}
+
+fn example_symbol(ix: &Index, lines: &LineIndex, x: &ast::Example) -> DocumentSymbol {
+    let name = if x.name.value.is_empty() {
+        "example"
+    } else {
+        x.name.value.as_str()
+    };
+    let detail = x
+        .body
+        .as_call()
+        .map(|c| format!("{} {}", c.endpoint.name, one_line(ix, c.outcome.span)));
+    symbol(
+        lines,
+        name,
+        detail,
+        SymbolKind::STRING,
+        (x.span, x.name.span),
+        Vec::new(),
+    )
 }
 
 fn fields(ix: &Index, lines: &LineIndex, fs: &[ast::Field]) -> Vec<DocumentSymbol> {
@@ -82,11 +301,19 @@ fn decl_symbol(ix: &Index, lines: &LineIndex, d: &ast::Decl) -> DocumentSymbol {
                 .extends
                 .as_ref()
                 .map(|e| format!("extends {}", src(ix, e.span)));
-            sym(SymbolKind::STRUCT, detail, fields(ix, lines, &m.fields))
+            sym(
+                SymbolKind::STRUCT,
+                detail,
+                members(ix, lines, &m.fields, &m.rules),
+            )
         }
         DeclKind::Error(e) => {
             let detail = e.status.map(|(s, _)| format!("error {s}"));
-            sym(SymbolKind::STRUCT, detail, fields(ix, lines, &e.fields))
+            sym(
+                SymbolKind::STRUCT,
+                detail,
+                members(ix, lines, &e.fields, &e.rules),
+            )
         }
         DeclKind::Event(e) => sym(SymbolKind::EVENT, None, fields(ix, lines, &e.fields)),
         DeclKind::Channel(_) => sym(
@@ -144,14 +371,8 @@ fn decl_symbol(ix: &Index, lines: &LineIndex, d: &ast::Decl) -> DocumentSymbol {
                     let m = src(ix, e.method_span).to_uppercase();
                     let detail = Some(format!("{m} {}", e.path.value));
                     let spans = (e.span, e.name.span);
-                    symbol(
-                        lines,
-                        &e.name.name,
-                        detail,
-                        SymbolKind::METHOD,
-                        spans,
-                        Vec::new(),
-                    )
+                    let kids = statement_symbols(ix, lines, e);
+                    symbol(lines, &e.name.name, detail, SymbolKind::METHOD, spans, kids)
                 })
                 .collect();
             let detail = s.prefix.as_ref().map(|p| format!("at \"{}\"", p.value));
@@ -185,7 +406,9 @@ const T_PARAM: u32 = 5;
 const T_DECORATOR: u32 = 6;
 const T_NAMESPACE: u32 = 7;
 const T_VARIABLE: u32 = 8;
+const T_KEYWORD: u32 = 9;
 const M_DECLARATION: u32 = 1;
+const M_DEFAULT_LIBRARY: u32 = 2;
 
 #[must_use]
 pub fn legend() -> SemanticTokensLegend {
@@ -200,8 +423,12 @@ pub fn legend() -> SemanticTokensLegend {
             SemanticTokenType::DECORATOR,
             SemanticTokenType::NAMESPACE,
             SemanticTokenType::VARIABLE,
+            SemanticTokenType::KEYWORD,
         ],
-        token_modifiers: vec![SemanticTokenModifier::DECLARATION],
+        token_modifiers: vec![
+            SemanticTokenModifier::DECLARATION,
+            SemanticTokenModifier::DEFAULT_LIBRARY,
+        ],
     }
 }
 
@@ -242,7 +469,52 @@ pub fn semantic_tokens(a: &Analysis, file: FileId) -> Vec<SemanticToken> {
             out.push(raw(r.span, if is_enum { T_ENUM } else { T_TYPE }, 0));
         }
     }
+    rules_tokens(a, file, &mut out);
     encode(lines, out)
+}
+
+/// The words of the rules language: the words that start a statement, the names inside
+/// expressions and the built-in functions.
+fn rules_tokens(a: &Analysis, file: FileId, out: &mut Vec<Raw>) {
+    use crate::rfind::What;
+    use crate::scope::LocalKind;
+    let ix = &a.index;
+    for f in crate::rfind::collect(a, file, None) {
+        let decl = if f.def == Some(f.span) {
+            M_DECLARATION
+        } else {
+            0
+        };
+        let (ty, mods) = match &f.what {
+            What::Keyword(_) => (T_KEYWORD, 0),
+            What::Rule { .. } | What::Require { .. } | What::Ensure { .. } => {
+                let is_word = matches!(src(ix, f.span), "rule" | "require" | "ensure");
+                if is_word {
+                    (T_KEYWORD, 0)
+                } else {
+                    (T_VARIABLE, M_DECLARATION)
+                }
+            }
+            What::Local(l) => match l.kind {
+                LocalKind::Field { .. } => (T_PROPERTY, decl),
+                LocalKind::Param { .. } | LocalKind::PolicyParam { .. } => (T_PARAM, decl),
+                LocalKind::Fact { .. } | LocalKind::Principal { .. } => (T_VARIABLE, decl),
+                LocalKind::Now | LocalKind::Result => (T_VARIABLE, M_DEFAULT_LIBRARY),
+            },
+            What::Lambda(_) | What::Param { .. } => (T_PARAM, decl),
+            What::Member { .. } | What::PageMember(_) => (T_PROPERTY, 0),
+            What::Variant { .. } | What::State { .. } => (T_MEMBER, 0),
+            What::Const(_) | What::Principal { .. } => (T_VARIABLE, decl),
+            What::Builtin(_) => (T_FUNCTION, M_DEFAULT_LIBRARY),
+            What::Policy { .. } | What::Endpoint { .. } => (T_FUNCTION, decl),
+            What::Decl(d) => {
+                let is_enum = ix.decls.get(*d).is_some_and(|e| e.kind == DKind::Enum);
+                (if is_enum { T_ENUM } else { T_TYPE }, 0)
+            }
+            What::Example { .. } => continue,
+        };
+        out.push(raw(f.span, ty, mods));
+    }
 }
 
 fn annotations(anns: &[ast::Annotation], out: &mut Vec<Raw>) {

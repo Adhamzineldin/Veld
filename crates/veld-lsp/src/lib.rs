@@ -9,6 +9,7 @@
 
 pub mod complete;
 mod complete_events;
+mod complete_rules;
 pub mod context;
 pub mod diag;
 pub mod hover;

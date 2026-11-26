@@ -117,7 +117,9 @@ impl Ty {
     pub fn elem(&self) -> Ty {
         match self {
             Ty::List(t) => (**t).clone(),
-            _ => Ty::Unknown,
+            Ty::Scalar(_) | Ty::Decl(_) | Ty::Page(_) | Ty::Map(_) | Ty::Duration | Ty::Unknown => {
+                Ty::Unknown
+            }
         }
     }
 
@@ -126,7 +128,13 @@ impl Ty {
     pub fn enum_decl(&self, ix: &Index) -> Option<usize> {
         match self {
             Ty::Decl(d) if ix.decls.get(*d).is_some_and(|e| e.kind == DKind::Enum) => Some(*d),
-            _ => None,
+            Ty::Decl(_)
+            | Ty::Scalar(_)
+            | Ty::List(_)
+            | Ty::Page(_)
+            | Ty::Map(_)
+            | Ty::Duration
+            | Ty::Unknown => None,
         }
     }
 }
@@ -210,7 +218,7 @@ pub fn members(ix: &Index, ty: &Ty) -> Vec<Member> {
                 item("size", Ty::Scalar("int".into())),
             ]
         }
-        _ => Vec::new(),
+        Ty::Scalar(_) | Ty::List(_) | Ty::Map(_) | Ty::Duration | Ty::Unknown => Vec::new(),
     }
 }
 
@@ -569,7 +577,16 @@ fn binary_type(
                 lt
             }
         }
-        _ => Val::scalar("bool"),
+        BinOp::And
+        | BinOp::Or
+        | BinOp::Implies
+        | BinOp::Eq
+        | BinOp::Ne
+        | BinOp::Lt
+        | BinOp::Le
+        | BinOp::Gt
+        | BinOp::Ge
+        | BinOp::In => Val::scalar("bool"),
     }
 }
 

@@ -117,12 +117,12 @@ pub fn policy_named(ix: &Index, file: FileId, name: &str) -> Option<(FileId, usi
 pub fn endpoint_called(
     ix: &Index,
     file: FileId,
-    service: Option<&ast::Ident>,
+    service: Option<&str>,
     endpoint: &str,
 ) -> Option<(usize, usize)> {
     let pkg = &ix.file(file)?.package;
     ix.services.iter().enumerate().find_map(|(si, s)| {
-        if s.package != *pkg || service.is_some_and(|n| n.name != s.name) {
+        if s.package != *pkg || service.is_some_and(|n| n != s.name) {
             return None;
         }
         let sd = crate::query::service_ast(ix, si)?;
@@ -494,7 +494,7 @@ impl Collector<'_> {
         let target = endpoint_called(
             self.ix,
             self.file,
-            call.service.as_ref(),
+            call.service.as_ref().map(|s| s.name.as_str()),
             &call.endpoint.name,
         );
         let scope = target.map_or_else(Scope::default, |(s, e)| {
