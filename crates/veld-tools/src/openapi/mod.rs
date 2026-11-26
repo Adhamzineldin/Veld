@@ -40,6 +40,39 @@ pub fn openapi(ir: &Ir, services: &[ServiceId]) -> Value {
     Value::Object(doc)
 }
 
+/// The schema builder of the export, for the AsyncAPI export (`spec/events.md` section 16.1):
+/// the component name of a declaration, its schema (an event is built like a model), and the
+/// schema of a type.
+pub(crate) mod shared {
+    use serde_json::Value;
+    use veld_ir::{Decl, DeclId, DeclKind, Ir, Type};
+
+    use super::schema;
+
+    #[must_use]
+    pub(crate) fn component_name(ir: &Ir, id: DeclId) -> String {
+        schema::schema_name(ir, id)
+    }
+
+    /// The component schema of a declaration; an event is an object like a model.
+    #[must_use]
+    pub(crate) fn component_schema(ir: &Ir, d: &Decl) -> Option<Value> {
+        match d.kind {
+            DeclKind::Event(_) => Some(schema::model_schema(ir, d)),
+            DeclKind::Model(_)
+            | DeclKind::Error(_)
+            | DeclKind::Enum(_)
+            | DeclKind::Union(_)
+            | DeclKind::Const(_) => schema::decl_schema(ir, d),
+        }
+    }
+
+    #[must_use]
+    pub(crate) fn type_schema(ir: &Ir, ty: &Type) -> Value {
+        schema::type_schema(ir, ty)
+    }
+}
+
 fn info(ir: &Ir, ids: &[ServiceId]) -> Value {
     let names: Vec<&str> = ids.iter().map(|i| ir.service(*i).name.as_str()).collect();
     let title = if names.is_empty() {

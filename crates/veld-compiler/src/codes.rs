@@ -247,7 +247,7 @@ pub const CODES: &[CodeInfo] = &[
     e(
         "E0803",
         G,
-        "Invalid generation request (unknown framework or framework version, a language older than the framework needs, unknown role or service, nothing selected, a `-p` name or a target that is not a selected member)",
+        "Invalid generation request (unknown framework or framework version, a language older than the framework needs, unknown role or service, nothing selected, a `-p` name or a target that is not a selected member, `export asyncapi` of a workspace without channels)",
     ),
     e(
         "E0804",

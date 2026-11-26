@@ -208,7 +208,7 @@ fn decorate(m: &mut Map<String, Value>, d: &Decl) {
     super::rules::decorate_decl(d, m);
 }
 
-fn model_schema(ir: &Ir, d: &Decl) -> Value {
+pub(super) fn model_schema(ir: &Ir, d: &Decl) -> Value {
     let own: Vec<&Field> = d
         .fields()
         .iter()
