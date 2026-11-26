@@ -1,7 +1,7 @@
 // An emitting move next to the features of platform phase P2 and the idempotency key
 // (spec/events.md section 11, spec/platform.md sections 10 to 13): the move is timed, flagged,
-// idempotent and has a deadline and a service level; the event has a flagged invariant and a
-// derived field. Compiled as the package `outbox_four` by
+// idempotent and has a deadline and a service level; the event has a flagged invariant and an
+// audited one, and the model an audited one. Compiled as `t.veld` of the package `bookings` by
 // crates/emitters/rust/tests/events_outbox.rs (it only has to generate and build).
 
 event Archived {
@@ -9,6 +9,8 @@ event Archived {
   guests: int
   note: string = "none"
   rule small: guests <= 6 when flag("smallGroups")
+  @rollout(audit)
+  rule noisy: len(note) <= 40
 }
 
 channel RoomEvents {
@@ -29,6 +31,9 @@ model Room {
   guests: int
   phase: Phase = .draft
   liveSince: datetime
+
+  @rollout(audit)
+  rule crowded: guests <= 20
 }
 
 @slo(p99: ms(300), errors: 0.1)
