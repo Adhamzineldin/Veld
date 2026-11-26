@@ -254,29 +254,36 @@ It is for tests and for development in one process. It is what `veld test` uses 
 
 ## 10. Brokers (phase E2)
 
+Phase E2 adds three annotations of a channel, the inbox, two broker adapters and live event examples. Sections 10.1 to 10.3 say what they mean; 10.4 to 10.9 fix the details the generators share. The names are in TypeScript spelling, as in `spec/targets/typescript.md`; Java and Rust use the same words in their casing.
+
 ### 10.1 The capability matrix
 
 A broker adapter is a framework adapter: the one allowed dependency of generated code (`CLAUDE.md` rule 3), using the standard client of the language. Brokers do not share one semantics, so the portable contract is deliberately small, and a contract that asks for more than the chosen broker gives is refused with `E0801` at the line that asks.
 
-The memory column is normative now. **The Kafka and RabbitMQ columns state the design intent; they become normative when the adapter's tests against the real broker exist, and this table is corrected to what those tests show.**
+The memory column is normative now. **The Kafka and RabbitMQ columns state the design; they are corrected to what the tests against the real brokers show.**
 
 | | memory | Kafka | RabbitMQ |
 |---|---|---|---|
-| A topic is | a name in the process | a topic | an exchange, with one durable queue per group |
-| A group is | the subscribers that share the name | a consumer group | the consumers of that queue |
-| The key becomes | a field of the message | the record key | the routing key |
+| A topic is | a name in the process | a topic, which the adapter does not create | a durable `fanout` exchange, declared by the adapter |
+| A group is | the subscribers that share the name | a consumer group | the consumers of the durable queue `<topic>.<group>`, declared and bound by the adapter |
+| The key becomes | a field of the message | the record key | the routing key (the empty string when there is none) |
 | Order per key | publish order, per topic | within a partition, so per key | only while the queue has one active consumer |
-| A failed handler | delivered again at once, `maxAttempts` | not committed; delivered again | negatively acknowledged; delivered again |
-| Dead letter | a list in the process | the topic `<topic>.dlq` | the exchange `<topic>.dlq` |
+| `publish` completes | when the message is queued | when all in-sync replicas have it (`acks=all`, idempotent producer) | when the broker confirmed it (publisher confirms, persistent message) |
+| A message published before a group first subscribed | is dropped | is read: a new group starts at the earliest offset | is dropped: no queue was bound |
+| `again` (§9) | delivered again at once, `maxAttempts` | not committed; the same consumer delivers it again after a delay, and takes nothing else of that partition meanwhile | not acknowledged; the same consumer delivers it again after a delay, and takes nothing else meanwhile (prefetch 1) |
+| `@ordered` (§10.2) | already so | every message goes to partition 0 | the queue is declared with `x-single-active-consumer` |
+| Dead letter (§10.5) | the topic `<topic>.dlq`, like any topic | the topic `<topic>.dlq`, which the adapter does not create | the exchange `<topic>.dlq` and a durable queue of the same name, declared by the adapter |
 | Replay of old messages | no | with the broker's own tools | no |
 
 The CloudEvents bindings cover Kafka and AMQP 1.0. On Kafka a message is the envelope bytes as the record value, with the header `content-type` set to the media type of §6.2, and the key text as the record key. RabbitMQ's usual protocol is AMQP 0-9-1, which no CloudEvents binding covers; Veld uses the same structured mode there: the envelope bytes as the body and the same media type as the content type.
 
 ### 10.2 Retry, dead letter, order
 
-- `@retry(max: n, backoff: fixed | exponential)` on a channel bounds how often a message whose handler fails is delivered again by a consumer of that channel.
-- `@deadLetter` on a channel gives it a dead-letter topic, `<topic>.dlq`. A rejected message (§8), and a message whose retries are used up, is copied there with the reason and the violations in extension attributes. Reading and replaying a dead-letter topic is the broker's job, with the broker's tools.
-- `@ordered` on a channel asks for one total order across keys. A broker that can only give it by giving up parallel consumers does so; one that cannot is `E0801`.
+- `@retry(max: n, backoff: fixed | exponential)` on a channel bounds how often a message whose handler fails is handled again by a consumer of that channel. `max` is 0 to 100 and required; `backoff` defaults to `exponential`.
+- `@deadLetter` on a channel gives it a dead-letter topic, `<topic>.dlq`. A rejected message (§8), and a message whose retries are used up, is copied there (§10.5). Reading and replaying a dead-letter topic is the broker's job, with the broker's tools.
+- `@ordered` on a channel asks for one total order across keys. A broker that can only give it by giving up parallel consumers does so; a generator whose adapter cannot give it reports `E0801`.
+- Each stands before `channel`, once, and takes no other argument (`E0602`). `<topic>.dlq` counts as a topic of the workspace for `E1004`.
+- `W1003`: a channel has `@retry` and no `@deadLetter`. A message whose retries are used up is then acknowledged and gone, reported only to `onHandlerError`.
 
 ### 10.3 The inbox
 
@@ -287,6 +294,75 @@ handle(source, id, run) -> runs `run` and records (source, id), or does nothing 
 ```
 
 An implementation that records the pair in the same transaction as the handler's own writes prevents a duplicated business effect. One that cannot share a transaction narrows the window and does not close it. The guides say this in these words. Veld generates the interface and a memory implementation for tests, nothing else.
+
+- The names are `Inbox`, `MemoryInbox` and the consumer option `inbox`. `handle` answers whether it ran `run`. When `run` fails the pair MUST NOT be recorded, and the failure is the handler's failure.
+- An inbox belongs to one service: a service subscribes to a channel once (`E1006`), so `source` and `id` name one run of one handler.
+- A message the inbox skipped is acknowledged like a handled one. It is not an error and reaches no hook.
+
+### 10.4 Retry in the generated consumer
+
+`@retry` is carried out by the generated consumer, not by the transport, so it behaves the same on every transport, the memory transport included.
+
+- When the handler of a message fails on a channel with `@retry(max: n)`, the consumer waits and runs steps 5 and 6 of §8 again, up to `n` more times: `n + 1` runs in all. `meta.attempt` is the transport's `attempt` plus the runs already made.
+- The wait before run `k + 1` is `retryDelayMs` for `fixed` and `retryDelayMs * 2^(k-1)` for `exponential`, never more than `retryMaxDelayMs`. Both are options of the consumer (1000 and 60000 by default). The consumer waits through its `sleep` option, a function from milliseconds to a completion, so a test passes one that does not wait.
+- Every failed run is reported to `onHandlerError`, whose content gains `attempt` and `final`: `final` is true when the message will not be handled again by this consumer.
+- When the last run failed: with `@deadLetter` the message is copied to the dead-letter topic with the reason `handler`, and the consumer answers `done`. Without it the consumer answers `done` and the message is gone (`W1003`).
+- On a channel without `@retry` nothing changes from §8: the consumer answers `again`, and the transport delivers the message again by its own policy (§10.1), without bound on a broker.
+
+### 10.5 The dead-letter copy
+
+- The copy is published with `transport.publish("<topic>.dlq", key, bytes)`, with the key of the original message.
+- When the original bytes are a JSON object, the copy is that object with these members added, written as canonical JSON (§6.2): `veldreason` (`malformed`, `shape`, `rule` or `handler`), `veldgroup` (the group of the consumer), `veldattempts` (the number of runs, an integer, 0 for a rejected message), and, when not empty, `veldissues` and `veldviolations`: each a string that holds the canonical JSON of the list. Every other member is kept, so a copy published again to the topic is a valid message: a consumer ignores envelope members it does not know.
+- When the original bytes are not a JSON object, they are copied as they are. Nothing can be added to what is not an envelope; the reason is in `onEventRejected`.
+- Nothing of a handler's error is copied: an error text is the application's and may hold what must not be stored.
+- **The copy comes before the acknowledgement.** When publishing the copy fails, the consumer answers `again`.
+
+### 10.6 The transport gets the channel's options
+
+`publish` and `subscribe` (§9) take one more argument, last and optional, so a transport written for E1 still fits:
+
+```
+publish(topic, key | none, bytes, options?)
+subscribe(topic, group, deliver, options?) -> handle
+options = { ordered: bool, deadLetter: bool }     both false when absent
+```
+
+The generated publisher and consumer pass the options of the channel. The memory transport ignores them. A broker adapter uses them as §10.1 says. A transport that cannot give `ordered` MUST fail the call instead of ignoring it.
+
+### 10.7 The adapters
+
+`[server.options] messaging = "kafka"`, `"rabbitmq"` or a list of both chooses the adapters a server target gets. Without the option a server gets the memory transport only, and every generated byte is what it was. An unknown value is `E0802`, and so is the option on a target none of whose services publishes or subscribes.
+
+- An adapter is one generated file that implements `Transport` (`KafkaTransport`, `RabbitMqTransport`). It is the only generated file that imports the broker's client library, and the target's generated manifest names that library only when the adapter is chosen.
+
+  | | Kafka | RabbitMQ |
+  |---|---|---|
+  | Node | `kafkajs` | `amqplib` |
+  | Java (JDK server and Spring) | `org.apache.kafka:kafka-clients` | `com.rabbitmq:amqp-client` |
+  | Rust | `rdkafka` | `lapin` |
+
+- **The application configures the connection.** Addresses, TLS and credentials are not in the contract and not in `veld.toml`. The adapter is built from what the library uses for that: a `Kafka` instance (Node), a map of client properties (Java), a `ClientConfig` (Rust); an open AMQP connection for RabbitMQ in all three. The adapter adds only what the semantics of §10.1 need (the group id, manual commits, `earliest`, idempotence, confirms, prefetch) and overrides a setting of the application that contradicts them.
+- Options of both adapters: `redelivery: { initialMs, maxMs }`, the delay before a message answered `again` is delivered again (1000, doubling up to 30000 by default). `attempt` counts the deliveries by this consumer since it started; after a restart or a rebalance it starts at 1 again.
+- `close()` stops the consumers, waits for a delivery that is running, and flushes the producer. The application closes the client it made.
+- An adapter creates nothing on a Kafka cluster. On RabbitMQ it declares what §10.1 lists, with the same arguments every time; a queue that exists with other arguments (`x-single-active-consumer` added later) is the broker's `PRECONDITION_FAILED`, which the adapter passes on.
+- A handler that runs for long must not cost the consumer its place in the group: the Kafka adapter keeps the session alive while a delivery runs or waits.
+
+### 10.8 In the IR, and the feature
+
+```jsonc
+Channel      += { "retry": { "max": 5, "backoff": "exponential" },   // each omitted when absent
+                  "dead_letter": true, "ordered": true }
+Example.expect[] += { "once": true }                                  // `called once`; omitted when false
+```
+
+A service that publishes or subscribes to a channel with one of the three annotations uses the feature `events_delivery`. It is opt-in (`spec/ir.md` §4): a generator that built E1 does not get it by accident, and reports `E0801` at the first such annotation until it declares it. The inbox and the adapters are options of a target and need no feature.
+
+### 10.9 `called once`, and live event examples
+
+- `expect S.handler called once` says: the event is delivered twice, with the same `source` and `id`, and the handler runs once. The reference evaluator gives every subscription an inbox, so offline `called once` holds where `called` holds. `once` is a contextual word.
+- **The test handler** (`testing = true`) of a server whose services subscribe answers `POST /__veld/test/event`. The body is the message bytes; the headers are `Veld-Test-Topic` and, optionally, `Veld-Test-Key` and `Veld-Test-Deliveries` (1 or 2). It delivers the message that many times to the generated consumer over a fresh memory transport, with a fresh memory inbox, a `sleep` that does not wait and handlers that only count, and answers `200` with `{ "outcome": "handled" | "ignored" | "rejected", "reason": "malformed" | "shape" | "rule" | null, "called": { "<Service>.<handler>": <count> }, "violations": [ … ], "deadLetters": <count> }`. The application's handlers are not called. `GET /__veld/test` (`spec/rules.md` §12.4) also lists `"subscribes": { "<Service>": ["<topic>", …] }`.
+- **`veld test --live`** builds the envelope of each event example with the reference encoder (§6.3) and sends it to every test handler that subscribes to the example's channel. It compares the outcome, the handlers that were called and the violations with the reference evaluator's. `called once` sends two deliveries and expects a count of 1; `called` expects at least 1 from one delivery; `not called` expects 0. A generated consumer checks constraints, which the reference evaluator does not (§12): an example that expects `rejected` and is not rejected offline for that reason is run live and reported as "live only" offline.
+- **The broker tests** are toolchain tests against real brokers in containers (`apache/kafka-native`, `rabbitmq`), and run only when `VELD_KAFKA` and `VELD_RABBITMQ` name them; `VELD_REQUIRE_BROKERS=1` turns a skip into a failure. They cover every row of §10.1 for each target, and one cross-target run per broker: a Node producer and a Java consumer with only `messaging` changed.
 
 ## 11. The outbox and `emits` (phase E3)
 
@@ -413,7 +489,7 @@ A change to an event is judged for both sides of the stream: consumers generated
 
 Until its phase is built, a construct of a later phase is rejected: `emits` with `E0003`, the annotations of §10.2 with `E0601`.
 
-E1 needs no configuration: the application passes a transport. Choosing a broker adapter (`messaging = "kafka"`) arrives with the configuration rewrite, before E2.
+E1 needs no configuration: the application passes a transport. A broker adapter is chosen with the target option `messaging` (§10.7).
 
 ## 19. Differences from the proposal
 
@@ -421,6 +497,9 @@ E1 needs no configuration: the application passes a transport. Choosing a broker
 - **A consumer does not require the publisher's signature** (§8). The proposal said a consumer "checks the signature"; taken literally that would reject every message after any change to an event, including the addition of an optional field, which the proposal also calls safe.
 - **`veldrules`** is new: it carries the stale-client rule of `spec/rules.md` §9.7 over to consumers.
 - **`expect … called once`** waits for the inbox (E2). In E1 an example describes one delivery.
+- **`messaging` is an option of a server target** (`[server.options]`, §10.7), not a key of `[service]`: a service may have a Node server and a Java server, and each chooses its adapters. Addresses and credentials are the application's, given to the adapter as a configured client of the library.
+- **Java uses the plain clients** (`kafka-clients`, `amqp-client`) under Spring too, so that both Java servers share one adapter. The proposal named Spring Kafka and Spring AMQP.
+- **`@retry` is carried out by the generated consumer** (§10.4), not by each broker in its own way, so one test on the memory transport covers it for every broker.
 - **The example in the proposal used `"b-1"` for a `uuid`**; examples here are type-correct.
 
 ## 20. Decisions
