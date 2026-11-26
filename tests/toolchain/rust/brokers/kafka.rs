@@ -115,6 +115,99 @@ async fn order_per_key_and_ordered(servers: &str) {
     t.close().await;
 }
 
+/// The Java client's `Utils.murmur2` (apache/kafka, `clients/src/main/java/org/apache/kafka/common/utils/Utils.java`;
+/// the same function is in `DefaultPartitioner`/`BuiltInPartitioner`): seed `0x9747b28c`, `m = 0x5bd1e995`,
+/// `r = 24`, little-endian words, then the tail bytes. A record with a key goes to
+/// `toPositive(murmur2(key)) % partitions`, with `toPositive(h) = h & 0x7fffffff`.
+fn murmur2(data: &[u8]) -> i32 {
+    const M: i32 = 0x5bd1_e995;
+    const R: u32 = 24;
+    let length = data.len();
+    let mut h: i32 = (0x9747_b28c_u32 as i32) ^ (length as i32);
+    for chunk in data.chunks_exact(4) {
+        let mut k = i32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+        k = k.wrapping_mul(M);
+        k ^= ((k as u32) >> R) as i32;
+        k = k.wrapping_mul(M);
+        h = h.wrapping_mul(M);
+        h ^= k;
+    }
+    let tail = &data[length & !3..];
+    if tail.len() >= 3 {
+        h ^= i32::from(tail[2]) << 16;
+    }
+    if tail.len() >= 2 {
+        h ^= i32::from(tail[1]) << 8;
+    }
+    if !tail.is_empty() {
+        h ^= i32::from(tail[0]);
+        h = h.wrapping_mul(M);
+    }
+    h ^= ((h as u32) >> 13) as i32;
+    h = h.wrapping_mul(M);
+    h ^= ((h as u32) >> 15) as i32;
+    h
+}
+
+fn java_partition(key: &str, partitions: i32) -> i32 {
+    (murmur2(key.as_bytes()) & 0x7fff_ffff) % partitions
+}
+
+/// A key published by this producer lands in the partition the Java client chooses (`partitioner`
+/// `murmur2_random`, `spec/events.md` 10.1). The murmur2 above is checked against two values of
+/// the Java client's own test (`UtilsTest.testMurmur2`: "21" gives -973932308, "foobar" gives -790332482).
+async fn the_partition_of_a_key_is_the_java_one(servers: &str) {
+    assert_eq!(murmur2(b"21"), -973_932_308);
+    assert_eq!(murmur2(b"foobar"), -790_332_482);
+    assert_eq!(murmur2(b"abc"), 479_470_107);
+    let topic = fresh("veld-part");
+    create_topics(servers, &[&topic], 7).await;
+    let t = transport(servers);
+    let keys: Vec<String> = (0..30).map(|i| format!("key-{i}")).chain(["a", "ab", "abc", "abcd", "order-4711"].map(String::from)).collect();
+    for k in &keys {
+        t.publish(&topic, Some(k), k.as_bytes(), ChannelOptions::NONE).await.unwrap();
+    }
+    let records = raw(servers, &topic, keys.len()).await;
+    for (partition, key, _, _) in records {
+        let key = key.unwrap();
+        assert_eq!(partition, java_partition(&key, 7), "the partition of the key {key}");
+    }
+    t.close().await;
+}
+
+/// Two consumers of one group, one partition: while the second joins, the first one's record is
+/// being delivered again (`Again` every time). The rebalance takes the partition from the first
+/// consumer, which must stop delivering it (and not commit it): once the group has settled only
+/// one of the two consumers is delivering, where before the fix both kept going.
+async fn a_revoked_partition_ends_the_delivery(servers: &str) {
+    let topic = fresh("veld-revoke");
+    create_topics(servers, &[&topic], 1).await;
+    let group = fresh("g");
+    let again: Script = Arc::new(|_| Outcome::Again);
+    let (d1, mut rx1) = collector(again.clone());
+    let s1 = transport(servers).subscribe(&topic, &group, d1, ChannelOptions::NONE).await.unwrap();
+    let t = transport(servers);
+    t.publish(&topic, Some("k"), b"stuck", ChannelOptions::NONE).await.unwrap();
+    assert!(next(&mut rx1, 30_000).await.is_some(), "the first consumer delivers the record");
+    let (d2, mut rx2) = collector(again);
+    let s2 = transport(servers).subscribe(&topic, &group, d2, ChannelOptions::NONE).await.unwrap();
+    // The group has settled when the second consumer was assigned; let what was in flight pass.
+    tokio::time::sleep(Duration::from_millis(1_500)).await;
+    while rx1.try_recv().is_ok() || rx2.try_recv().is_ok() {}
+    tokio::time::sleep(Duration::from_millis(2_500)).await;
+    let (mut a, mut b) = (Vec::new(), Vec::new());
+    while let Ok(m) = rx1.try_recv() {
+        a.push(m);
+    }
+    while let Ok(m) = rx2.try_recv() {
+        b.push(m);
+    }
+    assert!(a.is_empty() || b.is_empty(), "one owner delivers: {} and {} deliveries", a.len(), b.len());
+    s1.close().await;
+    s2.close().await;
+    t.close().await;
+}
+
 async fn a_failed_handler_is_delivered_again(servers: &str) {
     let topic = fresh("veld-again");
     create_topics(servers, &[&topic], 1).await;
@@ -251,7 +344,9 @@ async fn main() {
     let Some(servers) = broker_or_skip("VELD_KAFKA") else { return };
     publish_consume_and_the_record(&servers).await;
     order_per_key_and_ordered(&servers).await;
+    the_partition_of_a_key_is_the_java_one(&servers).await;
     a_failed_handler_is_delivered_again(&servers).await;
+    a_revoked_partition_ends_the_delivery(&servers).await;
     before_the_group_subscribed_and_two_consumers(&servers).await;
     a_long_delivery_keeps_the_place_in_the_group(&servers).await;
     the_dead_letter_topic(&servers).await;

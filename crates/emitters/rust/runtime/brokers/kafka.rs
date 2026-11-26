@@ -3,12 +3,16 @@
 //!
 //! What the adapter adds to the application's configuration: the consumer group (the `group` of the
 //! subscription), manual commits after the handler, `auto.offset.reset=earliest` for a group that
-//! has no offset, an idempotent producer with `acks=all` and one request in flight, and no
-//! automatic creation of topics. A setting of the application that contradicts these is
+//! has no offset, an idempotent producer with `acks=all` and one request in flight, the
+//! `murmur2_random` partitioner (the partition of a key is the one the Java client chooses), and
+//! `allow.auto.create.topics=false` on the consumers. The adapter itself creates no topic; whether
+//! the cluster creates a missing one when a producer asks for its metadata is the cluster's
+//! setting (`auto.create.topics.enable`). A setting of the application that contradicts these is
 //! overridden.
 //!
 //! The adapter needs a tokio runtime: it spawns one task per subscription.
 
+use std::collections::BTreeMap;
 use std::future::Future;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
@@ -56,14 +60,43 @@ impl Default for Redelivery {
     }
 }
 
-/// Tells `subscribe` that the group assigned partitions.
+/// Tells `subscribe` that the group assigned partitions, and counts the revocations of each
+/// partition: a delivery that started under an older count lost its partition.
 struct Joined {
     sender: Mutex<Option<oneshot::Sender<()>>>,
+    revoked: Mutex<BTreeMap<(String, i32), u64>>,
+}
+
+impl Joined {
+    fn new(sender: oneshot::Sender<()>) -> Self {
+        Joined { sender: Mutex::new(Some(sender)), revoked: Mutex::new(BTreeMap::new()) }
+    }
+
+    /// How often the partition was taken away from this consumer so far.
+    fn revocations(&self, topic: &str, partition: i32) -> u64 {
+        lock(&self.revoked).get(&(topic.to_string(), partition)).copied().unwrap_or(0)
+    }
+}
+
+/// Whether a delivery that saw `seen` revocations of its partition still owns it, given the count
+/// `now`.
+fn still_owns(seen: u64, now: u64) -> bool {
+    seen == now
 }
 
 impl ClientContext for Joined {}
 
 impl ConsumerContext for Joined {
+    fn pre_rebalance(&self, _consumer: &BaseConsumer<Self>, rebalance: &Rebalance<'_>) {
+        if let Rebalance::Revoke(partitions) = rebalance {
+            let mut revoked = lock(&self.revoked);
+            for p in partitions.elements() {
+                let count = revoked.entry((p.topic().to_string(), p.partition())).or_insert(0);
+                *count = count.saturating_add(1);
+            }
+        }
+    }
+
     fn post_rebalance(&self, _consumer: &BaseConsumer<Self>, rebalance: &Rebalance<'_>) {
         if matches!(rebalance, Rebalance::Assign(_)) {
             if let Some(sender) = lock(&self.sender).take() {
@@ -99,7 +132,7 @@ struct Inner {
     closed: Mutex<bool>,
 }
 
-/// `Transport` over Kafka. Topics are not created. A message is the envelope as the record value
+/// `Transport` over Kafka. The adapter creates no topic. A message is the envelope as the record value
 /// with the header `content-type`, and the key text as the record key. `@ordered` puts every
 /// message in partition 0. `publish` completes when all in-sync replicas have the record. A group
 /// that has no offset starts at the earliest. A message answered `Again` is not committed and is
@@ -163,7 +196,10 @@ impl KafkaTransport {
             .set("enable.idempotence", "true")
             .set("acks", "all")
             .set("max.in.flight.requests.per.connection", "1")
-            .set("allow.auto.create.topics", "false");
+            // The Java producer's rule (murmur2 of the key, a random partition for no key), so that
+            // producers in different languages put one key into one partition. librdkafka's default
+            // is CRC32 (`consistent_random`). Property `partitioner`, valid values since 1.x.
+            .set("partitioner", "murmur2_random");
         let producer: FutureProducer = config.create().map_err(|e| failure("cannot create the producer", e))?;
         *slot = Some(producer.clone());
         Ok(producer)
@@ -190,7 +226,7 @@ impl KafkaTransport {
     async fn join(&self, topic: &str, group: &str, deliver: Deliver) -> Result<Box<dyn TransportSubscription>, Error> {
         self.check_open()?;
         let (joined, wait) = oneshot::channel();
-        let context = Joined { sender: Mutex::new(Some(joined)) };
+        let context = Joined::new(joined);
         let mut config = self.inner.config.clone();
         config
             .set("group.id", group)
@@ -274,6 +310,31 @@ struct Record {
     bytes: Vec<u8>,
 }
 
+/// The partition a record came from, and how often it had been revoked when the record arrived.
+struct Claim {
+    topic: String,
+    partition: i32,
+    seen: u64,
+}
+
+impl Claim {
+    /// `false` once a rebalance took the partition away: the new owner delivers the record.
+    fn held(&self, consumer: &Consuming) -> bool {
+        still_owns(self.seen, consumer.context().revocations(&self.topic, self.partition))
+    }
+}
+
+/// How the delivery of one record ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Ending {
+    /// The handler answered `Done` and the partition was still held.
+    Done,
+    /// The partition was taken away: nothing is delivered again or committed.
+    Revoked,
+    /// The subscription was closed first.
+    Stopped,
+}
+
 /// The loop of one subscription: take a record, deliver it until `Done`, commit, go on.
 async fn poll_loop(consumer: Consuming, deliver: Deliver, redelivery: Redelivery, mut stopped: watch::Receiver<bool>) {
     loop {
@@ -292,14 +353,18 @@ async fn poll_loop(consumer: Consuming, deliver: Deliver, redelivery: Redelivery
             key: message.key().map(|k| String::from_utf8_lossy(k).into_owned()),
             bytes: message.payload().map(<[u8]>::to_vec).unwrap_or_default(),
         };
+        let claim = Claim {
+            topic: message.topic().to_string(),
+            partition: message.partition(),
+            seen: consumer.context().revocations(message.topic(), message.partition()),
+        };
         pause_all(&consumer);
-        let finished = deliver_until_done(&consumer, &deliver, &record, redelivery, &mut stopped).await;
-        if finished {
-            // After a rebalance the commit is refused and the new owner delivers the record again.
+        let ending = deliver_until_done(&consumer, &deliver, &record, &claim, redelivery, &mut stopped).await;
+        if ending == Ending::Done {
             let _ = consumer.commit_message(&message, CommitMode::Sync);
         }
         resume_all(&consumer);
-        if !finished {
+        if ending == Ending::Stopped {
             return;
         }
     }
@@ -325,12 +390,20 @@ fn resume_all(consumer: &Consuming) {
     }
 }
 
+/// Whether the partition is in the current assignment of the consumer.
+fn assigned(consumer: &Consuming, topic: &str, partition: i32) -> bool {
+    consumer
+        .assignment()
+        .is_ok_and(|list| list.elements().iter().any(|e| e.topic() == topic && e.partition() == partition))
+}
+
 /// Polls the consumer while `work` runs. The partitions are paused, so nothing is expected; a
 /// record that was fetched before the pause took effect (or from a partition a rebalance assigned
-/// meanwhile) is given back with a seek to its offset and the partitions are paused again. The
-/// pending `recv()` is polled again at least every half of `max.poll.interval.ms`: `StreamConsumer`
-/// sends itself that wake-up (`rdkafka` 0.38 `stream_consumer.rs`), which is the poll that
-/// librdkafka's liveness check counts.
+/// meanwhile) is given back with a seek to its offset and the partitions are paused again; a
+/// record of a partition that is no longer assigned is not given back (the new owner reads it).
+/// The pending `recv()` is polled again at least every half of `max.poll.interval.ms`:
+/// `StreamConsumer` sends itself that wake-up (`rdkafka` 0.38 `stream_consumer.rs`), which is the
+/// poll that librdkafka's liveness check counts.
 async fn polled<T>(consumer: &Consuming, work: impl Future<Output = T>) -> T {
     tokio::pin!(work);
     loop {
@@ -338,7 +411,9 @@ async fn polled<T>(consumer: &Consuming, work: impl Future<Output = T>) -> T {
             out = &mut work => return out,
             stray = consumer.recv() => {
                 if let Ok(m) = stray {
-                    let _ = consumer.seek(m.topic(), m.partition(), Offset::Offset(m.offset()), Duration::from_secs(1));
+                    if assigned(consumer, m.topic(), m.partition()) {
+                        let _ = consumer.seek(m.topic(), m.partition(), Offset::Offset(m.offset()), Duration::from_secs(1));
+                    }
                     // A rebalance may have assigned partitions that are not paused yet.
                     pause_all(consumer);
                 } else {
@@ -349,24 +424,29 @@ async fn polled<T>(consumer: &Consuming, work: impl Future<Output = T>) -> T {
     }
 }
 
-/// Delivers one record, and again after a delay until `Done`. `false`: the subscription was closed
-/// first, and nothing is committed.
+/// Delivers one record, and again after a delay until `Done`, as long as the partition is held
+/// (checked after every answer and every wait) and the subscription is open.
 async fn deliver_until_done(
     consumer: &Consuming,
     deliver: &Deliver,
     record: &Record,
+    claim: &Claim,
     redelivery: Redelivery,
     stopped: &mut watch::Receiver<bool>,
-) -> bool {
+) -> Ending {
     let mut wait = redelivery.initial_ms;
     let mut attempt = 1u32;
     loop {
         let message = TransportMessage { key: record.key.clone(), bytes: record.bytes.clone(), attempt };
-        if polled(consumer, deliver(message)).await == Outcome::Done {
-            return true;
+        let outcome = polled(consumer, deliver(message)).await;
+        if !claim.held(consumer) {
+            return Ending::Revoked;
+        }
+        if outcome == Outcome::Done {
+            return Ending::Done;
         }
         if *stopped.borrow() {
-            return false;
+            return Ending::Stopped;
         }
         let slept = polled(consumer, async {
             tokio::select! {
@@ -376,9 +456,24 @@ async fn deliver_until_done(
         })
         .await;
         if !slept {
-            return false;
+            return Ending::Stopped;
+        }
+        if !claim.held(consumer) {
+            return Ending::Revoked;
         }
         wait = wait.saturating_mul(2).min(redelivery.max_ms);
         attempt = attempt.saturating_add(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::still_owns;
+
+    #[test]
+    fn a_delivery_owns_its_partition_until_the_count_of_revocations_changes() {
+        assert!(still_owns(0, 0));
+        assert!(!still_owns(0, 1));
+        assert!(still_owns(2, 2));
     }
 }
