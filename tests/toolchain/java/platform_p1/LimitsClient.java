@@ -8,6 +8,7 @@ import gen.c.limits.client.RoomsClient;
 import gen.c.limits.limits.Room;
 import gen.c.prelude.TooManyRequests;
 import gen.c.runtime.ClientOptions;
+import gen.c.runtime.VeldTransportError;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
@@ -149,6 +150,27 @@ public final class LimitsClient {
       } catch (TooManyRequests e) {
         check(server.seen.get() == 1 && slept.isEmpty(), "no wait");
       }
+
+      // The wait is inside the call's timeout (spec/platform.md 9.2): a wait that does not fit ends
+      // the call as timed out, without sleeping and without a second request.
+      slept.clear();
+      RoomsClient hurried = new RoomsClient(ClientOptions.builder()
+          .baseUrl(server.url())
+          .sleeper(slept::add)
+          .timeout(java.time.Duration.ofSeconds(1))
+          .build());
+      server.reset(5, 429);
+      try {
+        hurried.byUser(new ByUserRequest(ID));
+        throw new AssertionError("a wait longer than the timeout is a timeout");
+      } catch (VeldTransportError e) {
+        check(e.getMessage().contains("timed out after 1000 ms"), "the message: " + e.getMessage());
+        check(server.seen.get() == 1 && slept.isEmpty(), "one request and no wait: " + server.seen.get() + " " + slept);
+      }
+      // A wait that fits is waited out, as before.
+      server.reset(0, 429);
+      Room again = hurried.byUser(new ByUserRequest(ID));
+      check(again.id().equals(ID) && server.seen.get() == 2, "a wait of 0 fits in the timeout");
     } finally {
       server.http.stop(0);
     }

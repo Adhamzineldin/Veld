@@ -388,8 +388,14 @@ public final class ClientCore {
     retrying.add(sig);
   }
 
-  /** Sends the request; a {@code 429} with {@code retryAfter} of an endpoint that may be repeated is waited out and sent again, once. */
+  /**
+   * Sends the request; a {@code 429} with {@code retryAfter} of an endpoint that may be repeated is
+   * waited out and sent again, once. The two requests and the wait are inside the one timeout of
+   * the call (spec/platform.md section 9.2): the second request gets what is left of it, and a wait
+   * that does not fit ends the call as timed out, without sleeping.
+   */
   private HttpResponse<String> sendLimited(EndpointSpec ep, HttpRequest request) {
+    long start = System.nanoTime();
     HttpResponse<String> first = send(ep, request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
     if (first.statusCode() != 429 || !options.retryOnLimit() || !retrying.contains(ep.sig())) {
       return first;
@@ -398,14 +404,36 @@ public final class ClientCore {
     if (seconds < 0) {
       return first;
     }
+    long budget = request.timeout().map(java.time.Duration::toMillis).orElse(Long.MAX_VALUE);
+    long wait = seconds >= Long.MAX_VALUE / 1000L ? Long.MAX_VALUE : seconds * 1000L;
+    if (budget - elapsedMillis(start) <= wait) {
+      throw timedOut(request, budget);
+    }
     try {
-      options.sleeper().sleep(seconds * 1000L);
+      options.sleeper().sleep(wait);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       throw new VeldTransportError(ep.method() + " " + request.uri().getRawPath() + " was interrupted", e);
     }
-    // The same request, so the same idempotency key.
-    return send(ep, request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+    long left = budget - elapsedMillis(start);
+    if (left <= 0) {
+      throw timedOut(request, budget);
+    }
+    // The same request, so the same idempotency key, with the time that is left.
+    HttpRequest again = HttpRequest.newBuilder(request, (name, value) -> true)
+        .timeout(java.time.Duration.ofMillis(left))
+        .build();
+    return send(ep, again, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+  }
+
+  private static long elapsedMillis(long startNanos) {
+    return (System.nanoTime() - startNanos) / 1_000_000L;
+  }
+
+  private static VeldTransportError timedOut(HttpRequest request, long budget) {
+    return new VeldTransportError(
+        request.method() + " " + request.uri().getRawPath() + " timed out after " + budget + " ms",
+        new java.net.http.HttpTimeoutException("the wait of a 429 does not fit in the timeout"));
   }
 
   /** The {@code retryAfter} of the {@code data} of a problem document, in seconds, or -1 when it has none. */
