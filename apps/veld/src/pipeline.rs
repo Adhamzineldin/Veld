@@ -557,6 +557,21 @@ pub fn build_job<'a>(
     })
 }
 
+/// The role, services and consumed services of a target, without resolving its generator (a
+/// plugin is not started). For tools that only need to know what a target covers.
+pub fn target_scope(
+    project: &Project,
+    ir: &Ir,
+    target: &TargetSpec,
+) -> Result<(Role, Vec<ServiceId>, Vec<ServiceId>), Vec<String>> {
+    let role = role_of(target.role);
+    let (services, consumes) = match role {
+        Role::Server => server_services(project, ir, target)?,
+        Role::Client => (service_ids(ir, &target.services), Vec::new()),
+    };
+    Ok((role, services, consumes))
+}
+
 /// A server serves its own service and, when `clients` is on, gets clients for its `consumes`.
 fn server_services(
     project: &Project,

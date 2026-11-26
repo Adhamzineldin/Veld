@@ -30,6 +30,7 @@ pub fn run(ui: &Ui, config: Option<&Path>, cmd: &ExportCommand) -> Result<Exit> 
             let text = veld_tools::rule_book(ir, &selected_services(ir, &out.service)?);
             document(ui, out, "rules.md", &text)
         }
+        ExportCommand::RuntimeSchema(args) => super::runtime_schema::run(ui, &done, args),
         ExportCommand::Openapi(out) => {
             let value = veld_tools::openapi(ir, &selected_services(ir, &out.service)?);
             document(ui, out, "openapi.json", &pretty(&value)?)
@@ -77,7 +78,7 @@ fn selected_services(ir: &Ir, names: &[String]) -> Result<Vec<ServiceId>> {
 
 /// Prints `text`, or writes it to `-o FILE` (`default_name` is only used when the path has no
 /// file name).
-fn document(ui: &Ui, out: &DocOut, default_name: &str, text: &str) -> Result<Exit> {
+pub(super) fn document(ui: &Ui, out: &DocOut, default_name: &str, text: &str) -> Result<Exit> {
     let Some(path) = &out.output else {
         print!("{text}");
         return Ok(Exit::Ok);

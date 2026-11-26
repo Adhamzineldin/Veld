@@ -14,6 +14,7 @@ mod lsp;
 mod plugin;
 mod prove;
 mod registry;
+mod runtime_schema;
 mod setup;
 mod test;
 mod test_coverage;

@@ -437,12 +437,29 @@ pub enum ExportCommand {
     Openapi(DocOut),
     /// The rules of the workspace as Markdown, for people who do not read contracts
     Rules(DocOut),
+    /// JSON Schema of the runtime config of a target
+    RuntimeSchema(RuntimeSchemaArgs),
     /// The compiled IR as JSON, for plugin authors
     Ir {
         /// Write to this file instead of stdout
         #[arg(short, long, value_name = "FILE")]
         output: Option<PathBuf>,
     },
+}
+
+/// `veld export runtime-schema` (`spec/runtime-config.md`, section 6).
+#[derive(Debug, Args, Default)]
+pub struct RuntimeSchemaArgs {
+    /// The target to describe (default: the one target that has a runtime config)
+    pub target: Option<String>,
+    #[command(flatten)]
+    pub select: SelectArgs,
+    /// Write to this file instead of stdout
+    #[arg(short, long, value_name = "FILE")]
+    pub output: Option<PathBuf>,
+    /// Overwrite an existing, different FILE
+    #[arg(long)]
+    pub force: bool,
 }
 
 /// Exports that produce one document.
