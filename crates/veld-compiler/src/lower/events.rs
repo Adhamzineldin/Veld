@@ -54,6 +54,9 @@ impl Lowerer<'_, '_> {
             }),
             docs: res.and_then(|r| r.docs.clone()),
             deprecated: res.and_then(|r| r.deprecated.clone()),
+            retry: res.and_then(|r| r.retry),
+            dead_letter: res.is_some_and(|r| r.dead_letter),
+            ordered: res.is_some_and(|r| r.ordered),
             origin: self.origin(c.name_span, c.module),
         }
     }
@@ -108,10 +111,11 @@ impl Lowerer<'_, '_> {
             REventExpect::Rejected => EventExpect::Rejected,
             REventExpect::Calls(list) => EventExpect::Calls(
                 list.iter()
-                    .map(|(s, handler, called)| ExpectedCall {
+                    .map(|(s, handler, called, once)| ExpectedCall {
                         service: ids.get(s).copied().unwrap_or(ServiceId(u32::MAX)),
                         handler: handler.clone(),
                         called: *called,
+                        once: *once,
                     })
                     .collect(),
             ),

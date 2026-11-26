@@ -285,17 +285,13 @@ fn readonly_is_refused_on_an_event_field() {
 }
 
 #[test]
-fn annotations_of_later_phases_are_unknown() {
-    let src = "event P { id: uuid }\n@retry(max: 3)\nchannel A { carries P }";
-    assert_eq!(codes(src), ["E0601"]);
-    assert_eq!(
-        codes("event P { id: uuid }\n@ordered\nchannel A { carries P }"),
-        ["E0601"]
-    );
-    assert_eq!(
-        codes("event P { id: uuid }\n@deadLetter\nchannel A { carries P }"),
-        ["E0601"]
-    );
+fn annotations_of_the_next_phase_are_still_unknown() {
+    // `@retry`, `@deadLetter` and `@ordered` are known since phase E2 (`delivery_tests.rs`);
+    // other words are still `E0601`.
+    for word in ["@retries(max: 3)", "@dead_letter", "@order", "@exactlyOnce"] {
+        let src = format!("event P {{ id: uuid }}\n{word}\nchannel A {{ carries P }}");
+        assert_eq!(codes(&src), ["E0601"], "{word}");
+    }
 }
 
 #[test]

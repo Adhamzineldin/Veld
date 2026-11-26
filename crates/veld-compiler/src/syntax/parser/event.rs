@@ -358,8 +358,10 @@ impl Parser<'_> {
         let kw = self.advance().span;
         if self.at_word("rejected") && !matches!(self.tok_at(1), Tok::Dot) {
             self.advance();
+            let once = self.eat_once();
             return Some(Expectation {
                 kind: ExpectKind::Rejected,
+                once,
                 span: self.end_from(kw),
             });
         }
@@ -371,13 +373,23 @@ impl Parser<'_> {
             self.unexpected("`called`");
             return None;
         }
+        let once = self.eat_once();
         Some(Expectation {
             kind: ExpectKind::Called {
                 service,
                 handler,
                 not,
             },
+            once,
             span: self.end_from(kw),
         })
+    }
+
+    /// The contextual word `once` after `called`: the span of the word, when it is there.
+    fn eat_once(&mut self) -> Option<Span> {
+        if !self.at_word("once") {
+            return None;
+        }
+        Some(self.advance().span)
     }
 }

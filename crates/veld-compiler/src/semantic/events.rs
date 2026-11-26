@@ -39,6 +39,10 @@ pub struct RChannel {
     pub key: Option<RChannelKey>,
     pub docs: Option<String>,
     pub deprecated: Option<String>,
+    /// `@retry` (`spec/events.md` section 10.2).
+    pub retry: Option<veld_ir::Retry>,
+    pub dead_letter: bool,
+    pub ordered: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -221,22 +225,65 @@ pub fn check_channels(prog: &mut Program<'_>, diags: &mut Vec<Diagnostic>) {
     let mut topics: BTreeMap<String, Span> = BTreeMap::new();
     for (c, r) in prog.channels.iter().zip(results.iter_mut()) {
         let Some(res) = r else { continue };
-        if let Some(first) = topics.get(&res.topic) {
+        let dead_letter = res.dead_letter.then(|| format!("{}.dlq", res.topic));
+        let taken = [Some(res.topic.clone()), dead_letter]
+            .into_iter()
+            .flatten()
+            .find_map(|t| topics.get(&t).map(|first| (t, *first)));
+        if let Some((topic, first)) = taken {
             diags.push(
                 Diagnostic::error(
                     "E1004",
-                    format!("topic `{}` is already used by another channel", res.topic),
+                    format!("topic `{topic}` is already used by another channel"),
                     c.name_span,
                 )
-                .with_label(*first, "first used here"),
+                .with_label(first, "first used here"),
             );
             *r = None;
         } else {
             topics.insert(res.topic.clone(), c.name_span);
+            if res.dead_letter {
+                topics.insert(format!("{}.dlq", res.topic), c.name_span);
+            }
         }
     }
     for (c, r) in prog.channels.iter_mut().zip(results) {
         c.res = r;
+    }
+    warn_retry_without_dead_letter(prog, diags);
+}
+
+/// `W1003`: a channel with `@retry` and without `@deadLetter` (`spec/events.md` section 10.2).
+/// A package from a registry is not the author's to fix and stays silent.
+fn warn_retry_without_dead_letter(prog: &Program<'_>, diags: &mut Vec<Diagnostic>) {
+    for c in &prog.channels {
+        let Some(res) = &c.res else { continue };
+        if res.retry.is_none() || res.dead_letter {
+            continue;
+        }
+        if !matches!(
+            prog.packages[c.pkg].kind,
+            PackageKind::Service | PackageKind::Library
+        ) {
+            continue;
+        }
+        let at = c
+            .decl
+            .annotations
+            .iter()
+            .find(|a| a.name.name == "retry")
+            .map_or(c.name_span, |a| a.span);
+        diags.push(
+            Diagnostic::warning(
+                "W1003",
+                format!(
+                    "channel `{}` has `@retry` and no `@deadLetter`: a message whose retries are used up is gone",
+                    c.name
+                ),
+                at,
+            )
+            .with_help("add `@deadLetter` to keep such messages on the topic `<topic>.dlq`"),
+        );
     }
 }
 
@@ -311,6 +358,9 @@ fn check_channel(prog: &Program<'_>, i: usize, diags: &mut Vec<Diagnostic>) -> O
         key,
         docs: doc_text(&c.decl.docs),
         deprecated: anns.deprecated,
+        retry: anns.retry,
+        dead_letter: anns.dead_letter,
+        ordered: anns.ordered,
     })
 }
 
