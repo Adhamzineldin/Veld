@@ -1823,7 +1823,14 @@ async function dueCall(
     timerCalls.set(req, { principal: env.principal });
     const m = r.re.exec(normalizePath(req.path));
     if (m === null) throw new Error(`${r.ep.name}: the parameters do not make a path of the endpoint`);
+    // #endif
+    // #if timed_plain
     const res = await run(r, m, req, env.std, env.hooks);
+    // #endif
+    // #if timed_bounded
+    const res = await bound(run)(r, m, req, env.std, env.hooks);
+    // #endif
+    // #if timed
     if (res.status < 300) counts.moved += 1;
     else if (isInvalidTransition(r.ep, res)) counts.refused += 1;
     else {
@@ -1997,6 +2004,10 @@ export interface EndpointSpec {
   /** `@idempotent`: the header of the key and what the server does with it (spec/rules.md section 11.8). */
   idempotency?: IdempotencySpec;
   // #endif
+  // #if timeouts
+  /** `@timeout`: the deadline of a request in milliseconds. A server answers `504` after it; a client uses it as the default timeout of a call. */
+  timeoutMs?: number;
+  // #endif
 }
 
 function paramLoc(p: ParamSpec): string {
@@ -2104,6 +2115,16 @@ export interface RequestContext {
   headers: Headers;
   principal: unknown;
   raw: unknown;
+  // #if timeouts
+  /** The instant the request arrived plus its `@timeout`. Absent for an endpoint without one. */
+  deadline?: Date;
+  /**
+   * Aborts when the deadline passes (an `AbortSignal` where `AbortController` exists). A handler
+   * cannot be stopped: when it runs on past the deadline its answer is dropped, so a handler that
+   * writes must watch this signal (or `deadline`) itself.
+   */
+  signal?: AbortSignalLike;
+  // #endif
 }
 
 export interface AuthHooks {
@@ -2129,6 +2150,10 @@ export interface HandlerHooks {
   /** The server's clock, read once per request before the facts load. Default: the system clock. */
   clock?: (ctx: RequestContext) => Date;
   // #endif
+  // #if slo
+  /** Called once per request that matched an endpoint, with the answer ready (spec/platform.md section 13). A failing hook is ignored. */
+  metrics?: (m: Metric) => void | Promise<void>;
+  // #endif
   // #if timed
   /** The principal the application gives its own timer, for `run<Service>DueMoves` (spec/platform.md section 10.1). */
   timer?: TimerHooks;
@@ -2143,6 +2168,10 @@ export interface ServerEndpoint extends EndpointSpec {
   middleware: readonly string[];
   /** `session` is set for `ws` endpoints. SSE endpoints resolve to an `AsyncIterable`. */
   call(req: object, ctx: RequestContext, session?: WsSession): unknown;
+  // #if slo
+  /** `<package>/<Service>`: the `veld.service` attribute of the metric of a request. */
+  service?: string;
+  // #endif
   // #if endpoint_rules
   /** The facts, `require`, `old` and `ensure` of the endpoint block. */
   rules?: EndpointRuleSet;
@@ -2163,6 +2192,9 @@ export interface StdSigs {
   // #endif
   // #if idempotency
   conflict?: string;
+  // #endif
+  // #if timeouts
+  deadline?: string;
   // #endif
 }
 
@@ -2451,9 +2483,23 @@ function failure(err: unknown, ep: ServerEndpoint, ctx: RequestContext, std: Std
   return problem(std.internal, 'Internal', 500, ep.sig, {});
 }
 
+// #if not_timeouts
 function contextOf(ep: ServerEndpoint, req: VeldRequest, headers: Headers): RequestContext {
   return { method: ep.method, path: normalizePath(req.path), headers, principal: undefined, raw: req.raw };
 }
+// #endif
+// #if timeouts
+function contextOf(ep: ServerEndpoint, req: VeldRequest, headers: Headers): RequestContext {
+  const ctx: RequestContext = { method: ep.method, path: normalizePath(req.path), headers, principal: undefined, raw: req.raw };
+  const state = deadlines.get(req);
+  if (state !== undefined) {
+    ctx.deadline = state.at;
+    if (state.signal !== undefined) ctx.signal = state.signal;
+    state.ctx = ctx;
+  }
+  return ctx;
+}
+// #endif
 
 /** Auth, middleware, binding and validation: the part of the pipeline every transport shares. */
 async function guard(
@@ -2521,6 +2567,12 @@ async function run(
   hooks: HandlerHooks,
 ): Promise<VeldResponse> {
   const lease: Lease = {};
+  // #endif
+  // #if timeouts_idempotency
+  const bounded = deadlines.get(req);
+  if (bounded !== undefined) bounded.lease = lease;
+  // #endif
+  // #if idempotency
   let res: VeldResponse;
   try {
     res = await runCore(r, m, req, std, hooks, lease);
@@ -2599,6 +2651,167 @@ async function runCore(
   }
 }
 
+// #if bounded
+type RunFn = (r: Route, m: RegExpExecArray, req: VeldRequest, std: StdSigs, hooks: HandlerHooks) => Promise<VeldResponse>;
+// #endif
+// #if timeouts
+
+// ---------------------------------------------------------------------------
+// Deadlines (spec/platform.md section 12)
+// ---------------------------------------------------------------------------
+
+/** What one request with a deadline shares between the wrapper, its context and its lease. */
+interface DeadlineState {
+  at: Date;
+  signal?: AbortSignalLike;
+  ctx?: RequestContext;
+  // #endif
+  // #if timeouts_idempotency
+  lease?: Lease;
+  // #endif
+  // #if timeouts
+}
+
+const deadlines = new WeakMap<VeldRequest, DeadlineState>();
+
+interface TimerApi {
+  setTimeout?: (fn: () => void, ms: number) => unknown;
+  clearTimeout?: (t: unknown) => void;
+  AbortController?: new () => { signal: AbortSignalLike; abort(): void };
+}
+
+/** The `504 DeadlineExceeded` of a request that hit its deadline, built like any declared error. */
+async function deadlineAnswer(r: Route, state: DeadlineState, std: StdSigs, hooks: HandlerHooks): Promise<VeldResponse> {
+  const ep = r.ep;
+  const spec = ep.errors.find((e) => e.sig === std.deadline);
+  const ctx = state.ctx ?? { method: ep.method, path: ep.path, headers: {}, principal: undefined, raw: undefined };
+  // #endif
+  // #if timeouts_rules
+  const stamp = (res: VeldResponse): VeldResponse => withDigest(ep, res);
+  // #endif
+  // #if not_timeouts_rules
+  const stamp = (res: VeldResponse): VeldResponse => res;
+  // #endif
+  // #if timeouts
+  if (spec === undefined) return stamp(problem(std.internal, 'Internal', 500, ep.sig, {}));
+  const err = spec.create({ timeoutMs: String(ep.timeoutMs ?? 0) }, { status: spec.status, op: ep.sig });
+  return stamp(failure(err, ep, ctx, std, hooks));
+}
+
+/**
+ * Runs the pipeline of one request against its deadline. When the pipeline has no answer in time the
+ * request answers `504 DeadlineExceeded`, the signal aborts and the idempotency key is released.
+ * The handler is not stopped: it runs on and whatever it answers is dropped.
+ */
+async function withDeadline(go: RunFn, r: Route, m: RegExpExecArray, req: VeldRequest, std: StdSigs, hooks: HandlerHooks): Promise<VeldResponse> {
+  const ms = r.ep.timeoutMs;
+  const api = globalThis as TimerApi;
+  if (ms === undefined || api.setTimeout === undefined) return go(r, m, req, std, hooks);
+  const controller = api.AbortController === undefined ? undefined : new api.AbortController();
+  const state: DeadlineState = { at: new Date(Date.now() + ms) };
+  if (controller !== undefined) state.signal = controller.signal;
+  deadlines.set(req, state);
+  let timer: unknown;
+  const expired = new Promise<null>((resolve) => {
+    timer = api.setTimeout?.(() => {
+      controller?.abort();
+      resolve(null);
+    }, ms);
+  });
+  const work = go(r, m, req, std, hooks);
+  work.catch(() => undefined);
+  try {
+    const first = await Promise.race([work, expired]);
+    if (first !== null) return first;
+    const res = await deadlineAnswer(r, state, std, hooks);
+    // #endif
+    // #if timeouts_idempotency
+    if (state.lease !== undefined) await settle(state.lease, res).catch(() => undefined);
+    // #endif
+    // #if timeouts
+    return res;
+  } finally {
+    api.clearTimeout?.(timer);
+  }
+}
+// #endif
+// #if slo
+
+// ---------------------------------------------------------------------------
+// Service levels (spec/platform.md section 13)
+// ---------------------------------------------------------------------------
+
+/** The attributes of a metric: the names of the OpenTelemetry HTTP semantic conventions. */
+export interface MetricAttributes {
+  'http.request.method': string;
+  'http.route': string;
+  'http.response.status_code': number;
+  /** Only for a `5xx`: the status as text. */
+  'error.type'?: string;
+  'veld.service': string;
+  'veld.endpoint': string;
+  /** The whole operation signature of the endpoint. */
+  'veld.operation': string;
+}
+
+/** What `hooks.metrics` receives: one request duration. */
+export interface Metric {
+  name: 'http.server.request.duration';
+  unit: 's';
+  /** Seconds. */
+  value: number;
+  attributes: MetricAttributes;
+}
+
+function nowMs(): number {
+  const perf = (globalThis as { performance?: { now?: () => number } }).performance;
+  return perf?.now === undefined ? Date.now() : perf.now();
+}
+
+function reportMetric(ep: ServerEndpoint, status: number, started: number, hooks: HandlerHooks): void {
+  const hook = hooks.metrics;
+  if (hook === undefined) return;
+  const attributes: MetricAttributes = {
+    'http.request.method': ep.method,
+    'http.route': ep.path,
+    'http.response.status_code': status,
+    'veld.service': ep.service ?? '',
+    'veld.endpoint': ep.name,
+    'veld.operation': ep.sig,
+  };
+  if (status >= 500) attributes['error.type'] = String(status);
+  try {
+    const out = hook({ name: 'http.server.request.duration', unit: 's', value: (nowMs() - started) / 1000, attributes });
+    if (out !== undefined) Promise.resolve(out).catch(() => undefined);
+  } catch {
+    // A failing hook is ignored.
+  }
+}
+
+/** Calls `hooks.metrics` once the answer of a request is ready, whatever it is. */
+async function withMetrics(go: RunFn, r: Route, m: RegExpExecArray, req: VeldRequest, std: StdSigs, hooks: HandlerHooks): Promise<VeldResponse> {
+  const started = nowMs();
+  let res: VeldResponse;
+  try {
+    res = await go(r, m, req, std, hooks);
+  } catch (err) {
+    reportMetric(r.ep, 500, started, hooks);
+    throw err;
+  }
+  reportMetric(r.ep, res.status, started, hooks);
+  return res;
+}
+// #endif
+// #if timeouts_only
+const bound = (go: RunFn): RunFn => (r, m, req, std, hooks) => withDeadline(go, r, m, req, std, hooks);
+// #endif
+// #if slo_only
+const bound = (go: RunFn): RunFn => (r, m, req, std, hooks) => withMetrics(go, r, m, req, std, hooks);
+// #endif
+// #if timeouts_slo
+const bound = (go: RunFn): RunFn => (r, m, req, std, hooks) =>
+  withMetrics((r2, m2, q2, s2, h2) => withDeadline(go, r2, m2, q2, s2, h2), r, m, req, std, hooks);
+// #endif
 // #if version
 
 // ---------------------------------------------------------------------------
@@ -2925,6 +3138,12 @@ function keyIssues(ep: EndpointSpec, headers: Headers): Issue[] {
 
 /** What a request that `begin` started owes the store when it ends. */
 interface Lease {
+  // #endif
+  // #if timeouts_idempotency
+  /** Settled by the deadline: whatever the pipeline answers later is dropped. */
+  closed?: boolean;
+  // #endif
+  // #if idempotency
   store?: IdempotencyStore;
   scope?: string;
   key?: string;
@@ -2981,6 +3200,15 @@ async function beginIdempotency(
   }
   switch (outcome.state) {
     case 'started':
+      // #endif
+      // #if timeouts_idempotency
+      if (run.lease.closed === true) {
+        // The deadline passed while the store was asked: the key is not left running.
+        await idem.store.release(lease.scope, key).catch((err: unknown) => storeFailed(lease, err));
+        return problem(std.internal, 'Internal', 500, ep.sig, {});
+      }
+      // #endif
+      // #if idempotency
       Object.assign(run.lease, lease);
       return null;
     case 'replay':
@@ -2994,6 +3222,16 @@ async function beginIdempotency(
 
 /** The request is over with `res`: stores the answer below `500`, removes the entry otherwise. */
 async function settle(lease: Lease, res: VeldResponse | null): Promise<VeldResponse> {
+  // #endif
+  // #if timeouts_idempotency
+  if (lease.closed === true) {
+    // The deadline settled it already: the late answer is dropped.
+    if (res === null) throw new Error('the request ended without an answer');
+    return res;
+  }
+  lease.closed = true;
+  // #endif
+  // #if idempotency
   const { store, scope, key } = lease;
   const done = store !== undefined && scope !== undefined && key !== undefined;
   try {
@@ -3394,9 +3632,17 @@ export function createHandler(endpoints: readonly ServerEndpoint[], std: StdSigs
     }
     return null;
   };
+  // #if bounded
+  const exec = bound(run);
+  // #endif
   const handler = async (req: VeldRequest): Promise<VeldResponse | null> => {
     const hit = find(req.method.toUpperCase(), req.path);
+    // #if not_bounded
     return hit === null ? null : run(hit.r, hit.m, req, std, hooks);
+    // #endif
+    // #if bounded
+    return hit === null ? null : exec(hit.r, hit.m, req, std, hooks);
+    // #endif
   };
   const ws = async (req: VeldRequest, socket: WsSocket): Promise<boolean> => {
     const hit = find('WS', req.path);
@@ -3506,6 +3752,13 @@ export interface ContractMismatch {
 // #endif
 export interface CallInit {
   signal?: AbortSignalLike;
+  // #if timeouts
+  /**
+   * The most a call may take, in milliseconds: it fails with a `VeldTransportError` when the answer
+   * has not arrived. Default: the `@timeout` of the endpoint, when it has one.
+   */
+  timeoutMs?: number;
+  // #endif
 }
 
 /**
@@ -3733,6 +3986,29 @@ function linkAbort(user: AbortSignalLike | undefined): Linked {
   return c;
 }
 
+// #if timeouts
+interface CallLimit {
+  signal: AbortSignalLike;
+  ms: number;
+  expired(): boolean;
+  clear(): void;
+}
+
+/** The timeout of a call (the caller's, else the endpoint's) as a signal that aborts when it passes. `null` without one. */
+function callLimit(ep: EndpointSpec, init: CallInit): CallLimit | null {
+  const ms = init.timeoutMs ?? ep.timeoutMs;
+  const api = globalThis as { setTimeout?: (fn: () => void, ms: number) => unknown; clearTimeout?: (t: unknown) => void };
+  if (ms === undefined || api.setTimeout === undefined) return null;
+  const link = linkAbort(init.signal);
+  let hit = false;
+  const timer = api.setTimeout(() => {
+    hit = true;
+    link.abort();
+  }, ms);
+  return { signal: link.signal, ms, expired: () => hit, clear: () => api.clearTimeout?.(timer) };
+}
+
+// #endif
 interface TextDecoderLike {
   decode(input?: Uint8Array, options?: { stream?: boolean }): string;
 }
@@ -3850,11 +4126,29 @@ export class ClientCore {
   async call(ep: EndpointSpec, input: object, init: CallInit = {}): Promise<unknown> {
     const req = input as Record<string, unknown>;
     this.check(ep, req);
+    // #if timeouts
+    const limit = callLimit(ep, init);
+    if (limit !== null) init = { ...init, signal: limit.signal };
+    try {
+    // #endif
     const res = await this.send(ep, req, init, {});
     // #if rules
     this.observe(res);
     // #endif
+    // #if not_timeouts
     return this.decode(ep, res);
+    // #endif
+    // #if timeouts
+    return await this.decode(ep, res);
+    } catch (err) {
+      if (limit?.expired() === true) {
+        throw new VeldTransportError(`${ep.method} ${ep.path} timed out after ${String(limit.ms)} ms`, err);
+      }
+      throw err;
+    } finally {
+      limit?.clear();
+    }
+    // #endif
   }
 
   /**

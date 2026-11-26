@@ -192,6 +192,11 @@ fn write_due_moves(
     w.close();
 }
 
+/// Whether the service has an endpoint with an `@slo`: its hooks take `metrics`.
+pub(crate) fn service_has_slo(svc: &Service) -> bool {
+    svc.endpoints.iter().any(|ep| ep.slo.is_some())
+}
+
 /// The request type of an endpoint as the implementation receives it: with its loaded facts.
 fn impl_request(ep: &Endpoint, request: &str) -> String {
     let mut parts = vec![request.to_string()];
@@ -373,6 +378,11 @@ fn write_hooks(
         w.close_with("};");
     }
     w.line(format!("onError?: (err: unknown, ctx: {ctx}) => void;"));
+    if service_has_slo(svc) {
+        let metric = fc.rt("Metric");
+        w.line("/** Called once per request that matched an endpoint of this server, with the answer ready (`spec/platform.md` section 13). A failing hook is ignored. */");
+        w.line(format!("metrics?: (m: {metric}) => void | Promise<void>;"));
+    }
     w.line("validateResponses?: boolean;");
     if fc.tree.uses_rules() {
         let event = fc.rt("RuleViolationEvent");
@@ -437,6 +447,13 @@ fn write_endpoint(
     write_spec_fields(w, fc, ep);
     let list: Vec<String> = ep.middleware.iter().map(|m| ts_str(m)).collect();
     w.line(format!("middleware: [{}],", list.join(", ")));
+    if fc.tree.uses_slo() {
+        let package = &fc.tree.ir.package(svc.package).name;
+        w.line(format!(
+            "service: {},",
+            ts_str(&format!("{package}/{}", svc.name))
+        ));
+    }
     let request = names.get(svc.id, &ep.name);
     let req = impl_request(ep, &request);
     if ep.method == Method::Ws {
@@ -643,6 +660,7 @@ fn handler_hooks(validate: bool, runtime: Option<&RuntimeModel>) -> String {
 pub(crate) fn std_sigs(fc: &mut FileCtx<'_, '_>) -> String {
     let endpoint_rules = fc.tree.uses_endpoint_rules();
     let conflict = fc.tree.uses_idempotency();
+    let deadline = fc.tree.uses_timeouts();
     let mut sig = |name: &str| match fc.tree.prelude_decl(name) {
         Some(id) => format!("{}.sig", fc.value_ref(id)),
         None => "'about:blank'".to_string(),
@@ -654,6 +672,9 @@ pub(crate) fn std_sigs(fc: &mut FileCtx<'_, '_>) -> String {
     }
     if conflict {
         out.push_str(&format!(", conflict: {}", sig("Conflict")));
+    }
+    if deadline {
+        out.push_str(&format!(", deadline: {}", sig("DeadlineExceeded")));
     }
     format!("{{ {out} }}")
 }

@@ -69,6 +69,12 @@ pub struct Gates {
     /// A timed `transition` (`spec/platform.md` section 10): the `timed` regions. They need the
     /// transition guard (`transitions`).
     pub timed: bool,
+    /// An endpoint with a `@timeout` (`spec/platform.md` section 12): the `timeouts` regions (the
+    /// server's deadline, the client's default timeout).
+    pub timeouts: bool,
+    /// An endpoint with an `@slo` in a server tree (`spec/platform.md` section 13): the `slo`
+    /// regions and the `metrics` hook.
+    pub slo: bool,
     /// The target has a typed runtime config (`spec/runtime-config.md`): a client takes its
     /// `baseUrl` from the options alone (no environment variable, no compiled-in address).
     pub runtime_config: bool,
@@ -96,6 +102,8 @@ impl Gates {
             endpoint_rules: self.endpoint_rules || other.endpoint_rules,
             transitions: self.transitions || other.transitions,
             timed: self.timed || other.timed,
+            timeouts: self.timeouts || other.timeouts,
+            slo: self.slo || other.slo,
             policies: self.policies || other.policies,
             rollout: self.rollout || other.rollout,
             version: self.version || other.version,
@@ -135,6 +143,21 @@ pub fn source_gated(gates: Gates) -> Result<String, GateError> {
         // Timed moves (`spec/platform.md` section 10) and what a build without them has.
         "timed" => g.timed,
         "not_timed" => !g.timed,
+        // Deadlines (`spec/platform.md` section 12), service levels (section 13) and the code that
+        // wraps a request for either.
+        "timeouts" => g.timeouts,
+        "not_timeouts" => !g.timeouts,
+        "timeouts_idempotency" => g.timeouts && g.idempotency,
+        "timeouts_rules" => g.timeouts && g.rules,
+        "not_timeouts_rules" => g.timeouts && !g.rules,
+        "slo" => g.slo,
+        "bounded" => g.timeouts || g.slo,
+        "not_bounded" => !(g.timeouts || g.slo),
+        "timeouts_only" => g.timeouts && !g.slo,
+        "slo_only" => g.slo && !g.timeouts,
+        "timeouts_slo" => g.timeouts && g.slo,
+        "timed_plain" => g.timed && !(g.timeouts || g.slo),
+        "timed_bounded" => g.timed && (g.timeouts || g.slo),
         "policies" => g.policies,
         // The code the transition guard and `allow` share.
         "guards" => g.transitions || g.policies || (g.version && g.endpoint_rules),
@@ -371,7 +394,7 @@ mod tests {
 
     #[test]
     fn every_combination_with_derived_fields_pairs_up_and_keeps_no_marker() {
-        for bits in 0..1024u32 {
+        for bits in 0..4096u32 {
             let gates = Gates {
                 rules: bits & 1 != 0,
                 endpoint_rules: bits & 2 != 0,
@@ -383,6 +406,8 @@ mod tests {
                 runtime_config: bits & 128 != 0,
                 derived: bits & 256 != 0,
                 timed: bits & 512 != 0,
+                timeouts: bits & 1024 != 0,
+                slo: bits & 2048 != 0,
             };
             let text = source_gated(gates).unwrap();
             assert!(!text.contains("// #"), "{gates:?}");
@@ -428,6 +453,46 @@ mod tests {
         }
         // A timed move needs the transition guard.
         assert!(timed.contains("checkTransition"));
+    }
+
+    #[test]
+    fn deadlines_and_service_levels_add_their_regions_and_nothing_else_sees_them() {
+        let plain = source_gated(Gates::default()).unwrap();
+        for word in [
+            "withDeadline",
+            "deadlineAnswer",
+            "withMetrics",
+            "reportMetric",
+            "callLimit",
+        ] {
+            assert!(!plain.contains(word), "`{word}` leaked into the runtime");
+        }
+        let timeouts = source_gated(Gates {
+            timeouts: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        for word in ["withDeadline", "deadlineAnswer", "callLimit", "timeoutMs"] {
+            assert!(timeouts.contains(word), "`{word}` is missing");
+        }
+        assert!(!timeouts.contains("withMetrics"));
+        let slo = source_gated(Gates {
+            slo: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        assert!(slo.contains("withMetrics") && slo.contains("reportMetric"));
+        assert!(!slo.contains("withDeadline"));
+        let both = source_gated(Gates {
+            slo: true,
+            timeouts: true,
+            idempotency: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        assert!(both.contains("withMetrics((r2, m2, q2, s2, h2) => withDeadline"));
+        // The deadline settles the lease of an idempotent request.
+        assert!(both.contains("lease.closed") && !timeouts.contains("lease.closed"));
     }
 
     #[test]

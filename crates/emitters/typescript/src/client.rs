@@ -208,6 +208,9 @@ pub fn write_spec_fields(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, ep: &Endp
         .collect();
     write_list(w, "errors", errors);
     version::write_spec_members(w, fc.tree.ir, ep);
+    if let Some(ms) = &ep.timeout_ms {
+        w.line(format!("timeoutMs: {ms},"));
+    }
 }
 
 fn write_list(w: &mut CodeWriter, key: &str, items: Vec<String>) {

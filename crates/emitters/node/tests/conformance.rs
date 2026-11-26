@@ -154,13 +154,14 @@ fn node_and_typescript_refuse_flags() {
     veld_emit_conformance::check_flags_are_refused(&TypeScript).unwrap();
 }
 
-/// `timeouts` and `slo` are opt-in: Node and TypeScript refuse a deadline and a service level.
+/// `timeouts` and `slo` are opt-in and Node and TypeScript declare them: a deadline and a service
+/// level generate.
 #[test]
-fn node_and_typescript_refuse_deadlines_and_service_levels() {
-    veld_emit_conformance::check_timeouts_are_refused(&Node).unwrap();
-    veld_emit_conformance::check_slo_is_refused(&Node).unwrap();
-    veld_emit_conformance::check_timeouts_are_refused(&TypeScript).unwrap();
-    veld_emit_conformance::check_slo_is_refused(&TypeScript).unwrap();
+fn node_and_typescript_generate_deadlines_and_service_levels() {
+    veld_emit_conformance::check_timeouts_are_generated(&Node).unwrap();
+    veld_emit_conformance::check_slo_is_generated(&Node).unwrap();
+    veld_emit_conformance::check_timeouts_are_generated(&TypeScript).unwrap();
+    veld_emit_conformance::check_slo_is_generated(&TypeScript).unwrap();
 }
 
 /// `visibility` is opt-in (`spec/platform.md` section 2): the Node server refuses a `@visible`

@@ -76,6 +76,8 @@ impl Generator for Node {
             .with(veld_ir::Feature::Idempotency)
             .with(veld_ir::Feature::RulesDerived)
             .with(veld_ir::Feature::RulesTimed)
+            .with(veld_ir::Feature::Timeouts)
+            .with(veld_ir::Feature::Slo)
             .with(veld_ir::Feature::EventsDelivery)
     }
 

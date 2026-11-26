@@ -197,6 +197,8 @@ impl Generator for TypeScript {
             .with(veld_ir::Feature::Idempotency)
             .with(veld_ir::Feature::RulesDerived)
             .with(veld_ir::Feature::RulesTimed)
+            .with(veld_ir::Feature::Timeouts)
+            .with(veld_ir::Feature::Slo)
     }
 
     fn warnings(&self, req: &GenRequest<'_>, opts: &Options) -> Vec<GenDiagnostic> {

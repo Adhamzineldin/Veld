@@ -33,6 +33,8 @@ pub struct Tree<'a> {
     idempotency: bool,
     derived: bool,
     timed: bool,
+    timeouts: bool,
+    slo: bool,
     events: bool,
     runtime_config: bool,
     decls: Vec<DeclId>,
@@ -86,6 +88,7 @@ impl<'a> Tree<'a> {
         let version =
             endpoints().any(|ep| ep.rules.version.is_some() || ir.etag_field(ep).is_some());
         let idempotency = endpoints().any(|ep| ep.idempotency.is_some());
+        let timeouts = endpoints().any(|ep| ep.timeout_ms.is_some());
         Self {
             ir,
             root: root.to_string(),
@@ -102,6 +105,8 @@ impl<'a> Tree<'a> {
             idempotency,
             derived,
             timed: false,
+            timeouts,
+            slo: false,
             events: false,
             runtime_config: false,
             decls: set.into_iter().collect(),
@@ -119,6 +124,10 @@ impl<'a> Tree<'a> {
         set.extend(ir.events_of(&self.services));
         set.extend(ir.event_reachable_decls(&self.services));
         self.events = self.services.iter().any(|s| ir.service(*s).uses_events());
+        self.slo = self
+            .services
+            .iter()
+            .any(|s| ir.service(*s).endpoints.iter().any(|ep| ep.slo.is_some()));
         // The due check and the due-moves runner are server code: a client has no use for them.
         self.timed = self.services.iter().any(|s| {
             ir.service(*s)
@@ -197,6 +206,8 @@ impl<'a> Tree<'a> {
             idempotency: self.idempotency,
             derived: self.derived,
             timed: self.timed,
+            timeouts: self.timeouts,
+            slo: self.slo,
             runtime_config: self.runtime_config,
         }
     }
@@ -234,6 +245,20 @@ impl<'a> Tree<'a> {
     #[must_use]
     pub fn uses_timed(&self) -> bool {
         self.timed
+    }
+
+    /// Whether an endpoint of the tree's services has a `@timeout` (`spec/platform.md` section 12):
+    /// the `timeouts` regions and `timeoutMs` in the endpoint descriptions.
+    #[must_use]
+    pub fn uses_timeouts(&self) -> bool {
+        self.timeouts
+    }
+
+    /// Whether an endpoint of a server tree has an `@slo` (`spec/platform.md` section 13): the
+    /// `slo` regions, `service` in the endpoint descriptions and the `metrics` hook.
+    #[must_use]
+    pub fn uses_slo(&self) -> bool {
+        self.slo
     }
 
     /// Whether an emitted declaration has a derived field (`spec/rules.md` section 17.2): the
