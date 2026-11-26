@@ -2,6 +2,8 @@
 
 Branch `feat/rules-and-events`. The plan is `rules-and-events.md`; the normative spec is `spec/rules.md`. This file is the checklist, so that nothing is forgotten across sessions.
 
+> **Handoff, 26 Nov 2026.** The work moved from Windows to Fedora. A new session starts at `docs/proposals/handoff/README.md`: what is built, the three `saved/*` branches with unfinished agent work, the queue, and how the owner wants the work done. **New rule from the owner (26 Nov): build every feature first, with its tests written and the code compiling, and run the whole test suite once at the end, then fix until nothing fails.** Until then no test suites and no toolchain round trips are run while features are built.
+
 **Statuses** are kept apart on purpose:
 - `[ ]` not started
 - `[~]` in progress
