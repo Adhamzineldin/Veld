@@ -163,9 +163,11 @@ export class KafkaTransport implements Transport {
       for (let attempt = 1; ; attempt += 1) {
         const outcome = await deliver({ key, bytes, attempt }).catch((): Outcome => 'again');
         if (outcome === 'done') break;
-        if (running.closing || running.lost) return;
-        await waiting(running, wait);
-        if (running.closing || running.lost) return;
+        if (!running.closing && !running.lost) await waiting(running, wait);
+        if (running.closing || running.lost) {
+          giveBack(running, payload);
+          return;
+        }
         wait = Math.min(wait * 2, max);
       }
     } finally {
@@ -178,6 +180,20 @@ export class KafkaTransport implements Transport {
       // After a rebalance the commit is refused and the new owner delivers the message again.
       if (!running.lost) throw error;
     }
+  }
+}
+
+/**
+ * Leaves a record that was not handled to be fetched again. Returning from `eachMessage` marks the
+ * record as resolved and goes on with the next record of the batch, whose commit would then cover
+ * this one; a seek back to the record's own offset ends the batch and makes the next fetch start
+ * there.
+ */
+function giveBack(running: Running, payload: EachMessagePayload): void {
+  try {
+    running.consumer.seek({ topic: payload.topic, partition: payload.partition, offset: payload.message.offset });
+  } catch {
+    // The consumer is stopping: nothing is committed, and the next consumer starts at the committed offset.
   }
 }
 
