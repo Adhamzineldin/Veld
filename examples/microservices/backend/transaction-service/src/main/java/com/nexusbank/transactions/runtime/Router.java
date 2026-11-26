@@ -370,7 +370,7 @@ public final class Router implements VeldHandler {
     List<Issue> issues = b.check ? Wire.validate(p.type(), obj, p.location(), true) : List.of();
     b.issues.addAll(issues);
     if (issues.isEmpty()) {
-      b.values.put(p.name(), Wire.prepare(p.type(), obj, Wire.Mode.REQUEST));
+      b.values.put(p.name(), Wire.fillReadonly(p.type(), Wire.prepare(p.type(), obj, Wire.Mode.REQUEST)));
     }
   }
 
@@ -395,7 +395,7 @@ public final class Router implements VeldHandler {
     List<Issue> issues = b.check ? Wire.validate(p.type(), raw, "body", true) : List.of();
     b.issues.addAll(issues);
     if (issues.isEmpty()) {
-      b.values.put(p.name(), Wire.prepare(p.type(), raw, Wire.Mode.REQUEST));
+      b.values.put(p.name(), Wire.fillReadonly(p.type(), Wire.prepare(p.type(), raw, Wire.Mode.REQUEST)));
     }
   }
 

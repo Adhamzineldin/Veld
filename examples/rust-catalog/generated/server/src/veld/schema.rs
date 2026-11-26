@@ -299,6 +299,50 @@ fn map_page(of: &'static Schema, v: &Value, o: Opts) -> Value {
     Value::Object(out)
 }
 
+/// How deep a placeholder for a required read-only field may nest.
+const PLACEHOLDER_DEPTH: usize = 6;
+
+/// A value of the shape of `schema` that stands for an absent required field.
+pub(crate) fn placeholder(schema: &Schema, depth: usize) -> Value {
+    match schema {
+        Schema::Scalar(k, _) => match k {
+            Scalar::String | Scalar::Bytes => Value::String(String::new()),
+            Scalar::Int | Scalar::Float => Value::from(0),
+            Scalar::Long | Scalar::Decimal => Value::String("0".into()),
+            Scalar::Bool => Value::Bool(false),
+            Scalar::Date => Value::String("1970-01-01".into()),
+            Scalar::Datetime => Value::String("1970-01-01T00:00:00Z".into()),
+            Scalar::Time => Value::String("00:00:00".into()),
+            Scalar::Uuid => Value::String("00000000-0000-0000-0000-000000000000".into()),
+            Scalar::Json => Value::Null,
+        },
+        Schema::Enum(variants) => variants.first().map_or(Value::Null, |v| Value::String((*v).to_string())),
+        Schema::List(..) => Value::Array(Vec::new()),
+        Schema::Map(..) => Value::Object(Map::new()),
+        Schema::Page(_) => serde_json::json!({ "items": [], "total": "0", "page": 0, "size": 0 }),
+        Schema::Model(m) if depth < PLACEHOLDER_DEPTH => Value::Object(required_fields(m.fields, depth + 1)),
+        Schema::Union(u) if depth < PLACEHOLDER_DEPTH => match u.arms.first() {
+            Some((label, arm)) => match placeholder(arm, depth + 1) {
+                Value::Object(mut o) => {
+                    o.insert(u.discriminator.to_string(), Value::String((*label).to_string()));
+                    Value::Object(o)
+                }
+                other => other,
+            },
+            None => Value::Null,
+        },
+        Schema::Model(_) | Schema::Union(_) => Value::Null,
+    }
+}
+
+fn required_fields(fields: &[Field], depth: usize) -> Map<String, Value> {
+    fields
+        .iter()
+        .filter(|f| !f.optional && f.default.is_none())
+        .map(|f| (f.wire.to_string(), placeholder(f.schema, depth)))
+        .collect()
+}
+
 fn map_model(m: &ModelSchema, v: &Value, o: Opts) -> Value {
     let Some(obj) = v.as_object() else {
         return v.clone();
@@ -306,6 +350,12 @@ fn map_model(m: &ModelSchema, v: &Value, o: Opts) -> Value {
     let mut out = Map::new();
     for f in m.fields {
         if o.request && f.readonly {
+            // A request carries no read-only field, but the typed struct needs one: a required
+            // field gets a placeholder of its shape (`spec/language.md` section 7).
+            if o.dir == Dir::From && !f.optional && f.default.is_none() {
+                let wire = placeholder(f.schema, 0);
+                out.insert(f.wire.to_string(), f.schema.map(&wire, Opts { request: false, ..o }));
+            }
             continue;
         }
         let mut x = obj.get(f.wire).filter(|x| !x.is_null()).cloned();
