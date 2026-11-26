@@ -134,6 +134,8 @@ fn security_schemes(ir: &Ir, ids: &[ServiceId]) -> Map<String, Value> {
 #[cfg(test)]
 mod conditional_tests;
 #[cfg(test)]
+mod derived_tests;
+#[cfg(test)]
 mod event_tests;
 #[cfg(test)]
 mod rollout_tests;
