@@ -3,13 +3,22 @@
 use std::collections::BTreeMap;
 
 use super::annotations::{self, Anns};
-use super::{DKind, Program, RBlock, REndpoint, RIdempotent, RParam, ServiceInfo, events, rules};
+use super::{
+    DKind, Program, RBlock, REndpoint, RIdempotent, RParam, ServiceInfo, events, rules,
+    service_levels,
+};
 use crate::diagnostics::{Diagnostic, Span};
 use crate::language::{self, Target};
 use crate::syntax::ast::{self, DeclKind, HttpMethod, doc_text};
 use veld_ir::{Auth, Binding, Method, Type};
 
 type RouteKey = (usize, Method, String);
+
+/// What a service gives its endpoints by default.
+struct Defaults {
+    timeout: Option<service_levels::Timeout>,
+    slo: Option<service_levels::SloArgs>,
+}
 
 pub fn analyze(prog: &mut Program<'_>, diags: &mut Vec<Diagnostic>) {
     let mut services = Vec::new();
@@ -79,7 +88,11 @@ fn analyze_service(
             );
             continue;
         }
-        if let Some(ep) = ctx.endpoint(e, &prefix, &auth, &middleware, diags) {
+        let svc = Defaults {
+            timeout: anns.timeout,
+            slo: anns.slo.clone(),
+        };
+        if let Some(ep) = ctx.endpoint(e, &prefix, (&auth, &middleware, &svc), diags) {
             check_route(prog, pkg, &s.name.name, &ep, routes, diags);
             endpoints.push(ep);
         }
@@ -221,8 +234,7 @@ impl Ctx<'_, '_> {
         &self,
         e: &ast::Endpoint,
         prefix: &str,
-        svc_auth: &Auth,
-        svc_mw: &[String],
+        (svc_auth, svc_mw, svc): (&Auth, &[String], &Defaults),
         diags: &mut Vec<Diagnostic>,
     ) -> Option<REndpoint> {
         let anns = annotations::parse(&e.annotations, Target::Endpoint, None, diags);
@@ -245,10 +257,13 @@ impl Ctx<'_, '_> {
             errors: Vec::new(),
             rules: RBlock::default(),
             idempotent: None,
+            timeout_ms: None,
+            slo: None,
             span: e.name.span,
         };
         self.responses(e, method, &mut ep, diags);
         ep.idempotent = self.idempotency(&anns, &ep, diags);
+        self.service_levels(&anns, svc, &mut ep, diags);
         self.implicit_errors(&mut ep, e);
         if e.block.is_some() {
             ep.rules = rules::check_block(self.prog, self.module, e, &ep, diags);
@@ -745,6 +760,44 @@ impl Ctx<'_, '_> {
         })
     }
 
+    /// `@timeout` and `@slo` (`spec/platform.md` sections 12 and 13): the endpoint's own
+    /// annotation, else the service's. An `sse` or `ws` endpoint has no single request to time, so
+    /// an annotation of its own is `E0602` and the service's is skipped for it.
+    fn service_levels(
+        &self,
+        anns: &Anns<'_>,
+        svc: &Defaults,
+        ep: &mut REndpoint,
+        diags: &mut Vec<Diagnostic>,
+    ) {
+        let streams =
+            ep.success_stream || ep.method == Method::Ws || ep.params.iter().any(|p| p.stream);
+        let refuse = |name: &str, span: Span, diags: &mut Vec<Diagnostic>| {
+            diags.push(
+                Diagnostic::error(
+                    "E0602",
+                    format!("`@{name}` cannot be applied to an endpoint that streams"),
+                    span,
+                )
+                .with_help(format!(
+                    "usage: {}",
+                    language::annotation(name).map_or("", |a| a.usage)
+                )),
+            );
+        };
+        if let (true, Some(t)) = (streams, &anns.timeout) {
+            refuse("timeout", t.span, diags);
+        }
+        if let (true, Some(s)) = (streams, &anns.slo) {
+            refuse("slo", s.span.unwrap_or_else(Span::none), diags);
+        }
+        if streams {
+            return;
+        }
+        ep.timeout_ms = anns.timeout.or(svc.timeout).map(|t| t.ms);
+        ep.slo = anns.slo.clone().or_else(|| svc.slo.clone());
+    }
+
     /// Adds the implicit errors every server response needs a declaration for:
     /// `ValidationError` (when the endpoint has parameters), `Unauthorized`
     /// (when auth is not `none`) and `Internal` (always), unless already listed.
@@ -760,6 +813,10 @@ impl Ctx<'_, '_> {
         // An `allow` that denies answers `403 Forbidden` (`spec/rules.md` section 11.3).
         if rules::has_allow(e) {
             self.add_implicit(ep, "Forbidden", 403);
+        }
+        // A deadline that passes answers `504 DeadlineExceeded` (`spec/platform.md` section 12).
+        if ep.timeout_ms.is_some() {
+            self.add_implicit(ep, "DeadlineExceeded", 504);
         }
         // A stale `If-Match` answers `412 PreconditionFailed`, a malformed one `422` (11.9).
         if rules::version_guard(self.prog, self.module, e).is_some() {

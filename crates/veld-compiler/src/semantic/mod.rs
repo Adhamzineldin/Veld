@@ -26,6 +26,9 @@ mod resolve;
 #[cfg(test)]
 mod rollout_tests;
 pub mod rules;
+mod service_levels;
+#[cfg(test)]
+mod service_levels_tests;
 mod services;
 #[cfg(test)]
 mod tests;
@@ -209,6 +212,10 @@ pub struct REndpoint {
     pub rules: RBlock,
     /// `@idempotent` (`spec/rules.md` section 11.8).
     pub idempotent: Option<RIdempotent>,
+    /// `@timeout` in milliseconds, from the endpoint or its service (`spec/platform.md` section 12).
+    pub timeout_ms: Option<i64>,
+    /// `@slo`, from the endpoint or its service (`spec/platform.md` section 13).
+    pub slo: Option<service_levels::SloArgs>,
     pub span: Span,
 }
 

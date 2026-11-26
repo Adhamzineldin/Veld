@@ -331,6 +331,8 @@ fn first_use(
                 Feature::RulesTransitions => ep.rules.transition.is_some(),
                 Feature::RulesTimed => ep.rules.transition.as_ref().is_some_and(|t| t.is_timed()),
                 Feature::RulesFlags => ir.endpoint_uses_flags(ep),
+                Feature::Timeouts => ep.timeout_ms.is_some(),
+                Feature::Slo => ep.slo.is_some(),
                 Feature::RulesPolicies => ep.rules.first_policy_origin().is_some(),
                 Feature::Unions
                 | Feature::Constraints
@@ -496,6 +498,8 @@ mod tests {
 
     fn ir_with_sse() -> Ir {
         let ep = Endpoint {
+            slo: None,
+            timeout_ms: None,
             name: "feed".into(),
             method: Method::Get,
             path: "/feed".into(),

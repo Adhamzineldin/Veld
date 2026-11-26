@@ -380,6 +380,17 @@ impl Lowerer<'_, '_> {
             (a.status, &decls[a.decl.index()].sig).cmp(&(b.status, &decls[b.decl.index()].sig))
         });
         Endpoint {
+            timeout_ms: e.timeout_ms.map(|ms| ms.to_string()),
+            slo: e.slo.as_ref().map(|s| {
+                let text = |v: Option<i64>| v.map(|ms| ms.to_string());
+                veld_ir::Slo {
+                    p50_ms: text(s.p50),
+                    p90_ms: text(s.p90),
+                    p95_ms: text(s.p95),
+                    p99_ms: text(s.p99),
+                    errors: s.errors.clone(),
+                }
+            }),
             name: e.name.clone(),
             method: e.method,
             path: e.path.clone(),

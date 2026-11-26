@@ -152,6 +152,11 @@ pub enum ArgShape {
     Rollout,
     /// Nothing, or `header: "Name"` and `required: true|false` in either order.
     Idempotent,
+    /// One constant duration: `seconds(2)` (`spec/platform.md` section 12).
+    Timeout,
+    /// Named objectives: `p50`, `p90`, `p95`, `p99` (durations) and `errors` (a percent), at
+    /// least one (`spec/platform.md` section 13).
+    Slo,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -173,7 +178,7 @@ const DEPRECATABLE: [Target; 12] = [
 ];
 
 /// The annotation table of `spec/language.md` section 7.
-pub const ANNOTATIONS: [AnnotationSpec; 18] = [
+pub const ANNOTATIONS: [AnnotationSpec; 20] = [
     AnnotationSpec {
         name: "auth",
         targets: &[Service, Endpoint],
@@ -282,6 +287,18 @@ pub const ANNOTATIONS: [AnnotationSpec; 18] = [
         args: ArgShape::Idempotent,
         usage: "@idempotent(header: \"Idempotency-Key\", required: true)",
     },
+    AnnotationSpec {
+        name: "timeout",
+        targets: &[Service, Endpoint],
+        args: ArgShape::Timeout,
+        usage: "@timeout(seconds(2))",
+    },
+    AnnotationSpec {
+        name: "slo",
+        targets: &[Service, Endpoint],
+        args: ArgShape::Slo,
+        usage: "@slo(p99: ms(300), errors: 0.1)",
+    },
 ];
 
 /// Looks an annotation up by name.
@@ -309,6 +326,7 @@ error Internal 500        { message?: string }
 model ValidationIssue     { path: string, code: string, message: string }
 error InvalidTransition 409 { field: string, from: string, to: string }
 error PreconditionFailed 412 { expected: long, actual: long }
+error DeadlineExceeded 504 { timeoutMs: long }
 ";
 
 /// Name of the reserved prelude package.
