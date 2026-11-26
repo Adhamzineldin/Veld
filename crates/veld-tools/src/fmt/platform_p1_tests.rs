@@ -61,3 +61,16 @@ fn tenant_stays_a_name_where_it_is_a_name() {
     let out = stable("model M {\n  tenant: string\n}");
     assert!(out.contains("  tenant: string\n"), "{out}");
 }
+
+#[test]
+fn audited_stays_above_its_endpoint_and_its_service() {
+    let out = stable(
+        "@audited   @auth(bearer)\nservice S at \"/s\" {\n  @audited\n  get \"/\" f() -> 204\n}",
+    );
+    assert!(
+        out.contains("@audited @auth(bearer)\nservice S")
+            || out.contains("@audited\n@auth(bearer)\nservice S"),
+        "{out}"
+    );
+    assert!(out.contains("  @audited\n  get \"/\" f() -> 204"), "{out}");
+}

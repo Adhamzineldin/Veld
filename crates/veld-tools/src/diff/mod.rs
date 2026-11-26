@@ -9,6 +9,7 @@
 //! because the clients that can break are the ones built against it. A type the
 //! old IR never uses falls back to the new IR.
 
+mod audit;
 mod changed;
 mod conditional;
 mod data_marks;
@@ -153,6 +154,8 @@ pub enum ChangeKind {
     TenantAdded,
     TenantChanged,
     TenantRemoved,
+    AuditAdded,
+    AuditRemoved,
 }
 
 /// One difference between the old and the new contract.
@@ -361,6 +364,8 @@ fn diff_plain(old: &Ir, new: &Ir) -> Vec<Change> {
     out
 }
 
+#[cfg(test)]
+mod audit_tests;
 #[cfg(test)]
 mod changed_tests;
 #[cfg(test)]
