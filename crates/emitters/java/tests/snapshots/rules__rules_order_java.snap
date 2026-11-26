@@ -93,10 +93,10 @@ public record Order(
         () -> v.items().size() > 0);
     Rules.run(
         out, RULE_CLOSED_AFTER_PLACED, "closedAfterPlaced", path, List.of("closed", "placed"), "violates rule closedAfterPlaced",
-        () -> !(v.closed() != null) || Rules.instantMs(v.closed()) >= Rules.instantMs(v.placed()));
+        () -> !(v.closed() != null) || Rules.toDatetime(v.closed()) >= Rules.toDatetime(v.placed()));
     Rules.run(
         out, RULE_PAID_HAS_NOTE, "paidHasNote", path, List.of("state", "note"), "violates rule paidHasNote",
-        () -> !(v.state() == State.PAID) || v.note() != null && Rules.len(v.note()) > 0);
+        () -> !(v.state() == State.PAID) || v.note() != null && Rules.lenString(v.note()) > 0);
     Rules.run(
         out, RULE_CHEAP, "cheap", path, List.of("items"), "violates rule cheap",
         () -> Rules.sumInt(v.items(), it_i -> it_i.qty()) < 1000);

@@ -105,7 +105,7 @@ public final class BookingsHandler {
                   () -> request.body().guests() <= fact_room.capacity(),
                   () -> RoomFull.fromWire(EndpointRules.payload(RoomFull.SCHEMA, Json.object().put("capacity", fact_room.capacity(), Codec.int32()).build()), 409, null));
               run.require("veld:bookings/Bookings.createBooking.notInPast@8504bb958894cb24", "notInPast", List.of("body"), "A booking cannot start in the past",
-                  () -> Rules.instantMs(request.body().start()) >= now,
+                  () -> Rules.toDatetime(request.body().start()) >= now,
                   null);
               run.require("veld:bookings/Bookings.createBooking.couponWorks@ce84eb408406b773", "couponWorks", List.of(), "violates rule couponWorks",
                   () -> !(fact_coupon != null) || fact_coupon.percent() <= 50,

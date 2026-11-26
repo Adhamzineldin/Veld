@@ -30,17 +30,17 @@ public class LiveController {
     this.handler = LiveHandler.create(service, hooks.getIfAvailable(LiveHooks::new));
   }
 
-  @GetMapping("/live/ticks")
+  @GetMapping({"/live/ticks", "/live/ticks/"})
   public ResponseEntity<StreamingResponseBody> ticks(HttpServletRequest request) throws IOException {
     return SpringAdapter.stream(handler, "ticks", request);
   }
 
-  @GetMapping("/live/forever")
+  @GetMapping({"/live/forever", "/live/forever/"})
   public ResponseEntity<StreamingResponseBody> forever(HttpServletRequest request) throws IOException {
     return SpringAdapter.stream(handler, "forever", request);
   }
 
-  @GetMapping("/live/rooms/{room}/events")
+  @GetMapping({"/live/rooms/{room}/events", "/live/rooms/{room}/events/"})
   public ResponseEntity<StreamingResponseBody> roomEvents(HttpServletRequest request) throws IOException {
     return SpringAdapter.stream(handler, "roomEvents", request);
   }
