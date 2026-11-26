@@ -110,10 +110,10 @@ const MVC: &str = "org.springframework.web.bind.annotation";
 
 /// The Spring mapping annotation of an endpoint, importing what it uses.
 ///
-/// With `slash` the path is also mapped with a trailing slash, because the shared router ignores
+/// The path is also mapped with a trailing slash (except the root), because the shared router ignores
 /// it (`spec/targets/java.md` section 5) and Spring MVC 6 does not.
-fn mapping(imp: &mut Imports, ep: &EndpointModel, slash: bool) -> String {
-    let path = if slash && ep.path != "/" {
+fn mapping(imp: &mut Imports, ep: &EndpointModel) -> String {
+    let path = if ep.path != "/" {
         format!(
             "{{{}, {}}}",
             java_str(&ep.path),
@@ -181,7 +181,7 @@ fn controller(model: &ServerModel, svc: &ServiceModel, class: &str) -> String {
     );
     for ep in svc.endpoints.iter().filter(|e| e.kind != EndpointKind::Ws) {
         w.blank();
-        w.line(mapping(&mut imp, ep, svc.rules));
+        w.line(mapping(&mut imp, ep));
         let bridge = imp.name(&format!(
             "{}.SpringAdapter",
             runtime::adapter_package(&model.base)
@@ -306,7 +306,6 @@ mod tests {
                 server_package: "a.b.orders.server".into(),
                 adapter_package: "a.b.adapters.orders".into(),
                 needs_hooks: true,
-                rules: false,
                 loaders: None,
                 endpoints: vec![
                     EndpointModel {
@@ -351,7 +350,6 @@ mod tests {
                 server_package: "a.b.live.server".into(),
                 adapter_package: "a.b.adapters.live".into(),
                 needs_hooks: false,
-                rules: false,
                 loaders: None,
                 endpoints: vec![
                     endpoint("ticks", "/live/ticks", EndpointKind::Sse),

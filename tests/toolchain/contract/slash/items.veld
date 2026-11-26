@@ -1,0 +1,8 @@
+model Item {
+  name: string
+}
+
+service Items at "/items" {
+  post "/" create(body: Item) -> 201 Item
+  get "/count" count() -> int
+}
