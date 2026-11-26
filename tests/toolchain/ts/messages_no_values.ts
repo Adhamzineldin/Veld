@@ -40,7 +40,7 @@ function problemTexts(where: string, body: string | null | undefined): void {
 }
 
 // What the application does: it is the handler of a request that passed every check.
-let booking: srv.Booking = { id: ID, status: 'pending', revision: 3n as never, total: '10.00' } as never;
+let booking: srv.Booking = { id: ID, status: 'pending', revision: '3', total: '10.00' };
 let resultOverride: Partial<srv.Booking> | undefined;
 const impl: srv.ProbeService = {
   shapes: async (req) => req.body,
@@ -73,8 +73,15 @@ async function send(
   body?: unknown,
   headers: Record<string, string> = {},
   token = 'me',
+  query?: string,
 ): Promise<srv.veld.VeldResponse> {
-  const res = await handler({ method, path, headers: { authorization: `Bearer ${token}`, ...headers }, ...(body === undefined ? {} : { body }) });
+  const res = await handler({
+    method,
+    path,
+    ...(query === undefined ? {} : { query }),
+    headers: { authorization: `Bearer ${token}`, ...headers },
+    ...(body === undefined ? {} : { body }),
+  });
   assert.ok(res !== null, `${where}: ${method} ${path} matched no route`);
   problemTexts(where, res.body);
   for (const [name, value] of Object.entries(res.headers)) note(`${where} header ${name}`, value);
@@ -130,7 +137,7 @@ async function serverCases(): Promise<void> {
 
   // The three parameters of another binding.
   await send(handler, 'path, query and header', 'GET', `/probe/by/${MARKER}`, undefined, { 'x-marker': MARKER }, 'me');
-  await send(handler, 'query', 'GET', `/probe/by/${ID}?size=${MARKER}`, undefined, { 'x-marker': ID });
+  await send(handler, 'query', 'GET', `/probe/by/${ID}`, undefined, { 'x-marker': ID }, 'me', `size=${MARKER}`);
   await send(handler, 'an unknown name in the address', 'GET', `/probe/name/${MARKER}`);
   await send(handler, 'a refused caller', 'GET', `/probe/name/${MARKER}`, undefined, {}, MARKER);
 
@@ -156,12 +163,21 @@ async function serverCases(): Promise<void> {
   // A body that passes every statement; the handler answers wrongly so that the `ensure` and the target check fail.
   const good = (headers: Record<string, string>): Promise<srv.veld.VeldResponse> =>
     send(handler, 'pay: ok', 'POST', `/probe/${ID}/pay`, { amount: '5.00', note: 'ok-1' }, { 'if-match': '"3"', ...headers });
-  resultOverride = { status: 'pending' } as never;
+  resultOverride = { status: 'pending' };
   await good({});
-  resultOverride = { revision: -1n as never };
+  resultOverride = { revision: '-1' };
   await good({});
   resultOverride = undefined;
   await good({ 'idempotency-key': 'k1' });
+  // A fact is the application's value and is not validated: one that holds the marker where a
+  // decimal goes reaches the helper of a `require` that reads it, which throws a fixed text that
+  // `onError` hears.
+  const reported = errors.length;
+  booking = { ...booking, total: MARKER };
+  const broken = await good({});
+  assert.equal(broken.status, 500);
+  assert.ok(errors.length > reported, 'the failure was reported');
+  booking = { ...booking, total: '10.00' };
 
   // The hook of the application is not an answer, but what the runtime tells `onError` is a log line.
   for (const e of errors) note('onError', e instanceof Error ? e.message : undefined);

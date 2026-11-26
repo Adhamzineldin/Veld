@@ -197,8 +197,13 @@ async function statements(): Promise<void> {
   // The denial of a policy: the key of the `forbid` that was true, in the data and in the violation.
   booking = original;
   user = { ...USER, suspended: true };
+  events.length = 0;
   ({ res, doc } = await pay('5.00', 'ar'));
   assert.equal(res.status, 403);
+  // The hook hears the key and the contract's text, whatever the language of the answer.
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.violation.messageKey, 'bookings/Manage.forbid1');
+  assert.equal(events[0]?.violation.message, 'A suspended account cannot manage bookings');
   assert.equal(doc.violations[0].messageKey, 'bookings/Manage.forbid1');
   assert.equal(doc.violations[0].message, AR['bookings/Manage.forbid1']);
   assert.equal(doc.data.message, AR['bookings/Manage.forbid1']);

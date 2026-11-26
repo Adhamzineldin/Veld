@@ -84,7 +84,8 @@ service Probe at "/probe" {
   get "/name/{name}" byName(name: string) -> Shape
 
   // Cases: a request that is a body of another type, a `require` that fails (named and unnamed), an
-  // `ensure` that fails with the found state, a transition that is not legal, a stale version,
+  // `ensure` that fails with the found state, a fact whose value is not a decimal (the loader's own
+  // mistake, reported to `onError`), a transition that is not legal, a stale version,
   // a policy denial with and without a message, a missing idempotency key header.
   @idempotent
   post "/{id}/pay" pay(id: uuid, body: Payment2) -> Booking {
@@ -95,6 +96,7 @@ service Probe at "/probe" {
       message "The amount must be positive"
     require body.amount < 1000
     require noteOk: startsWith(body.note, "ok-")
+    require fits: body.amount <= booking.total
     ensure result.revision >= 0
       message "The revision never goes down"
   }

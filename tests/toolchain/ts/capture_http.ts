@@ -41,8 +41,14 @@ function bookings(extra: Record<string, unknown> = {}): srv.veld.VeldHandler {
   return srv.createBookingsHandler(impl, hooks);
 }
 
-async function send(handler: srv.veld.VeldHandler, method: string, path: string, body?: unknown, token = 'me'): Promise<srv.veld.VeldResponse> {
-  const res = await handler({ method, path, headers: { authorization: `Bearer ${token}` }, ...(body === undefined ? {} : { body }) });
+async function send(handler: srv.veld.VeldHandler, method: string, path: string, body?: unknown, query?: string): Promise<srv.veld.VeldResponse> {
+  const res = await handler({
+    method,
+    path,
+    ...(query === undefined ? {} : { query }),
+    headers: { authorization: 'Bearer me' },
+    ...(body === undefined ? {} : { body }),
+  });
   assert.ok(res !== null, `${method} ${path} matched no route`);
   return res;
 }
@@ -109,7 +115,7 @@ async function main(): Promise<void> {
   // A `require` that fails with a fact, an optional fact that is found, the principal and secrets
   // in the body, the fact and the principal.
   events.length = 0;
-  res = await send(handler, 'POST', `/bookings/${ID}/pay?coupon=${COUPON}`, { amount: '99.00', card: { number: '4242', holder: 'Ada' } });
+  res = await send(handler, 'POST', `/bookings/${ID}/pay`, { amount: '99.00', card: { number: '4242', holder: 'Ada' } }, `coupon=${COUPON}`);
   assert.equal(res.status, 422);
   event = only();
   assert.equal(event.position, 'input');
@@ -148,7 +154,7 @@ async function main(): Promise<void> {
   keep('an optional fact that is not loaded', 'input', event);
   events.length = 0;
   loaded = { booking: booking(), discount: null };
-  await send(handler, 'POST', `/bookings/${ID}/pay?coupon=${COUPON}`, { amount: '99.00', card: { number: '4242', holder: 'Ada' } });
+  await send(handler, 'POST', `/bookings/${ID}/pay`, { amount: '99.00', card: { number: '4242', holder: 'Ada' } }, `coupon=${COUPON}`);
   event = only();
   assert.equal(event.capture?.facts['discount'], null, 'an optional fact the loader did not find is null');
   assert.equal(event.capture?.params['coupon'], COUPON);

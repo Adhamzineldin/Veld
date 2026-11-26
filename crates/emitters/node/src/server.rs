@@ -792,7 +792,10 @@ fn handler_hooks(fc: &mut FileCtx<'_, '_>, runtime: Option<&RuntimeModel>) -> St
     }
     // The catalogs and the keys of the member, from `messages.ts` (`spec/platform.md` section 22).
     if fc.tree.uses_messages_server() && fc.tree.uses_rules() {
-        let module = veld_emit_typescript::messages::module(fc.tree, fc.tree.packages()[0]);
+        let Some(home) = fc.tree.packages().first().copied() else {
+            return "hooks".to_string();
+        };
+        let module = veld_emit_typescript::messages::module(fc.tree, home);
         for name in ["fixedMessageKeys", "messageKeys", "messages"] {
             fc.import(&module, name, true);
         }

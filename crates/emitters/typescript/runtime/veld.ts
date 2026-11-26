@@ -88,7 +88,7 @@ export interface FieldSchema {
   st?: boolean;
   // #endif
   // #if redact
-  /** `@pii` or `@secret`: the value is left out of an audit event and of a capture. */
+  /** `@pii` or `@secret`: the value is left out of an audit event. */
   pii?: boolean;
   // #endif
 }
@@ -951,9 +951,9 @@ function keyLocal(keys: Readonly<Record<string, string>> | undefined, out: Viola
     if (key !== undefined && v.messageKey === undefined) v.messageKey = key;
   }
 }
+
 // #endif
 // #if rules
-
 function nowMicros(): number {
   const perf = (globalThis as { performance?: { now(): number } }).performance;
   return perf === undefined ? 0 : perf.now() * 1000;
@@ -1901,7 +1901,7 @@ function checkAllows(
     // #endif
     // #if policies_messages
     const denied = denial(hooks, step, verdict);
-    return refusal(ep, ctx, std, hooks, { sig: step.otherwise.sig, data: { message: denied.message }, violation: denied, started });
+    return refusal(ep, ctx, std, hooks, { sig: step.otherwise.sig, data: { message: denied.message }, violation: denied.violation, started });
     // #endif
     // #if policies
   }
@@ -1910,11 +1910,16 @@ function checkAllows(
 // #endif
 // #if policies_messages
 
-/** The violation of a denial, in the language of the request: the key of the `forbid` that was true when it has a message, else the fixed one. */
-function denial(hooks: HandlerHooks, step: AllowStep, verdict: PolicyVerdict): Violation {
-  const base: Violation = { rule: step.id, path: 'request', fields: [...step.fields], message: verdict.message ?? 'not permitted' };
+/**
+ * A denial: the violation as the hook hears it (the contract's text and the key of the `forbid`
+ * that was true when it has a message, else the fixed one), and the text the answer carries, in
+ * the language of the request.
+ */
+function denial(hooks: HandlerHooks, step: AllowStep, verdict: PolicyVerdict): { violation: Violation; message: string } {
+  const violation: Violation = { rule: step.id, path: 'request', fields: [...step.fields], message: verdict.message ?? 'not permitted' };
   const key = verdict.message !== undefined && verdict.key !== undefined ? verdict.key : hooks.messages?.fixed.notPermitted;
-  return localizeViolation(hooks, base, key);
+  if (key !== undefined) violation.messageKey = key;
+  return { violation, message: localizeViolation(hooks, violation).message };
 }
 // #endif
 // #if transitions
@@ -2167,11 +2172,8 @@ function checkDue(
   const violation: Violation = { rule: step.id, path: 'request', fields: [], message: 'violates rule transition: not due' };
   // #endif
   // #if timed_messages
-  const violation = localizeViolation(
-    hooks,
-    { rule: step.id, path: 'request', fields: [], message: 'violates rule transition: not due' },
-    hooks.messages?.fixed.transitionNotDue,
-  );
+  const violation: Violation = { rule: step.id, path: 'request', fields: [], message: 'violates rule transition: not due' };
+  if (hooks.messages !== undefined) violation.messageKey = hooks.messages.fixed.transitionNotDue;
   // #endif
   // #if timed
   const data = { field: step.field, from: step.current(scope.f as never), to: step.to };
@@ -4081,14 +4083,14 @@ function keyed(hooks: HandlerHooks, v: Violation): Violation {
 }
 
 /**
- * The violation as the answer carries it: its `messageKey`, and its text in the language of the
+ * The violation as the answer carries it: its `messageKey` (the one its producer named, for a text
+ * the runtime writes itself, else the one of its rule id), and its text in the language of the
  * request when the catalog of that language has the key. An evaluation error is not translated.
- * `key` is the key of a text the runtime writes itself, which is not the one of the rule's id.
  */
-function localizeViolation(hooks: HandlerHooks, v: Violation, key?: string): Violation {
+function localizeViolation(hooks: HandlerHooks, v: Violation): Violation {
   const support = hooks.messages;
-  if (support === undefined || v.messageKey !== undefined) return v;
-  const messageKey = key ?? support.keys[v.rule];
+  if (support === undefined) return v;
+  const messageKey = v.messageKey ?? support.keys[v.rule];
   if (messageKey === undefined) return v;
   const state = hooks.messageState;
   if (v.error !== undefined || state === undefined) return { ...v, messageKey };
