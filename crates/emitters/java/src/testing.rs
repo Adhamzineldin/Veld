@@ -16,11 +16,21 @@ use crate::types::{codec_expr, java_type, schema_expr};
 use crate::util::{doc_comment, java_str, member_ident, unique};
 
 /// Whether a service gets a test handler: it has endpoint rules, or an endpoint with a guard, an
-/// idempotency key or an `ETag` (`spec/rules.md` section 11.12: `veld test --live` must reach it).
+/// idempotency key or an `ETag` (`spec/rules.md` section 11.12: `veld test --live` must reach it),
+/// or it subscribes to a channel (`spec/events.md` section 10.9).
 #[must_use]
 pub fn wanted(ir: &Ir, testing: bool, svc: &Service) -> bool {
-    testing && (service_has_rules(svc) || conditional::service_uses(ir, svc))
+    testing && (http_wanted(ir, svc) || !svc.subscriptions.is_empty())
 }
+
+/// Whether the test handler of a service answers its HTTP endpoints too: it has endpoint rules, a
+/// guard, a key or an `ETag`. A service that only subscribes has a test handler with no application.
+fn http_wanted(ir: &Ir, svc: &Service) -> bool {
+    service_has_rules(svc) || conditional::service_uses(ir, svc)
+}
+
+/// What the event endpoint of a test handler does, for its Javadoc.
+const EVENTS_DOC: &str = " The probe also lists the topics the service subscribes to, and `POST /__veld/test/event` delivers a message to the service's own subscriber over a fresh memory transport with handlers that only count: the application's handlers are not called.";
 
 /// Writes `<Service>TestHandler`.
 pub fn write_test_handler(
@@ -32,49 +42,166 @@ pub fn write_test_handler(
     base: &str,
 ) -> Vec<GenDiagnostic> {
     let handler = fc.rt("VeldHandler");
+    let http = http_wanted(fc.tree.ir, svc);
     let (service, hooks) = (format!("{base}Service"), format!("{base}Hooks"));
     let loaders = (!svc.facts.is_empty()).then(|| loaders_name(base));
-    doc_comment(
-        w,
-        Some(&format!(
+    let docs = if http {
+        let mut text = format!(
             "THE TEST HANDLER OF `{}`. It must never be mounted in production.\n\nIt runs the same pipeline as `{base}Handler`, but the facts come from the request header `Veld-Test-Facts`, the principal from `Veld-Test-Principal`, the clock from `Veld-Test-Now` and, when present, the result from `Veld-Test-Result` in place of the application's handler. `Veld-Test-Dry-Run: 1` stops after step 6 and answers `204`. `GET /__veld/test` answers `200` with the rules digests. The application's loaders and its authentication and middleware hooks are not called.",
             svc.name
-        )),
-        &[],
-        None,
-    );
+        );
+        if !svc.subscriptions.is_empty() {
+            text.push_str(EVENTS_DOC);
+        }
+        text
+    } else {
+        format!(
+            "THE TEST HANDLER OF `{}`. It must never be mounted in production.\n\nIt takes no application: `GET /__veld/test` answers `200` with the rules digests.{EVENTS_DOC}",
+            svc.name
+        )
+    };
+    doc_comment(w, Some(&docs), &[], None);
     w.line("@SuppressWarnings(\"deprecation\")");
     w.open(format!("public final class {class}"));
     w.line(format!("private {class}() {{}}"));
     w.blank();
-    let entry = Entry {
-        handler: &handler,
-        given: &format!("{service} impl"),
-        pass: "impl",
-        hooks_class: &hooks,
-        needs_hooks: needs_hooks(svc),
-        docs: (
-            "Builds the test handler with default hooks.",
-            "Builds the test handler. The auth hooks of `hooks` are never called and may be `null`.",
-        ),
-    };
-    // The test handler takes no runtime config (`spec/runtime-config.md` section 4): the output mode
-    // of the rules is an argument of its own entry.
-    if fc.tree.rules {
-        write_mode_head(w, fc, &entry);
-    } else {
-        entry.write_plain(w);
-    }
-    write_create_body(w, fc, svc, base, loaders.is_some());
-    w.close();
-    if let Some(l) = &loaders {
+    if http {
+        let entry = Entry {
+            handler: &handler,
+            given: &format!("{service} impl"),
+            pass: "impl",
+            hooks_class: &hooks,
+            needs_hooks: needs_hooks(svc),
+            docs: (
+                "Builds the test handler with default hooks.",
+                "Builds the test handler. The auth hooks of `hooks` are never called and may be `null`.",
+            ),
+        };
+        // The test handler takes no runtime config (`spec/runtime-config.md` section 4): the output
+        // mode of the rules is an argument of its own entry.
+        if fc.tree.rules {
+            write_mode_head(w, fc, &entry);
+        } else {
+            entry.write_plain(w);
+        }
+        write_create_body(w, fc, svc, base, loaders.is_some());
+        w.close();
+        if let Some(l) = &loaders {
+            w.blank();
+            write_loaders(w, fc, svc, l);
+        }
         w.blank();
-        write_loaders(w, fc, svc, l);
+        write_stub(w, fc, names, svc, &service);
+    } else {
+        write_events_create(w, fc, svc, &handler, class);
     }
-    w.blank();
-    write_stub(w, fc, names, svc, &service);
+    if !svc.subscriptions.is_empty() {
+        w.blank();
+        write_event_service(w, fc, svc, base);
+    }
     w.close();
     Vec::new()
+}
+
+/// `create()` of a service that only subscribes: the probe and the event endpoint.
+fn write_events_create(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    svc: &Service,
+    handler: &str,
+    class: &str,
+) {
+    let support = fc.rt("TestSupport");
+    let (collections, optional) = (
+        fc.name("java.util.Collections"),
+        fc.name("java.util.Optional"),
+    );
+    let digest = svc
+        .rules_digest
+        .as_deref()
+        .map_or_else(|| "null".to_string(), java_str);
+    w.line("/** Builds the test handler. */");
+    w.open(format!("public static {handler} create()"));
+    w.line(format!("{support}.notice({});", java_str(&svc.name)));
+    w.line(format!(
+        "return {support}.events({support}.handler(request -> {optional}.empty(), {collections}.singletonMap({}, {digest})), SUBSCRIBES, HANDLERS, {class}::subscribeEvents);",
+        java_str(&svc.name)
+    ));
+    w.close();
+}
+
+/// The constants and the counting subscriber the event endpoint of a service needs.
+fn write_event_service(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service, base: &str) {
+    let (list, map) = (fc.name("java.util.List"), fc.name("java.util.Map"));
+    let atomic = fc.name("java.util.concurrent.atomic.AtomicInteger");
+    let (events, transport) = (fc.rt("Events"), fc.rt("Transport"));
+    let mut topics: Vec<&str> = svc
+        .subscriptions
+        .iter()
+        .map(|s| fc.tree.ir.channel(s.channel).topic.as_str())
+        .collect();
+    topics.sort_unstable();
+    topics.dedup();
+    let topics: Vec<String> = topics.into_iter().map(java_str).collect();
+    w.line(format!(
+        "private static final {map}<String, {list}<String>> SUBSCRIBES = {map}.of({}, {list}.of({}));",
+        java_str(&svc.name),
+        topics.join(", ")
+    ));
+    let names: Vec<String> = svc
+        .subscriptions
+        .iter()
+        .flat_map(|s| {
+            s.handlers
+                .iter()
+                .map(|h| java_str(&format!("{}.{}", svc.name, h.name)))
+        })
+        .collect();
+    w.line(format!(
+        "private static final {list}<String> HANDLERS = {list}.of({});",
+        names.join(", ")
+    ));
+    w.blank();
+    w.line(
+        "/** Connects the subscriber of the service with handlers that only count their runs. */",
+    );
+    w.open(format!(
+        "private static {transport}.Subscription subscribeEvents({transport} transport, {events}.ConsumerOptions options, {map}<String, {atomic}> called)"
+    ));
+    w.line(format!(
+        "return {base}Subscriber.subscribe(transport, new Counting(called), options);"
+    ));
+    w.close();
+    w.blank();
+    w.line("/** The handlers of the service: each only counts. */");
+    w.open(format!(
+        "private static final class Counting implements {base}EventHandlers"
+    ));
+    w.line(format!("private final {map}<String, {atomic}> called;"));
+    w.blank();
+    w.open(format!("Counting({map}<String, {atomic}> called)"));
+    w.line("this.called = called;");
+    w.close();
+    let methods = crate::events::handler_names(svc);
+    let mut i = 0;
+    for sub in &svc.subscriptions {
+        for h in &sub.handlers {
+            w.blank();
+            let ty = fc.decl(h.event);
+            w.line("@Override");
+            w.open(format!(
+                "public void {}({ty} event, {events}.EventMeta meta)",
+                methods[i]
+            ));
+            w.line(format!(
+                "called.get({}).incrementAndGet();",
+                java_str(&format!("{}.{}", svc.name, h.name))
+            ));
+            w.close();
+            i += 1;
+        }
+    }
+    w.close();
 }
 
 /// The entries of a test handler whose target has rules: the output mode is the last argument of
@@ -180,10 +307,18 @@ fn write_create_body(
         .rules_digest
         .as_deref()
         .map_or_else(|| "null".to_string(), java_str);
-    w.line(format!(
-        "return {support}.{handler_method}({wrapped}, {collections}.singletonMap({}, {digest}));",
+    let handler = format!(
+        "{support}.{handler_method}({wrapped}, {collections}.singletonMap({}, {digest}))",
         java_str(&svc.name)
-    ));
+    );
+    if svc.subscriptions.is_empty() {
+        w.line(format!("return {handler};"));
+    } else {
+        let class = format!("{base}TestHandler");
+        w.line(format!(
+            "return {support}.events({handler}, SUBSCRIBES, HANDLERS, {class}::subscribeEvents);"
+        ));
+    }
 }
 
 /// The loaders that read their fact from `Veld-Test-Facts`; the key is ignored.

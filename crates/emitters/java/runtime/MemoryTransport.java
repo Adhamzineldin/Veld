@@ -87,6 +87,18 @@ public final class MemoryTransport implements Transport {
     }
   }
 
+  /** The memory transport ignores the options: it is already ordered, and a dead-letter topic is a topic. */
+  @Override
+  public void publish(String topic, String key, byte[] bytes, ChannelOptions options) {
+    publish(topic, key, bytes);
+  }
+
+  /** The memory transport ignores the options. */
+  @Override
+  public Subscription subscribe(String topic, String group, Deliver deliver, ChannelOptions options) {
+    return subscribe(topic, group, deliver);
+  }
+
   @Override
   public Subscription subscribe(String topic, String group, Deliver deliver) {
     Objects.requireNonNull(deliver, "deliver");

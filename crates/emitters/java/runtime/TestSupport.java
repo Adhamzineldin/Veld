@@ -322,6 +322,182 @@ public final class TestSupport {
         status, data.write().getBytes(StandardCharsets.UTF_8), "application/json", etag, null);
   }
   // #endif
+  // #if testing_events
+
+  /** The path of the event endpoint of a test handler (spec/events.md section 10.9). */
+  public static final String EVENT_PATH = "/__veld/test/event";
+
+  /** What a generated test handler tells {@link #events} about its service. */
+  @FunctionalInterface
+  public interface EventService {
+    /**
+     * Subscribes the service's own subscriber to {@code transport} with handlers that only add one
+     * to their entry of {@code called} (the name is {@code <Service>.<handler>}).
+     */
+    Transport.Subscription subscribe(
+        Transport transport, Events.ConsumerOptions options, Map<String, java.util.concurrent.atomic.AtomicInteger> called);
+  }
+
+  /**
+   * Adds the event endpoint to a test handler and {@code subscribes} to its probe
+   * (spec/events.md section 10.9). {@code POST /__veld/test/event} takes the message bytes as the
+   * body and the headers {@code Veld-Test-Topic}, {@code Veld-Test-Key} and {@code
+   * Veld-Test-Deliveries}; it delivers the message that many times to the service's own subscriber
+   * over a fresh memory transport with a fresh memory inbox and a {@code sleep} that does not wait,
+   * and answers {@code outcome}, {@code reason}, {@code called}, {@code violations} and {@code
+   * deadLetters}. The application's handlers are not called.
+   *
+   * @param inner the test handler without events, whose probe is extended
+   * @param subscribes the topics the service subscribes to, by service name
+   * @param handlers every handler of the service as {@code <Service>.<handler>}
+   * @param service connects the service's subscriber
+   */
+  public static VeldHandler events(
+      VeldHandler inner, Map<String, List<String>> subscribes, List<String> handlers, EventService service) {
+    return new VeldHandler() {
+      @Override
+      public Optional<VeldResponse> handle(VeldRequest request) {
+        if (request.method().equalsIgnoreCase("POST") && request.path().equals(EVENT_PATH)) {
+          return Optional.of(deliver(request, handlers, service));
+        }
+        Optional<VeldResponse> answer = inner.handle(request);
+        if (request.method().equalsIgnoreCase("GET") && request.path().equals(PROBE_PATH)) {
+          return answer.map(r -> withSubscribes(r, subscribes));
+        }
+        return answer;
+      }
+
+      @Override
+      public Optional<VeldResponse> invoke(String endpoint, VeldRequest request) {
+        return inner.invoke(endpoint, request);
+      }
+    };
+  }
+
+  private static VeldResponse withSubscribes(VeldResponse probe, Map<String, List<String>> subscribes) {
+    Map<String, Json> topics = new LinkedHashMap<>();
+    subscribes.forEach(
+        (name, list) -> {
+          List<Json> items = new java.util.ArrayList<>();
+          for (String topic : list) {
+            items.add(Json.of(topic));
+          }
+          topics.put(name, Json.array(items));
+        });
+    Json.Obj body = Json.parse(probe.body()).asObject().with("subscribes", new Json.Obj(topics));
+    return new VeldResponse(probe.status(), probe.headers(), body.write());
+  }
+
+  private static String eventHeader(VeldRequest request, String name) {
+    for (Map.Entry<String, List<String>> e : request.headers().entrySet()) {
+      if (e.getKey() != null && e.getKey().equalsIgnoreCase(name) && !e.getValue().isEmpty()) {
+        return e.getValue().get(0);
+      }
+    }
+    return null;
+  }
+
+  private static VeldResponse json(int status, Json body) {
+    return new VeldResponse(status, Map.of("content-type", "application/json"), body.write());
+  }
+
+  private static VeldResponse bad(String message) {
+    return json(400, Json.object().put("message", Json.of(message)).build());
+  }
+
+  /** A memory transport that counts what is published to a dead-letter topic. */
+  private static final class CountingTransport implements Transport {
+    private final MemoryTransport memory = new MemoryTransport();
+    private final java.util.concurrent.atomic.AtomicInteger deadLetters = new java.util.concurrent.atomic.AtomicInteger();
+
+    @Override
+    public void publish(String topic, String key, byte[] bytes) {
+      if (topic.endsWith(".dlq")) {
+        deadLetters.incrementAndGet();
+      }
+      memory.publish(topic, key, bytes);
+    }
+
+    @Override
+    public Subscription subscribe(String topic, String group, Deliver deliver) {
+      return memory.subscribe(topic, group, deliver);
+    }
+  }
+
+  private static VeldResponse deliver(VeldRequest request, List<String> handlers, EventService service) {
+    String topic = eventHeader(request, "Veld-Test-Topic");
+    if (topic == null || topic.isEmpty()) {
+      return bad("the header Veld-Test-Topic is required");
+    }
+    String deliveries = eventHeader(request, "Veld-Test-Deliveries");
+    int times = deliveries == null ? 1 : deliveries.equals("2") ? 2 : deliveries.equals("1") ? 1 : 0;
+    if (times == 0) {
+      return bad("Veld-Test-Deliveries is 1 or 2");
+    }
+    String key = eventHeader(request, "Veld-Test-Key");
+    byte[] bytes = request.body() == null ? new byte[0] : request.body().getBytes(StandardCharsets.UTF_8);
+    Map<String, java.util.concurrent.atomic.AtomicInteger> called = new LinkedHashMap<>();
+    for (String name : handlers) {
+      called.put(name, new java.util.concurrent.atomic.AtomicInteger());
+    }
+    java.util.concurrent.atomic.AtomicReference<Events.EventRejected> rejected =
+        new java.util.concurrent.atomic.AtomicReference<>();
+    Events.ConsumerOptions options =
+        new Events.ConsumerOptions()
+            .inbox(new Events.MemoryInbox())
+            .sleep(ms -> {})
+            .onEventRejected(e -> rejected.compareAndSet(null, e));
+    CountingTransport transport = new CountingTransport();
+    Transport.Subscription subscription = service.subscribe(transport, options, called);
+    try {
+      for (int i = 0; i < times; i++) {
+        transport.publish(topic, key, bytes);
+      }
+      transport.memory.idle();
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      return bad("interrupted");
+    } finally {
+      subscription.close();
+    }
+    return answer(rejected.get(), called, transport.deadLetters.get());
+  }
+
+  private static VeldResponse answer(
+      Events.EventRejected rejected, Map<String, java.util.concurrent.atomic.AtomicInteger> called, int deadLetters) {
+    Map<String, Json> counts = new LinkedHashMap<>();
+    boolean ran = false;
+    for (Map.Entry<String, java.util.concurrent.atomic.AtomicInteger> e : called.entrySet()) {
+      counts.put(e.getKey(), Json.of((long) e.getValue().get()));
+      ran |= e.getValue().get() > 0;
+    }
+    List<Json> violations = new java.util.ArrayList<>();
+    if (rejected != null) {
+      for (Violation v : rejected.violations()) {
+        List<Json> fields = new java.util.ArrayList<>();
+        for (String f : v.fields()) {
+          fields.add(Json.of(f));
+        }
+        violations.add(
+            Json.object()
+                .put("rule", Json.of(v.rule()))
+                .put("path", Json.of(v.path()))
+                .put("fields", Json.array(fields))
+                .put("message", Json.of(v.message()))
+                .build());
+      }
+    }
+    return json(
+        200,
+        Json.object()
+            .put("outcome", Json.of(rejected != null ? "rejected" : ran ? "handled" : "ignored"))
+            .put("reason", rejected == null ? Json.NULL : Json.of(rejected.reason().text()))
+            .put("called", new Json.Obj(counts))
+            .put("violations", Json.array(violations))
+            .put("deadLetters", Json.of((long) deadLetters))
+            .build());
+  }
+  // #endif
   // #if rollout
 
   /** The most audited reports a test handler sends in {@code Veld-Test-Audited}. */

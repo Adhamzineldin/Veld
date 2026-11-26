@@ -7,8 +7,9 @@ use std::collections::BTreeSet;
 
 use veld_codegen::naming;
 use veld_codegen::{CodeWriter, FileSet, GenDiagnostic};
-use veld_ir::{Channel, ChannelId, DeclId, DeclKind, Scalar, Service, Type};
+use veld_ir::{Backoff, Channel, ChannelId, DeclId, DeclKind, Scalar, Service, Type};
 
+use crate::spec::RequestNames;
 use crate::tree::{FileCtx, Tree, java_path};
 use crate::util::{add_file, doc_comment, java_str, member_ident, unique};
 
@@ -68,6 +69,13 @@ pub fn emit(files: &mut FileSet, tree: &Tree<'_>) -> Result<(), Vec<GenDiagnosti
             put("Subscriber", &|w, fc, class| {
                 write_subscriber(w, fc, svc, class, &base);
             })?;
+            // A service with endpoints gets its test handler from `server.rs`.
+            if !serves_http(svc) && crate::testing::wanted(tree.ir, tree.testing, svc) {
+                let names = RequestNames::new(tree.ir, &tree.services);
+                put("TestHandler", &|w, fc, class| {
+                    crate::testing::write_test_handler(w, fc, &names, svc, class, &base);
+                })?;
+            }
         }
     }
     Ok(())
@@ -280,8 +288,14 @@ fn write_channel_defs(w: &mut CodeWriter, ir: &veld_ir::Ir, events: &str, names:
             ),
             None => ("null".to_string(), "null".to_string()),
         };
+        // The two flags are written only for a channel that has the annotation (`@ordered`, `@deadLetter`).
+        let flags = if channel.ordered || channel.dead_letter {
+            format!(", {}, {}", channel.ordered, channel.dead_letter)
+        } else {
+            String::new()
+        };
         w.line(format!(
-            "private static final {events}.ChannelDef {name} = new {events}.ChannelDef({}, {wire}, {kind});",
+            "private static final {events}.ChannelDef {name} = new {events}.ChannelDef({}, {wire}, {kind}{flags});",
             java_str(&channel.topic)
         ));
     }
@@ -406,7 +420,7 @@ fn write_handlers(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service, c
 }
 
 /// The Java method name of every `on` line of a service, in order, unique.
-fn handler_names(svc: &Service) -> Vec<String> {
+pub(crate) fn handler_names(svc: &Service) -> Vec<String> {
     unique(
         svc.subscriptions
             .iter()
@@ -465,6 +479,31 @@ fn write_subscriber(
     w.close();
 }
 
+/// The three arguments `retry, deadLetter, ordered` of a subscription to a channel that has one of
+/// the annotations; `None` for a channel without them (the three-argument constructor is used).
+fn delivery_args(events: &str, channel: &Channel) -> Option<String> {
+    if !channel.has_delivery_options() {
+        return None;
+    }
+    let retry = channel.retry.map_or_else(
+        || "null".to_string(),
+        |r| {
+            let backoff = match r.backoff {
+                Backoff::Fixed => "FIXED",
+                Backoff::Exponential => "EXPONENTIAL",
+            };
+            format!(
+                "new {events}.RetryPolicy({}, {events}.Backoff.{backoff})",
+                r.max
+            )
+        },
+    );
+    Some(format!(
+        "{retry}, {}, {}",
+        channel.dead_letter, channel.ordered
+    ))
+}
+
 fn write_subscription_list(
     w: &mut CodeWriter,
     fc: &mut FileCtx<'_, '_>,
@@ -489,23 +528,32 @@ fn write_subscription_list(
             java_str(&sub.group)
         ));
         w.indent().indent();
+        let tail = delivery_args(&events, channel);
         for (hi, h) in sub.handlers.iter().enumerate() {
             let def = ids
                 .iter()
                 .position(|i| *i == h.event)
                 .map_or("", |at| consts[at].as_str());
-            let sep = match (
-                hi + 1 == sub.handlers.len(),
-                si + 1 == svc.subscriptions.len(),
-            ) {
-                (false, _) => ",",
-                (true, false) => ")),",
-                (true, true) => "))",
+            let last_handler = hi + 1 == sub.handlers.len();
+            let last_sub = si + 1 == svc.subscriptions.len();
+            let sep = match (last_handler, last_sub, tail.is_some()) {
+                (false, _, _) => ",",
+                (true, _, true) => "",
+                (true, false, false) => ")),",
+                (true, true, false) => "))",
             };
             w.line(format!("{events}.on({def}, handlers::{}){sep}", names[n]));
             n += 1;
         }
         w.dedent().dedent();
+        if let Some(tail) = tail {
+            let end = if si + 1 == svc.subscriptions.len() {
+                ")"
+            } else {
+                "),"
+            };
+            w.line(format!("), {tail}{end}"));
+        }
     }
     w.dedent().dedent();
     w.line("),");

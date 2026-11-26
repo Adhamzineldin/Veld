@@ -6,6 +6,7 @@ import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -45,8 +46,19 @@ public final class Events {
    * @param topic the topic the message is published to
    * @param keyWire the wire name of the key field, or {@code null} when the channel has no key
    * @param keyKind the type of the key field, or {@code null} when the channel has no key
+   * @param ordered {@code @ordered}: one total order across keys (spec/events.md section 10.2)
+   * @param deadLetter {@code @deadLetter}: the channel has the topic {@code <topic>.dlq}
    */
-  public record ChannelDef(String topic, String keyWire, KeyKind keyKind) {}
+  public record ChannelDef(String topic, String keyWire, KeyKind keyKind, boolean ordered, boolean deadLetter) {
+    /** A channel with neither {@code @ordered} nor {@code @deadLetter}. */
+    public ChannelDef(String topic, String keyWire, KeyKind keyKind) {
+      this(topic, keyWire, keyKind, false, false);
+    }
+
+    Transport.ChannelOptions options() {
+      return new Transport.ChannelOptions(ordered, deadLetter);
+    }
+  }
 
   /**
    * One event as the generated code describes it to the pipelines.
@@ -82,14 +94,40 @@ public final class Events {
     return new Binding<>(def, handler);
   }
 
+  /** How long a consumer waits between two runs of {@code @retry} (spec/events.md section 10.2). */
+  public enum Backoff {
+    /** Every wait is the delay. */
+    FIXED,
+    /** The wait doubles with each run. */
+    EXPONENTIAL
+  }
+
+  /**
+   * {@code @retry(max: n, backoff: ..)} of a channel: the consumer runs the handler again by itself
+   * (spec/events.md section 10.4).
+   *
+   * @param max how many more runs than the first, 0 to 100
+   * @param backoff how the wait between two runs grows
+   */
+  public record RetryPolicy(int max, Backoff backoff) {}
+
   /**
    * One subscription of a service.
    *
    * @param topic the topic
    * @param group the consumer group
    * @param on the events the subscription handles
+   * @param retry {@code @retry} of the channel, or {@code null}
+   * @param deadLetter {@code @deadLetter}: rejected messages and used-up retries are copied to {@code <topic>.dlq}
+   * @param ordered {@code @ordered}: passed to the transport
    */
-  public record SubscriptionDef(String topic, String group, List<Binding<?>> on) {}
+  public record SubscriptionDef(
+      String topic, String group, List<Binding<?>> on, RetryPolicy retry, boolean deadLetter, boolean ordered) {
+    /** A subscription to a channel with none of the three annotations. */
+    public SubscriptionDef(String topic, String group, List<Binding<?>> on) {
+      this(topic, group, on, null, false, false);
+    }
+  }
 
   /**
    * The facts about a message every handler gets next to the typed event.
@@ -166,15 +204,77 @@ public final class Events {
       String event, String ownSignature, String ownDigest, String signature, String digest) {}
 
   /**
-   * A handler failed: the message is not acknowledged and the transport delivers it again.
+   * A run of a handler failed (spec/events.md section 8.1).
    *
    * @param event the name of the event
    * @param topic the topic
    * @param group the consumer group
    * @param meta the metadata of the message
    * @param error what the handler threw
+   * @param attempt the delivery attempt of this run: {@code meta.attempt()}
+   * @param last true when this consumer will not handle the message again (spec/events.md section
+   *     10.4): the last run of a channel with {@code @retry}. Always false on a channel without
+   *     {@code @retry}, where the transport delivers the message again.
    */
-  public record HandlerFailure(String event, String topic, String group, EventMeta meta, Throwable error) {}
+  public record HandlerFailure(
+      String event, String topic, String group, EventMeta meta, Throwable error, int attempt, boolean last) {}
+
+  /** What an {@link Inbox} runs. */
+  @FunctionalInterface
+  public interface Runner {
+    /** Runs the handler. */
+    void run() throws Exception;
+  }
+
+  /**
+   * The application's record of the messages it has handled (spec/events.md section 10.3).
+   * {@code handle} runs {@code run} and records {@code (source, id)}, or does nothing when the pair
+   * is recorded; it answers whether it ran {@code run}. When {@code run} fails the pair must not be
+   * recorded and the failure is the handler's. An implementation that records the pair in the
+   * transaction of the handler's own writes prevents a duplicated business effect; one that cannot
+   * share a transaction narrows the window and does not close it.
+   */
+  @FunctionalInterface
+  public interface Inbox {
+    /** Runs {@code run} unless {@code (source, id)} was handled; answers whether it ran. */
+    boolean handle(String source, String id, Runner run) throws Exception;
+  }
+
+  /** An inbox that lives in the process, for tests. It does not serialise two calls with one pair. */
+  public static final class MemoryInbox implements Inbox {
+    private final Set<List<String>> seen = ConcurrentHashMap.newKeySet();
+
+    /** Creates an empty inbox. */
+    public MemoryInbox() {}
+
+    @Override
+    public boolean handle(String source, String id, Runner run) throws Exception {
+      List<String> key = List.of(source, id);
+      if (seen.contains(key)) {
+        return false;
+      }
+      run.run();
+      seen.add(key);
+      return true;
+    }
+
+    /** Whether the pair was handled. */
+    public boolean has(String source, String id) {
+      return seen.contains(List.of(source, id));
+    }
+
+    /** How many pairs are recorded. */
+    public int size() {
+      return seen.size();
+    }
+  }
+
+  /** Waits for the milliseconds before a run of {@code @retry}. A test passes one that does not wait. */
+  @FunctionalInterface
+  public interface Sleeper {
+    /** Waits. */
+    void sleep(long millis) throws InterruptedException;
+  }
 
   /** The options of a generated publisher: the id source, the clock and the rule hook. */
   public static final class PublisherOptions {
@@ -210,6 +310,10 @@ public final class Events {
     private Consumer<ContractMismatch> onContractMismatch;
     private RuleWalk.Hook onRuleViolation;
     private Consumer<HandlerFailure> onHandlerError;
+    private Inbox inbox;
+    private Sleeper sleep = Thread::sleep;
+    private long retryDelayMs = 1000;
+    private long retryMaxDelayMs = 60000;
 
     /** Creates options without any hook. */
     public ConsumerOptions() {}
@@ -232,9 +336,33 @@ public final class Events {
       return this;
     }
 
-    /** A handler that failed. */
+    /** A run of a handler that failed. */
     public ConsumerOptions onHandlerError(Consumer<HandlerFailure> hook) {
       this.onHandlerError = hook;
+      return this;
+    }
+
+    /** Step 5 of section 8: a message whose {@code source} and {@code id} were handled is acknowledged and skipped. */
+    public ConsumerOptions inbox(Inbox value) {
+      this.inbox = value;
+      return this;
+    }
+
+    /** Waits for the milliseconds before a run of {@code @retry} (default {@code Thread.sleep}). */
+    public ConsumerOptions sleep(Sleeper value) {
+      this.sleep = Objects.requireNonNull(value, "sleep");
+      return this;
+    }
+
+    /** The wait before the second run of {@code @retry} (default 1000). */
+    public ConsumerOptions retryDelayMs(long value) {
+      this.retryDelayMs = Math.max(0, value);
+      return this;
+    }
+
+    /** No wait of {@code @retry} is longer than this (default 60000). */
+    public ConsumerOptions retryMaxDelayMs(long value) {
+      this.retryMaxDelayMs = Math.max(0, value);
       return this;
     }
   }
@@ -396,7 +524,12 @@ public final class Events {
     if (def.digest() != null) {
       envelope.put("veldrules", Json.of(def.digest()));
     }
-    ctx.transport().publish(channel.topic(), subject, envelope.build().canonical().getBytes(StandardCharsets.UTF_8));
+    ctx.transport()
+        .publish(
+            channel.topic(),
+            subject,
+            envelope.build().canonical().getBytes(StandardCharsets.UTF_8),
+            channel.options());
     return new PublishedEvent(id, ctx.source(), def.sig(), subject, time);
   }
 
@@ -475,25 +608,135 @@ public final class Events {
     return at < 0 ? sig : sig.substring(0, at);
   }
 
+  // -- the dead-letter copy (section 10.5) ----------------------------------------------------
+
+  /** Why a message is copied to {@code <topic>.dlq}: the three rejections, or the used-up retries of a handler. */
+  public enum DeadLetterReason {
+    /** Step 1. */
+    MALFORMED,
+    /** Step 3. */
+    SHAPE,
+    /** Step 4. */
+    RULE,
+    /** The retries of a handler are used up. */
+    HANDLER;
+
+    /** The reason as text, the value of {@code veldreason}. */
+    public String text() {
+      return name().toLowerCase(Locale.ROOT);
+    }
+  }
+
+  /** The members a copy adds. A member of the original with one of these names is replaced or removed. */
+  private static final List<String> COPY_MEMBERS =
+      List.of("veldreason", "veldgroup", "veldattempts", "veldissues", "veldviolations");
+
+  /**
+   * The bytes of the dead-letter copy of {@code original} (section 10.5). When the original is a
+   * JSON object, the copy is that object with {@code veldreason}, {@code veldgroup}, {@code
+   * veldattempts} (the runs of the handler, 0 for a rejected message) and, when not empty, {@code
+   * veldissues} and {@code veldviolations}, each a string that holds the canonical JSON of its list,
+   * written as canonical JSON. Anything else is returned as it is. Nothing of a handler's error is
+   * in a copy.
+   */
+  public static byte[] deadLetterCopy(
+      byte[] original,
+      DeadLetterReason reason,
+      String group,
+      int attempts,
+      List<Issue> issues,
+      List<Violation> violations) {
+    Json json;
+    try {
+      json = Json.parse(decode(original));
+    } catch (CharacterCodingException | RuntimeException e) {
+      return original;
+    }
+    if (!(json instanceof Json.Obj obj)) {
+      return original;
+    }
+    Map<String, Json> copy = new LinkedHashMap<>(obj.fields());
+    COPY_MEMBERS.forEach(copy::remove);
+    copy.put("veldreason", Json.of(reason.text()));
+    copy.put("veldgroup", Json.of(group));
+    copy.put("veldattempts", Json.of((long) attempts));
+    if (!issues.isEmpty()) {
+      List<Json> listed = new ArrayList<>();
+      for (Issue i : issues) {
+        listed.add(
+            Json.object()
+                .put("path", Json.of(i.path()))
+                .put("code", Json.of(i.code()))
+                .put("message", Json.of(i.message()))
+                .build());
+      }
+      copy.put("veldissues", Json.of(Json.array(listed).canonical()));
+    }
+    if (!violations.isEmpty()) {
+      List<Json> listed = new ArrayList<>();
+      for (Violation v : violations) {
+        listed.add(v.toWire());
+      }
+      copy.put("veldviolations", Json.of(Json.array(listed).canonical()));
+    }
+    return new Json.Obj(copy).canonical().getBytes(StandardCharsets.UTF_8);
+  }
+
+  private static String decode(byte[] bytes) throws CharacterCodingException {
+    return StandardCharsets.UTF_8
+        .newDecoder()
+        .onMalformedInput(CodingErrorAction.REPORT)
+        .onUnmappableCharacter(CodingErrorAction.REPORT)
+        .decode(ByteBuffer.wrap(bytes))
+        .toString();
+  }
+
   /** One subscription being consumed. */
   private static final class Pipeline {
+    private final Transport transport;
     private final SubscriptionDef sub;
     private final ConsumerOptions options;
     private final Set<String> seen;
 
-    Pipeline(SubscriptionDef sub, ConsumerOptions options, Set<String> seen) {
+    Pipeline(Transport transport, SubscriptionDef sub, ConsumerOptions options, Set<String> seen) {
+      this.transport = transport;
       this.sub = sub;
       this.options = options;
       this.seen = seen;
     }
 
+    /**
+     * Publishes the copy of a message to {@code <topic>.dlq} when the channel has {@code @deadLetter}:
+     * {@code AGAIN} when that fails (section 10.5).
+     */
+    Transport.Outcome copyToDeadLetter(
+        Transport.Message message,
+        DeadLetterReason reason,
+        int attempts,
+        List<Issue> issues,
+        List<Violation> violations) {
+      if (!sub.deadLetter()) {
+        return Transport.Outcome.DONE;
+      }
+      byte[] bytes = deadLetterCopy(message.bytes(), reason, sub.group(), attempts, issues, violations);
+      try {
+        transport.publish(sub.topic() + ".dlq", message.key(), bytes);
+      } catch (RuntimeException e) {
+        return Transport.Outcome.AGAIN;
+      }
+      return Transport.Outcome.DONE;
+    }
+
+    /** A rejected message (steps 1, 3 and 4) is copied when the channel has {@code @deadLetter}, then reported. */
     Transport.Outcome reject(
         Transport.Message message, Reason reason, String text, String event, List<Issue> issues, List<Violation> violations) {
+      Transport.Outcome outcome =
+          copyToDeadLetter(message, DeadLetterReason.valueOf(reason.name()), 0, issues, violations);
       hook(
           options.onEventRejected,
           new EventRejected(
               reason, text, sub.topic(), sub.group(), event, List.copyOf(issues), List.copyOf(violations), message.bytes()));
-      return Transport.Outcome.DONE;
+      return outcome;
     }
 
     /** Tells the application once per distinct pair that the publisher is on another version. */
@@ -558,26 +801,80 @@ public final class Events {
         return reject(message, Reason.SHAPE, String.valueOf(e.getMessage()), def.name(), List.of(), List.of());
       }
       noteMismatch(def, env);
-      EventMeta meta = new EventMeta(env.id(), env.source(), env.type(), env.subject(), env.time(), message.attempt());
-      try {
-        binding.run().handle(typed, meta);
-      } catch (Exception e) {
-        if (e instanceof InterruptedException) {
-          Thread.currentThread().interrupt();
+      return handle(binding, typed, message, env);
+    }
+
+    /**
+     * Steps 5 and 6, with {@code @retry} (section 10.4): the handler runs until it returns or, with
+     * {@code @retry(max: n)}, up to {@code n + 1} times, waiting between the runs. A channel without
+     * {@code @retry} answers {@code AGAIN} at the first failure; the last run of one with it is
+     * copied when the channel has {@code @deadLetter}, and acknowledged. Every run asks the inbox.
+     */
+    <E> Transport.Outcome handle(Binding<E> binding, E typed, Transport.Message message, Envelope env) {
+      RetryPolicy retry = sub.retry();
+      int allowed = retry == null ? 1 : retry.max() + 1;
+      for (int run = 1; ; run++) {
+        EventMeta meta =
+            new EventMeta(
+                env.id(), env.source(), env.type(), env.subject(), env.time(), message.attempt() + run - 1);
+        try {
+          runOnce(binding, typed, env, meta);
+          return Transport.Outcome.DONE;
+        } catch (Exception e) {
+          boolean interrupted = e instanceof InterruptedException;
+          if (interrupted) {
+            Thread.currentThread().interrupt();
+          }
+          boolean last = retry != null && run == allowed;
+          hook(
+              options.onHandlerError,
+              new HandlerFailure(binding.def().name(), sub.topic(), sub.group(), meta, e, meta.attempt(), last));
+          if (retry == null || interrupted) {
+            return Transport.Outcome.AGAIN;
+          }
+          if (last) {
+            return copyToDeadLetter(message, DeadLetterReason.HANDLER, run, List.of(), List.of());
+          }
+          try {
+            options.sleep.sleep(retryWait(retry, run));
+          } catch (InterruptedException stop) {
+            Thread.currentThread().interrupt();
+            return Transport.Outcome.AGAIN;
+          }
         }
-        hook(options.onHandlerError, new HandlerFailure(def.name(), sub.topic(), sub.group(), meta, e));
-        return Transport.Outcome.AGAIN;
       }
-      return Transport.Outcome.DONE;
+    }
+
+    /** Steps 5 and 6 of one run: the inbox, then the handler. */
+    private <E> void runOnce(Binding<E> binding, E typed, Envelope env, EventMeta meta) throws Exception {
+      Runner call = () -> binding.run().handle(typed, meta);
+      if (options.inbox == null) {
+        call.run();
+      } else {
+        options.inbox.handle(env.source(), env.id(), call);
+      }
+    }
+
+    /** The wait after run {@code k} failed (from 1): the delay for fixed, doubled each time for exponential, never more than the maximum. */
+    private long retryWait(RetryPolicy retry, int k) {
+      long max = options.retryMaxDelayMs;
+      long wait = options.retryDelayMs;
+      if (retry.backoff() == Backoff.EXPONENTIAL) {
+        for (int i = 1; i < k && wait < max; i++) {
+          wait = wait > max / 2 ? max : wait * 2;
+        }
+      }
+      return Math.min(wait, max);
     }
   }
 
   /**
    * Connects the handlers of a service to a transport, one subscription per {@code subscribes}
    * line, each under its group (section 8). A message the subscription has no {@code on} line for
-   * is acknowledged and ignored; a rejected one is acknowledged and reported to
-   * {@code onEventRejected}; a handler that throws leaves it unacknowledged. Closing the returned
-   * handle closes every subscription.
+   * is acknowledged and ignored; a rejected one is copied to the dead-letter topic when the channel
+   * has {@code @deadLetter}, acknowledged and reported to {@code onEventRejected}; a handler that
+   * throws is run again by the consumer with {@code @retry} and leaves the message unacknowledged
+   * without it. Closing the returned handle closes every subscription.
    */
   public static Transport.Subscription subscribe(
       Transport transport, List<SubscriptionDef> subs, ConsumerOptions options) {
@@ -585,8 +882,13 @@ public final class Events {
     List<Transport.Subscription> opened = new ArrayList<>();
     try {
       for (SubscriptionDef sub : subs) {
-        Pipeline pipeline = new Pipeline(sub, options, seen);
-        opened.add(transport.subscribe(sub.topic(), sub.group(), pipeline::consume));
+        Pipeline pipeline = new Pipeline(transport, sub, options, seen);
+        opened.add(
+            transport.subscribe(
+                sub.topic(),
+                sub.group(),
+                pipeline::consume,
+                new Transport.ChannelOptions(sub.ordered(), sub.deadLetter())));
       }
     } catch (RuntimeException e) {
       closeAll(opened);
