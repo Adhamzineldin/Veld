@@ -337,6 +337,7 @@ fn first_use(
                 | Feature::Bytes
                 | Feature::Events
                 | Feature::RulesRollout
+                | Feature::RulesDerived
                 | Feature::RulesInvariants => false,
             };
             if hit {
@@ -374,6 +375,11 @@ fn first_use(
     if feature == Feature::RulesInvariants {
         return first_rule_origin(ir, &searched(ir, services, req));
     }
+    if feature == Feature::RulesDerived {
+        let mut ids = searched(ir, services, req);
+        ids.extend(ir.fact_decls(services));
+        return first_derived_origin(ir, &ids);
+    }
     if feature == Feature::RulesTransitions {
         return first_machine_origin(ir, &searched(ir, services, req));
     }
@@ -408,6 +414,18 @@ fn first_machine_origin(ir: &Ir, decls: &[DeclId]) -> Option<Origin> {
         .map(|id| ir.decl(id))
         .find(|d| matches!(&d.kind, DeclKind::Enum(e) if e.is_state_machine()))
         .map(|d| d.origin.clone())
+}
+
+/// The origin of the first derived field (`spec/rules.md` section 17.2) of the declarations, in
+/// source order.
+fn first_derived_origin(ir: &Ir, decls: &[DeclId]) -> Option<Origin> {
+    decls
+        .iter()
+        .flat_map(|id| ir.decl(*id).fields().iter())
+        .filter(|f| f.derived.is_some())
+        .map(|f| &f.origin)
+        .min_by_key(|o| (o.file.as_str(), o.line, o.col))
+        .cloned()
 }
 
 /// The origin of the first invariant of the first reachable declaration that has one.

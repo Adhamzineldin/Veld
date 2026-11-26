@@ -57,6 +57,42 @@ pub struct Expr {
 }
 
 impl Expr {
+    /// Source names of the fields of the declaration the expression reads (a path that starts at
+    /// `self`, `has` included), first use first, once each. The reads of a rule and of a derived
+    /// field (`spec/rules.md` sections 13 and 17.2).
+    #[must_use]
+    pub fn self_reads(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        self.collect_self_reads(&mut out);
+        out
+    }
+
+    fn collect_self_reads(&self, out: &mut Vec<String>) {
+        match &self.e {
+            ExprKind::Lit(_) | ExprKind::Now(_) => {}
+            ExprKind::Path(p) | ExprKind::Has(p) => {
+                if let (Root::SelfValue, Some(first)) = (&p.root, p.steps.first())
+                    && !out.contains(&first.name)
+                {
+                    out.push(first.name.clone());
+                }
+            }
+            ExprKind::Not(x) | ExprKind::Neg(x) | ExprKind::Widen(x) | ExprKind::Old(x) => {
+                x.collect_self_reads(out);
+            }
+            ExprKind::Bin(b) => {
+                b.l.collect_self_reads(out);
+                b.r.collect_self_reads(out);
+            }
+            ExprKind::Call(c) => c.args.iter().for_each(|a| a.collect_self_reads(out)),
+            ExprKind::Quant(q) => {
+                q.list.collect_self_reads(out);
+                q.body.collect_self_reads(out);
+            }
+            ExprKind::List(items) => items.iter().for_each(|a| a.collect_self_reads(out)),
+        }
+    }
+
     /// True when the expression reads the principal (`spec/rules.md` section 11.1) anywhere.
     #[must_use]
     pub fn reads_principal(&self) -> bool {
