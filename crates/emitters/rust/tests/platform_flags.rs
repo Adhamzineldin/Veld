@@ -388,8 +388,11 @@ fn a_flagged_invariant_of_a_stream_item_and_a_message_is_evaluated() {
         vec![service_id(&ir, "Chat")],
         vec![],
         None,
-        json!({ "crate-name": "chat-server" }),
+        json!({ "crate-name": "chat-server", "testing": true }),
     );
+    // A service whose only rules are flagged invariants has a test handler, which reads `Veld-Test-Flags`.
+    let handler = text(&server, "src/chat/chat_test_server.rs");
+    assert!(handler.contains("veld-test-flags") && handler.contains("async fn read_flags("));
     let words = text(&server, "src/veld/server.rs");
     for word in [
         "fn with_flags(mut self",

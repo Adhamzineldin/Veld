@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex};
 
 use chat_server::chat::chat::{Heard, Say};
 use chat_server::chat::chat_server::{ChatHandler, ChatHooks, ChatService, TalkRequest, TicksRequest};
+use chat_server::chat::chat_test_server::{ChatTestHandler, ChatTestHooks};
 use chat_server::veld::Error;
 use chat_server::veld::flags::{FlagContext, FlagProvider};
 use chat_server::veld::server::{RequestContext, WsSession};
@@ -71,6 +72,8 @@ impl ChatHooks for Hooks {
         *self.0.errors.lock().unwrap() += 1;
     }
 }
+
+impl ChatTestHooks for Hooks {}
 
 struct Server {
     base: String,
@@ -207,10 +210,50 @@ async fn outgoing_messages() {
     assert_eq!(socket.frame().await, r#"{"data":{"text":"a"}}"#, "loud is off");
 }
 
+/// Base64url without padding.
+fn b64url(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    let mut out = String::new();
+    for chunk in bytes.chunks(3) {
+        let n = chunk.iter().enumerate().fold(0u32, |acc, (i, b)| acc | (u32::from(*b) << (16 - 8 * i)));
+        for i in 0..=chunk.len() {
+            out.push(char::from(ALPHABET[((n >> (18 - 6 * i)) & 63) as usize]));
+        }
+    }
+    out
+}
+
+/// A service whose only rules are flagged invariants has a test handler: `Veld-Test-Flags` names
+/// the flags that are on, without it every flag is off, and the provider of the hooks is never asked.
+async fn test_handler() {
+    let w = Arc::new(World { provider: Provider::default(), errors: Mutex::new(0) });
+    let router = chat_server::chat::chat_test_server::router(ChatTestHandler::create(Impl, Hooks(w.clone())));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
+    tokio::spawn(async move {
+        let _ = axum::serve(listener, router).await;
+    });
+    let call = |header: Option<String>| {
+        let url = format!("{base}/chat/ticks?text=a");
+        async move {
+            let mut request = reqwest::Client::new().get(url);
+            if let Some(h) = header {
+                request = request.header("veld-test-flags", h);
+            }
+            request.send().await.unwrap().status().as_u16()
+        }
+    };
+    assert_eq!(call(None).await, 200, "without the header every flag is off");
+    assert_eq!(call(Some(b64url(br#"["loud"]"#))).await, 500, "loud is on: the first item violates it");
+    assert_eq!(call(Some(b64url(br#"["shortOnly"]"#))).await, 200, "another flag is on: the item is not checked");
+    assert!(w.provider.asked.lock().unwrap().is_empty(), "the provider of the hooks is never asked");
+}
+
 #[tokio::main]
 async fn main() {
     stream_items().await;
     incoming_messages().await;
     outgoing_messages().await;
+    test_handler().await;
     println!("flags streams ok");
 }

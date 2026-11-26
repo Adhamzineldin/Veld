@@ -47,7 +47,9 @@ pub fn emit(
     }
     for sid in &tree.services {
         let svc = tree.ir.service(*sid);
-        let blocks = block::has_block(svc) || crate::conditional::svc_idempotent(svc);
+        let blocks = block::has_block(svc)
+            || crate::conditional::svc_idempotent(svc)
+            || crate::flags::svc_reads_flags(tree, svc);
         if !blocks && svc.subscriptions.is_empty() {
             continue;
         }

@@ -278,10 +278,6 @@ impl Generator for Rust {
         let testing = opts.testing == Some(true);
         let chosen = brokers::choose(opts.messaging.as_ref(), req.role, &main_tree(req))?;
         let idempotency = server && conditional::any_idempotent(req.ir, &served_http(req));
-        // The test handler of a service that is only idempotent runs the steps of the pipeline
-        // too: it needs the endpoint rules runtime.
-        let endpoint_rules =
-            server && (block::served_has_blocks(req.ir, &req.services) || (testing && idempotency));
         // A policy is generated, in either role, for an `allow` of a generated service: its
         // functions use the rules runtime.
         let policies = used.iter().any(|s| {
@@ -321,12 +317,13 @@ impl Generator for Rust {
                     .iter()
                     .any(|e| e.rules.transition.as_ref().is_some_and(|t| t.is_timed()))
             });
-        let flags_server = server
-            && flags
-            && (event_flags
-                || served_http(req).iter().any(|s| {
-                    flags::svc_reads_flags(&main_tree(req).with_flags(true), req.ir.service(*s))
-                }));
+        let flags_http = server && !served_flag_services(req, flags).is_empty();
+        let flags_server = flags_http || (server && event_flags);
+        // The test handler of a service that is only idempotent, or whose only rules are flagged
+        // invariants, runs the steps of the pipeline too: it needs the endpoint rules runtime.
+        let endpoint_rules = server
+            && (block::served_has_blocks(req.ir, &req.services)
+                || (testing && (idempotency || flags_http)));
         let etag = server && conditional::any_version(req.ir, &served_http(req));
         let version = etag
             || conditional::any_guard(req.ir, if server { &req.consumes } else { &req.services });
@@ -363,7 +360,7 @@ impl Generator for Rust {
             timeouts,
             flags,
             event_flags,
-            flags_server: server && flags_server,
+            flags_server,
             policies,
             rollout,
             server: serving,
@@ -446,6 +443,15 @@ impl Generator for Rust {
         package::emit_lib(&mut files, &packages, has_clients, &f, req.role)?;
         Ok(files)
     }
+}
+
+/// The served services whose endpoints can reach a flag: their hooks name a provider.
+fn served_flag_services(req: &GenRequest<'_>, flags: bool) -> Vec<ServiceId> {
+    let tree = main_tree(req).with_flags(flags);
+    served_http(req)
+        .into_iter()
+        .filter(|s| flags::svc_reads_flags(&tree, req.ir.service(*s)))
+        .collect()
 }
 
 /// The services of a server that have an HTTP surface.

@@ -330,7 +330,8 @@ fn dispatch(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service, n: &Needs, typed
     };
     w.open(format!("pub struct {name}Dispatch<{decl}>"));
     // The test handler of a service with endpoint rules reaches into its dispatch.
-    let vis = if block::has_block(svc) || n.idempotency {
+    let vis = if block::has_block(svc) || n.idempotency || crate::flags::svc_reads_flags(tree, svc)
+    {
         "pub(crate) "
     } else {
         ""
