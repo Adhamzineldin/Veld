@@ -21,8 +21,7 @@ import java.util.Optional;
  * <p>A generated test handler answers for its own service, and two of them cannot share the path
  * {@code /__veld/test/event}, so this program is the one server of a workspace: it hands each request
  * to every handler and merges the answers the way the runner reads one handler that serves several
- * services (the probe lists every service; the outcome is {@code rejected} when a service rejected
- * the message, else {@code handled} when one handled it; the counts are summed).
+ * services (the probe lists every service; the merge is the rule of spec/events.md 10.9).
  */
 public final class EventsServe {
   private EventsServe() {}
@@ -58,32 +57,39 @@ public final class EventsServe {
             .build());
   }
 
-  private static VeldResponse event(List<VeldHandler> handlers, VeldRequest request) {
+  private static VeldResponse event(List<VeldHandler> handlers, List<String> names, VeldRequest request) {
     List<VeldResponse> all = answers(handlers, request);
-    Json.Obj rejected = null;
+    // spec/events.md 10.9: rejected when one rejected, else handled when one handled, else ignored;
+    // the reason is that of the first rejecting service in name order; called is the union;
+    // violations are joined; dead letters are added. A 400 of any handler is the answer.
+    Map<String, Json.Obj> rejecting = new java.util.TreeMap<>();
     boolean handled = false;
     Map<String, Json> called = new LinkedHashMap<>();
+    List<Json> violations = new ArrayList<>();
     long deadLetters = 0;
-    for (VeldResponse r : all) {
+    for (int i = 0; i < all.size(); i++) {
+      VeldResponse r = all.get(i);
       if (r.status() != 200) {
         return r;
       }
       Json.Obj body = Json.parse(r.body()).asObject();
       String outcome = body.get("outcome").asString();
-      if (outcome.equals("rejected") && rejected == null) {
-        rejected = body;
+      if (outcome.equals("rejected")) {
+        rejecting.putIfAbsent(names.get(i), body);
       }
       handled |= outcome.equals("handled");
       called.putAll(body.get("called").asObject().fields());
+      violations.addAll(body.get("violations").asArray().items());
       deadLetters += (long) body.get("deadLetters").asDouble();
     }
+    Json.Obj first = rejecting.isEmpty() ? null : rejecting.values().iterator().next();
     return json(
         200,
         Json.object()
-            .put("outcome", Json.of(rejected != null ? "rejected" : handled ? "handled" : "ignored"))
-            .put("reason", rejected == null ? Json.NULL : rejected.get("reason"))
+            .put("outcome", Json.of(first != null ? "rejected" : handled ? "handled" : "ignored"))
+            .put("reason", first == null ? Json.NULL : first.get("reason"))
             .put("called", new Json.Obj(called))
-            .put("violations", rejected == null ? Json.array() : rejected.get("violations"))
+            .put("violations", new Json.Arr(violations))
             .put("deadLetters", Json.of(deadLetters))
             .build());
   }
@@ -93,7 +99,10 @@ public final class EventsServe {
       throw new IllegalArgumentException("usage: EventsServe <test handler class> ...");
     }
     List<VeldHandler> handlers = new ArrayList<>();
+    List<String> names = new ArrayList<>();
     for (String name : args) {
+      String simple = name.substring(name.lastIndexOf('.') + 1);
+      names.add(simple.endsWith("TestHandler") ? simple.substring(0, simple.length() - "TestHandler".length()) : simple);
       handlers.add((VeldHandler) Class.forName(name).getMethod("create").invoke(null));
     }
     VeldHandler combined =
@@ -104,7 +113,7 @@ public final class EventsServe {
               return Optional.of(probe(handlers, request));
             }
             if (request.method().equalsIgnoreCase("POST") && request.path().equals("/__veld/test/event")) {
-              return Optional.of(event(handlers, request));
+              return Optional.of(event(handlers, names, request));
             }
             return Optional.empty();
           }

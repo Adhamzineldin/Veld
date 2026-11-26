@@ -1205,6 +1205,27 @@ fn every_event_example_passes_live_against_the_generated_test_handlers() {
     );
 }
 
+fn bad_request(release: &str) {
+    let ir = compile_text(read(BOOKINGS));
+    let dir = tempfile::tempdir().unwrap();
+    build_with(
+        dir.path(),
+        &ir,
+        &["EventsTestBadRequest.java"],
+        release,
+        &json!({ "testing": true }),
+    );
+    assert!(run_java(dir.path(), "EventsTestBadRequest").contains("events bad request ok"));
+}
+
+#[test]
+fn the_test_handlers_event_endpoint_answers_400_with_an_error_member() {
+    each_release(
+        "the_test_handlers_event_endpoint_answers_400_with_an_error_member",
+        &bad_request,
+    );
+}
+
 #[test]
 fn a_service_that_subscribes_has_a_test_handler_only_with_the_option() {
     let ir = compile_text(read(BOOKINGS));

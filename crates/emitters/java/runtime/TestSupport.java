@@ -402,7 +402,7 @@ public final class TestSupport {
   }
 
   private static VeldResponse bad(String message) {
-    return json(400, Json.object().put("message", Json.of(message)).build());
+    return json(400, Json.object().put("error", Json.of(message)).build());
   }
 
   /** A memory transport that counts what is published to a dead-letter topic. */
