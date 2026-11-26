@@ -5,6 +5,7 @@
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 
+pub mod brokers;
 pub mod can;
 pub mod client;
 pub mod conditional;
@@ -57,6 +58,9 @@ pub struct Options {
     /// The prefix of the Spring properties of the runtime config (`veld.services.iam.url`), for
     /// the `spring` framework. Default: `veld`.
     pub runtime_prefix: Option<String>,
+    /// The broker adapters a server gets (`spec/events.md` section 10.7): `"kafka"`, `"rabbitmq"` or
+    /// a list of both. Without it only the memory transport is generated.
+    pub messaging: Option<brokers::Messaging>,
 }
 
 /// The Java generator (roles `server` and `client`).
@@ -72,6 +76,7 @@ fn events_capabilities(_role: Role) -> Capabilities {
         .with(Feature::RulesVersion)
         .with(Feature::Idempotency)
         .with(Feature::RulesDerived)
+        .with(Feature::EventsDelivery)
 }
 
 fn precheck(req: &GenRequest<'_>, caps: &Capabilities) -> Result<(), Vec<GenDiagnostic>> {
@@ -194,6 +199,7 @@ impl Generator for Java {
         } else {
             tree
         };
+        let brokers = brokers::choose(opts.messaging.as_ref(), &tree)?;
         let endpoint = req.role == Role::Server
             && req
                 .ir
@@ -230,6 +236,12 @@ impl Generator for Java {
         let output_mode = runtime_config
             .as_ref()
             .is_some_and(config::Info::has_rules_output);
+        // A server whose services subscribe also gets a test handler (`spec/events.md` section 10.9).
+        let subscribing = req.role == Role::Server
+            && req
+                .services
+                .iter()
+                .any(|s| !req.ir.service(*s).subscriptions.is_empty());
         let conditional_server =
             req.role == Role::Server && conditional::services_use(req.ir, &req.services);
         let flags = runtime::Flags {
@@ -239,7 +251,7 @@ impl Generator for Java {
             endpoint,
             // A service that has endpoint rules, or only a guard, a key or an `ETag`, gets a test
             // handler (`spec/rules.md` 11.12).
-            testing: (endpoint || conditional_server) && opts.testing == Some(true),
+            testing: (endpoint || conditional_server || subscribing) && opts.testing == Some(true),
             machine: endpoint && endpoint::services_have_transition(req.ir, &req.services),
             policies,
             rollout,
@@ -273,6 +285,7 @@ impl Generator for Java {
                 frameworks::emit(&mut files, &model, profile)?;
                 server::emit(&mut files, &tree)?;
                 events::emit(&mut files, &tree)?;
+                brokers::emit(&mut files, &base, &brokers)?;
                 emit_consumed(
                     &mut files,
                     req,
@@ -287,7 +300,7 @@ impl Generator for Java {
             let clients = config::client_refs(req, &info.model, &base, &runtime_package);
             config::emit(&mut files, &tree, info, &clients)?;
         }
-        readme::emit(&mut files, &base, req, runtime_config.as_ref())?;
+        readme::emit(&mut files, &base, req, runtime_config.as_ref(), &brokers)?;
         Ok(files)
     }
 }

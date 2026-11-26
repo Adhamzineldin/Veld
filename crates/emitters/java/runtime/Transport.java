@@ -26,6 +26,18 @@ public interface Transport {
    */
   record Message(String key, byte[] bytes, int attempt) {}
 
+  /**
+   * What a channel asks of a transport (spec/events.md section 10.6): {@code @ordered} and
+   * {@code @deadLetter}. A transport that cannot give {@code ordered} must fail instead of ignoring it.
+   *
+   * @param ordered one total order across keys
+   * @param deadLetter the channel has a dead-letter topic, {@code <topic>.dlq}
+   */
+  record ChannelOptions(boolean ordered, boolean deadLetter) {
+    /** A channel with neither annotation. */
+    public static final ChannelOptions NONE = new ChannelOptions(false, false);
+  }
+
   /** The function a transport calls for every message of a subscription. */
   @FunctionalInterface
   interface Deliver {
@@ -44,6 +56,26 @@ public interface Transport {
   /** Sends one message to {@code topic}; returns when the transport has accepted it. */
   void publish(String topic, String key, byte[] bytes);
 
+  /**
+   * Like {@link #publish(String, String, byte[])}, with the options of the channel. A transport
+   * written before phase E2 does not override it: it gives no total order, so {@code ordered} fails
+   * with an {@link UnsupportedOperationException} instead of being ignored.
+   */
+  default void publish(String topic, String key, byte[] bytes, ChannelOptions options) {
+    if (options != null && options.ordered()) {
+      throw new UnsupportedOperationException("this transport cannot give @ordered");
+    }
+    publish(topic, key, bytes);
+  }
+
   /** Subscribes {@code deliver} to {@code topic} as a member of the consumer group {@code group}. */
   Subscription subscribe(String topic, String group, Deliver deliver);
+
+  /** Like {@link #subscribe(String, String, Deliver)}, with the options of the channel (see {@link #publish(String, String, byte[], ChannelOptions)}). */
+  default Subscription subscribe(String topic, String group, Deliver deliver, ChannelOptions options) {
+    if (options != null && options.ordered()) {
+      throw new UnsupportedOperationException("this transport cannot give @ordered");
+    }
+    return subscribe(topic, group, deliver);
+  }
 }

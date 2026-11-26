@@ -308,6 +308,7 @@ pub fn emit_with(
         "rules_no_derived" => flags.rules && !flags.derived,
         "preconditions" => flags.preconditions,
         "testing_conditional" => flags.testing && flags.conditional,
+        "testing_events" => flags.testing && flags.events,
         "testing_rules" => flags.testing && flags.rules,
         "testing_rules_conditional" => flags.testing && flags.rules && flags.conditional,
         "testing_plain" => !(flags.testing && flags.conditional),
