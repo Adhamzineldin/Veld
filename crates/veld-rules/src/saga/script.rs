@@ -109,6 +109,21 @@ pub struct Script {
     /// The points at which the process dies, each used once.
     #[serde(default)]
     pub stops: Vec<Stop>,
+    /// A saga with the id of the request already exists in the store. The request then starts
+    /// nothing and makes no call: it is answered `409 Conflict` or with the saved answer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub existing: Option<Existing>,
+}
+
+/// A saga that is in the store when the request arrives.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Existing {
+    /// The fingerprint it was started with.
+    pub fingerprint: String,
+    pub status: super::state::Status,
+    /// Its answer, when it has ended.
+    #[serde(default)]
+    pub answer: Option<super::state::SagaAnswer>,
 }
 
 impl Script {

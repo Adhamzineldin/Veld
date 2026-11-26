@@ -53,10 +53,10 @@ fn cases() -> Vec<SagaCase> {
 // ---- the shared vectors ---------------------------------------------------------------------------
 
 #[test]
-fn the_script_vectors_hold_twenty_four_cases_and_the_orchestrator_meets_every_one() {
+fn the_script_vectors_hold_twenty_seven_cases_and_the_orchestrator_meets_every_one() {
     let ir = checkout();
     let cases = cases();
-    assert_eq!(cases.len(), 24);
+    assert_eq!(cases.len(), 27);
     let failures: Vec<String> = cases
         .iter()
         .filter_map(|c| run_case(&ir, c).err())
@@ -89,6 +89,7 @@ fn run_with(ir: &Ir, c: &SagaCase, script: Script) -> veld_rules::saga::SagaRun 
         params: c.params.clone(),
         id: c.id.clone(),
         scope: c.scope.clone(),
+        fingerprint: veld_rules::fingerprint(&c.params),
         start_ms: c.start_ms,
     };
     run_saga(&input, &script).unwrap()
@@ -166,9 +167,9 @@ fn stopping_after_every_call_repeats_that_call_and_nothing_else() {
 // ---- the pending example contract -------------------------------------------------------------------
 
 #[test]
-fn the_pending_saga_contract_holds_its_eleven_examples() {
+fn the_pending_saga_contract_holds_its_fourteen_examples() {
     let ir = compile_text(&rules_file("endpoints", "sagas.veld.pending"));
-    assert_eq!(ir.examples.len(), 11);
+    assert_eq!(ir.examples.len(), 14);
     for example in &ir.examples {
         let report = run_example(&ir, example).unwrap();
         assert!(report.passed(), "{report}");
@@ -288,6 +289,7 @@ fn the_state_has_the_members_of_the_spec() {
             "answer",
             "deadline",
             "failedStep",
+            "fingerprint",
             "id",
             "operation",
             "parameters",
@@ -318,6 +320,28 @@ fn the_state_has_the_members_of_the_spec() {
     // It reads back.
     let back: veld_rules::saga::SagaState = serde_json::from_value(v).unwrap();
     assert_eq!(back, run.state);
+}
+
+#[test]
+fn the_state_keeps_the_fingerprint_of_the_request() {
+    let ir = checkout();
+    let c = &cases()[0];
+    let run = run_case(&ir, c).unwrap();
+    assert_eq!(run.state.fingerprint, veld_rules::fingerprint(&c.params));
+    assert!(
+        run.saves
+            .iter()
+            .all(|s| s.fingerprint == run.state.fingerprint)
+    );
+}
+
+#[test]
+fn a_replay_or_a_conflict_makes_no_call_and_saves_nothing() {
+    let ir = checkout();
+    for c in cases().iter().filter(|c| c.script.existing.is_some()) {
+        let run = run_case(&ir, c).unwrap();
+        assert!(run.calls.is_empty() && run.saves.is_empty(), "{}", c.name);
+    }
 }
 
 #[test]

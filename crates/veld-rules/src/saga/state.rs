@@ -97,6 +97,9 @@ pub struct SagaState {
     pub operation: String,
     /// The caller, for an endpoint whose keys are scoped to it; `null` otherwise.
     pub scope: Option<String>,
+    /// The fingerprint of the request (`spec/rules.md` section 11.9): another request with the
+    /// same key and another fingerprint is `409 Conflict`.
+    pub fingerprint: String,
     pub status: Status,
     /// The bound parameters, in wire form.
     pub parameters: BTreeMap<String, Json>,

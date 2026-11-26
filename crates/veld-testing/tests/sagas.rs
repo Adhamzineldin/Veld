@@ -67,7 +67,7 @@ fn probe_only() -> (String, std::thread::JoinHandle<usize>) {
 fn every_saga_example_passes_offline() {
     let ir = pending();
     let runs = run_offline(&ir, None);
-    assert_eq!(runs.len(), 11);
+    assert_eq!(runs.len(), 14);
     for run in &runs {
         let report = run.result.as_ref().unwrap();
         assert!(report.passed(), "{report}");

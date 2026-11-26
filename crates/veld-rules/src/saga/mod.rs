@@ -26,7 +26,7 @@ use sha2::{Digest, Sha256};
 use veld_ir::{DeclId, Endpoint, Ir, Service};
 
 use crate::error::InputError;
-pub use script::{Answer, Script, Stop};
+pub use script::{Answer, Existing, Script, Stop};
 pub use state::{SagaAnswer, SagaState, Status, StepError, StepState, StepStatus};
 
 /// The first wait after a call that got no answer, in milliseconds. It doubles up to
@@ -67,6 +67,8 @@ pub struct SagaInput<'a> {
     pub id: String,
     /// The caller, for an endpoint whose keys are scoped to it.
     pub scope: Option<String>,
+    /// The fingerprint of the request (`crate::fingerprint` of `params`).
+    pub fingerprint: String,
     /// The clock when the request arrives, in milliseconds since the epoch.
     pub start_ms: i64,
 }
@@ -111,7 +113,13 @@ pub struct SagaRun {
     pub saves: Vec<SagaState>,
     /// The state at the end.
     pub state: SagaState,
-    /// The error declaration of the answer, `None` for a success.
+    /// What the caller is answered: the answer of the saga, `409 Conflict` for a request whose
+    /// key names a saga that is running or was started with another fingerprint, or the saved
+    /// answer of a saga that has ended.
+    pub reply: SagaAnswer,
+    /// True when `reply` is a saved answer sent again (`Veld-Idempotent-Replay: true`).
+    pub replayed: bool,
+    /// The error declaration of the reply, `None` for a success.
     pub answer_decl: Option<DeclId>,
     /// The steps that were undone, in the order their undo succeeded.
     pub compensated: Vec<String>,

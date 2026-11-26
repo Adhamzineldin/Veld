@@ -21,6 +21,8 @@
 //! }
 //! ```
 //!
+//! `existing.fingerprint` may be `"$same"`: the fingerprint of the request.
+//!
 //! Each expected call lists some of the members of a [`CallRecord`](super::CallRecord); the
 //! members it lists must be equal, the others are not looked at. The number of calls must be equal.
 
@@ -56,6 +58,9 @@ pub struct Expect {
     /// How many times the process was started again.
     #[serde(default)]
     pub restarts: usize,
+    /// True when the reply is a saved answer sent again.
+    #[serde(default)]
+    pub replayed: bool,
 }
 
 /// One case of a vector file.
@@ -69,6 +74,9 @@ pub struct SagaCase {
     pub scope: Option<String>,
     #[serde(default)]
     pub start_ms: i64,
+    /// The fingerprint of the request; the fingerprint of `params` when absent.
+    #[serde(default)]
+    pub fingerprint: Option<String>,
     pub params: BTreeMap<String, Json>,
     #[serde(default)]
     pub script: Script,
@@ -104,9 +112,19 @@ pub fn run_case(ir: &Ir, case: &SagaCase) -> Result<SagaRun, String> {
         params: case.params.clone(),
         id: case.id.clone(),
         scope: case.scope.clone(),
+        fingerprint: case
+            .fingerprint
+            .clone()
+            .unwrap_or_else(|| crate::idempotency::fingerprint(&case.params)),
         start_ms: case.start_ms,
     };
-    let run = run_saga(&input, &case.script).map_err(|e| format!("{}: {e}", case.name))?;
+    let mut script = case.script.clone();
+    if let Some(e) = script.existing.as_mut()
+        && e.fingerprint == "$same"
+    {
+        e.fingerprint = input.fingerprint.clone();
+    }
+    let run = run_saga(&input, &script).map_err(|e| format!("{}: {e}", case.name))?;
     let problems = differences(&case.expect, &run);
     if problems.is_empty() {
         Ok(run)
@@ -130,12 +148,7 @@ fn differences(want: &Expect, run: &SagaRun) -> Vec<String> {
         show(&run.state.status),
     );
     if let Some(a) = &want.answer {
-        check(
-            "answer",
-            run.state.answer.as_ref() == Some(a),
-            show(a),
-            show(&run.state.answer),
-        );
+        check("answer", run.reply == *a, show(a), show(&run.reply));
     }
     check(
         "compensated",
@@ -148,6 +161,12 @@ fn differences(want: &Expect, run: &SagaRun) -> Vec<String> {
         want.stuck_hook == run.stuck_hook,
         show(&want.stuck_hook),
         show(&run.stuck_hook),
+    );
+    check(
+        "replayed",
+        want.replayed == run.replayed,
+        show(&want.replayed),
+        show(&run.replayed),
     );
     check(
         "restarts",

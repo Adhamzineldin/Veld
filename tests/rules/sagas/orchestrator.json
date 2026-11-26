@@ -3021,5 +3021,110 @@
       ],
       "compensated": []
     }
+  },
+  {
+    "name": "a request whose key names a saga with another fingerprint is a conflict",
+    "endpoint": "Checkout.checkout",
+    "id": "k-1",
+    "params": {
+      "body": {
+        "roomId": "r-1",
+        "amount": 100
+      }
+    },
+    "script": {
+      "existing": {
+        "fingerprint": "0000000000000000",
+        "status": "completed",
+        "answer": {
+          "status": 201,
+          "error": null,
+          "body": {
+            "id": "b-1"
+          }
+        }
+      }
+    },
+    "expect": {
+      "status": "completed",
+      "replayed": false,
+      "answer": {
+        "status": 409,
+        "error": "Conflict",
+        "body": {
+          "message": "this idempotency key was used with other parameters"
+        }
+      },
+      "calls": [],
+      "compensated": []
+    }
+  },
+  {
+    "name": "a request whose key names a saga that is still running is a conflict",
+    "endpoint": "Checkout.checkout",
+    "id": "k-1",
+    "params": {
+      "body": {
+        "roomId": "r-1",
+        "amount": 100
+      }
+    },
+    "script": {
+      "existing": {
+        "fingerprint": "$same",
+        "status": "compensating"
+      }
+    },
+    "expect": {
+      "status": "compensating",
+      "answer": {
+        "status": 409,
+        "error": "Conflict",
+        "body": {
+          "message": "a request with this idempotency key is still running"
+        }
+      },
+      "calls": [],
+      "compensated": []
+    }
+  },
+  {
+    "name": "a saga that ended stuck is answered again with SagaFailed",
+    "endpoint": "Checkout.checkout",
+    "id": "k-1",
+    "params": {
+      "body": {
+        "roomId": "r-1",
+        "amount": 100
+      }
+    },
+    "script": {
+      "existing": {
+        "fingerprint": "$same",
+        "status": "stuck",
+        "answer": {
+          "status": 502,
+          "error": "SagaFailed",
+          "body": {
+            "step": "charge",
+            "compensated": false
+          }
+        }
+      }
+    },
+    "expect": {
+      "status": "stuck",
+      "replayed": true,
+      "answer": {
+        "status": 502,
+        "error": "SagaFailed",
+        "body": {
+          "step": "charge",
+          "compensated": false
+        }
+      },
+      "calls": [],
+      "compensated": []
+    }
   }
 ]

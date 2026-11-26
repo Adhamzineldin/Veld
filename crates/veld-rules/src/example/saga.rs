@@ -129,13 +129,9 @@ pub(super) fn run_saga_example(
 ) -> Result<ExampleReport, ExampleError> {
     let (filled, script) = fill_all(ir, ex)?;
     let script = script.unwrap_or_default();
-    if let Some(key) = &filled.request.key
-        && key.store != crate::idempotency::StoreState::Empty
-    {
-        return Ok(skipped(
-            ex,
-            "a saga example runs with a key the store does not know",
-        ));
+    let mut script = script;
+    if let Some(key) = &filled.request.key {
+        script.existing = existing_of(&key.store, &filled.request.params);
     }
     let key = filled
         .request
@@ -150,6 +146,7 @@ pub(super) fn run_saga_example(
         params: filled.request.params.clone(),
         id: saga_id(caller, key),
         scope: caller.map(str::to_owned),
+        fingerprint: crate::idempotency::fingerprint(&filled.request.params),
         start_ms: filled.request.now,
     };
     let run = run_saga(&input, &script).map_err(|e| ExampleError::WrongForm {
@@ -171,21 +168,44 @@ pub(super) fn run_saga_example(
     })
 }
 
-fn skipped(ex: &veld_ir::Example, why: &str) -> ExampleReport {
-    ExampleReport {
-        name: ex.name.clone(),
-        verdict: Verdict::Skipped(why.to_owned()),
-        outcome: None,
-        audited: Vec::new(),
+/// What the `key` line says the store holds, as a saga that exists.
+fn existing_of(
+    store: &crate::idempotency::StoreState,
+    params: &std::collections::BTreeMap<String, Json>,
+) -> Option<crate::saga::Existing> {
+    use crate::idempotency::StoreState;
+    let same = crate::idempotency::fingerprint(params);
+    match store {
+        StoreState::Empty => None,
+        StoreState::Other => Some(crate::saga::Existing {
+            fingerprint: format!("not-{same}"),
+            status: Status::Running,
+            answer: None,
+        }),
+        StoreState::Running => Some(crate::saga::Existing {
+            fingerprint: same,
+            status: Status::Running,
+            answer: None,
+        }),
+        StoreState::Stored(a) => Some(crate::saga::Existing {
+            fingerprint: same,
+            status: if a.status < 400 {
+                Status::Completed
+            } else {
+                Status::Compensated
+            },
+            answer: Some(crate::saga::SagaAnswer {
+                status: a.status,
+                error: a.error.clone(),
+                body: a.body.clone(),
+            }),
+        }),
     }
 }
 
 /// What the saga answered, as the outcome of a call.
 fn outcome_of(run: &SagaRun) -> (Outcome, Option<Json>) {
-    let answer = run.state.answer.clone();
-    let Some(answer) = answer else {
-        return (Outcome::Passes, None);
-    };
+    let answer = run.reply.clone();
     match (&answer.error, run.answer_decl) {
         (Some(name), Some(decl)) => {
             let data = answer

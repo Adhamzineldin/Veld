@@ -61,6 +61,9 @@ pub(super) fn run(input: &SagaInput<'_>, script: &Script) -> Result<SagaRun, Sag
         }
     }
     let mut o = Orchestrator::new(input, saga, script);
+    if let Some(existing) = &script.existing {
+        return Ok(o.existing(existing));
+    }
     let mut flow = o.save().and_then(|()| o.drive());
     loop {
         match flow {
@@ -80,6 +83,7 @@ impl<'a> Orchestrator<'a> {
             id: input.id.clone(),
             operation: input.endpoint.sig.clone(),
             scope: input.scope.clone(),
+            fingerprint: input.fingerprint.clone(),
             status: Status::Running,
             parameters: input.params.clone(),
             deadline: input.start_ms.saturating_add(saga.timeout_ms),
@@ -114,8 +118,53 @@ impl<'a> Orchestrator<'a> {
         }
     }
 
+    /// A request whose key names a saga that exists: no state is saved and no call is made.
+    fn existing(mut self, e: &super::Existing) -> SagaRun {
+        self.state.status = e.status;
+        self.state.answer = e.answer.clone();
+        self.state.steps.clear();
+        let conflict = |why: &str| SagaAnswer {
+            status: 409,
+            error: Some("Conflict".to_owned()),
+            body: Some(json!({ "message": why })),
+        };
+        let (reply, replayed) = if e.fingerprint != self.input.fingerprint {
+            (
+                conflict("this idempotency key was used with other parameters"),
+                false,
+            )
+        } else if !e.status.is_final() || e.answer.is_none() {
+            (
+                conflict("a request with this idempotency key is still running"),
+                false,
+            )
+        } else {
+            (e.answer.clone().unwrap_or_else(|| conflict("")), true)
+        };
+        let name = reply.error.clone();
+        self.answer_decl = name.and_then(|n| {
+            self.input
+                .ir
+                .decls
+                .iter()
+                .position(|d| d.name == n)
+                .map(|i| DeclId(u32::try_from(i).unwrap_or(u32::MAX)))
+        });
+        let mut run = self.finish();
+        run.reply = reply;
+        run.replayed = replayed;
+        run
+    }
+
     fn finish(self) -> SagaRun {
+        let reply = self.state.answer.clone().unwrap_or(SagaAnswer {
+            status: 0,
+            error: None,
+            body: None,
+        });
         SagaRun {
+            reply,
+            replayed: false,
             elapsed_ms: self.now - self.input.start_ms,
             calls: self.calls,
             saves: self.saves,
