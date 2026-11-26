@@ -1510,7 +1510,7 @@ impl<E: Endpoints> Handler<E> {
         let mut params = Map::new();
         for p in ep.params.iter().filter(|p| !p.stream) {
             if let Some(typed) = args.get(p.name) {
-                params.insert(p.name.to_string(), p.schema.to_wire(typed, true, false));
+                params.insert(p.name.to_string(), p.schema.to_wire_fingerprint(typed));
             }
         }
         let fingerprint = fingerprint(&params);

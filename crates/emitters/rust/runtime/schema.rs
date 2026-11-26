@@ -170,6 +170,10 @@ struct Opts {
     request: bool,
     /// Canonical mode: datetimes are UTC and uuids lower case.
     normalize: bool,
+    /// With `normalize`: a datetime has its fraction as `.fff`, cut at the millisecond, and only
+    /// when the milliseconds are not zero (`spec/ir.md` section 5.3, the form of the events and
+    /// of the idempotency fingerprint).
+    millis: bool,
 }
 
 const LONG: Schema = Schema::Scalar(Scalar::Long, Rules::NONE);
@@ -208,14 +212,22 @@ impl Schema {
     /// reads `long` and `bytes`. The value must be valid ([`Schema::validate`]).
     #[must_use]
     pub fn from_wire(&self, wire: &Value, request: bool) -> Value {
-        self.map(wire, Opts { dir: Dir::From, request, normalize: false })
+        self.map(wire, Opts { dir: Dir::From, request, normalize: false, millis: false })
     }
 
     /// Typed form to wire form: applies defaults, writes `long` as a string and `bytes` as base64.
     /// `request` leaves read-only fields out; `normalize` is the canonical form.
     #[must_use]
     pub fn to_wire(&self, typed: &Value, request: bool, normalize: bool) -> Value {
-        self.map(typed, Opts { dir: Dir::To, request, normalize })
+        self.map(typed, Opts { dir: Dir::To, request, normalize, millis: false })
+    }
+
+    /// The wire form of a request as the server understands it, for the idempotency fingerprint
+    /// (`spec/rules.md` section 11.10): defaults applied, read-only fields left out, uuids in
+    /// lower case, datetimes in UTC with `Z` and the fraction `.fff` only when it is not zero.
+    #[must_use]
+    pub fn to_wire_fingerprint(&self, typed: &Value) -> Value {
+        self.map(typed, Opts { dir: Dir::To, request: true, normalize: true, millis: true })
     }
 
     /// RFC 8785 bytes of a typed value: defaults applied, UTC datetimes, lower case uuids.
@@ -239,8 +251,9 @@ impl Schema {
                 None => v.clone(),
             },
             Schema::Map(of, _) => match v.as_object() {
+                // `null` is a value only of a `json` map; for any other value it is absent.
                 Some(m) => Value::Object(
-                    m.iter().filter(|(_, x)| !x.is_null()).map(|(k, x)| (k.clone(), of.map(x, o))).collect(),
+                    m.iter().filter(|(_, x)| is_json(of) || !x.is_null()).map(|(k, x)| (k.clone(), of.map(x, o))).collect(),
                 ),
                 None => v.clone(),
             },
@@ -282,7 +295,7 @@ fn map_scalar(k: Scalar, v: &Value, o: Opts) -> Value {
         }
         (Scalar::Uuid, Dir::To, Value::String(s)) if o.normalize => Value::String(s.to_lowercase()),
         (Scalar::Datetime, Dir::To, Value::String(s)) if o.normalize => {
-            Value::String(normalize_datetime(s).unwrap_or_else(|| s.clone()))
+            Value::String(normalize_datetime(s, o.millis).unwrap_or_else(|| s.clone()))
         }
         _ => v.clone(),
     }
@@ -345,6 +358,11 @@ fn required_fields(fields: &[Field], depth: usize) -> Map<String, Value> {
         .collect()
 }
 
+/// Whether the schema is `json`, the one type whose value may be `null` (`spec/language.md` section 5.3).
+fn is_json(s: &Schema) -> bool {
+    matches!(s, Schema::Scalar(Scalar::Json, _))
+}
+
 fn map_model(m: &ModelSchema, v: &Value, o: Opts) -> Value {
     let Some(obj) = v.as_object() else {
         return v.clone();
@@ -360,7 +378,7 @@ fn map_model(m: &ModelSchema, v: &Value, o: Opts) -> Value {
             }
             continue;
         }
-        let mut x = obj.get(f.wire).filter(|x| !x.is_null()).cloned();
+        let mut x = obj.get(f.wire).filter(|x| is_json(f.schema) || !x.is_null()).cloned();
         if x.is_none() {
             x = f.default.and_then(|d| serde_json::from_str(d).ok());
         }
@@ -705,8 +723,9 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
     (y, m, d)
 }
 
-/// The canonical form of a datetime: UTC, `Z`, no trailing zeros in the fraction.
-fn normalize_datetime(s: &str) -> Option<String> {
+/// The canonical form of a datetime: UTC, `Z`, no trailing zeros in the fraction; with `millis`
+/// the fraction is cut at the millisecond and written `.fff` or left out when it is zero.
+fn normalize_datetime(s: &str, millis: bool) -> Option<String> {
     let dt = parse_datetime(s)?;
     let local = days_from_civil(dt.y, dt.mo, dt.d) * 86_400
         + i64::from(dt.h) * 3600
@@ -715,9 +734,14 @@ fn normalize_datetime(s: &str) -> Option<String> {
     let utc = local - dt.offset_min * 60;
     let (y, mo, d) = civil_from_days(utc.div_euclid(86_400));
     let rem = utc.rem_euclid(86_400);
-    let frac: String = if dt.zulu { dt.frac.to_string() } else { dt.frac.chars().take(3).collect() };
-    let frac = frac.trim_end_matches('0');
-    let frac = if frac.is_empty() { String::new() } else { format!(".{frac}") };
+    let frac = if millis {
+        let ms = format!("{:0<3}", dt.frac.chars().take(3).collect::<String>());
+        if ms == "000" { String::new() } else { format!(".{ms}") }
+    } else {
+        let kept: String = if dt.zulu { dt.frac.to_string() } else { dt.frac.chars().take(3).collect() };
+        let kept = kept.trim_end_matches('0');
+        if kept.is_empty() { String::new() } else { format!(".{kept}") }
+    };
     Some(format!("{y:04}-{mo:02}-{d:02}T{:02}:{:02}:{:02}{frac}Z", rem / 3600, rem % 3600 / 60, rem % 60))
 }
 
@@ -773,10 +797,10 @@ mod tests {
 
     #[test]
     fn datetimes_normalise_to_utc() {
-        assert_eq!(normalize_datetime("2024-05-01T12:00:00+02:00").as_deref(), Some("2024-05-01T10:00:00Z"));
-        assert_eq!(normalize_datetime("2024-05-01T10:00:00.500Z").as_deref(), Some("2024-05-01T10:00:00.5Z"));
-        assert_eq!(normalize_datetime("2024-12-31T23:30:00-01:00").as_deref(), Some("2025-01-01T00:30:00Z"));
-        assert!(normalize_datetime("2024-13-01T00:00:00Z").is_none());
+        assert_eq!(normalize_datetime("2024-05-01T12:00:00+02:00", false).as_deref(), Some("2024-05-01T10:00:00Z"));
+        assert_eq!(normalize_datetime("2024-05-01T10:00:00.500Z", false).as_deref(), Some("2024-05-01T10:00:00.5Z"));
+        assert_eq!(normalize_datetime("2024-12-31T23:30:00-01:00", false).as_deref(), Some("2025-01-01T00:30:00Z"));
+        assert!(normalize_datetime("2024-13-01T00:00:00Z", false).is_none());
     }
 
     #[test]
