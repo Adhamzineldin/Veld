@@ -10,6 +10,8 @@ import gen.b.flags.server.BookRoomFacts;
 import gen.b.flags.server.BookRoomRequest;
 import gen.b.flags.server.PublishRoomFacts;
 import gen.b.flags.server.PublishRoomRequest;
+import gen.b.flags.server.ResizeRoomFacts;
+import gen.b.flags.server.ResizeRoomRequest;
 import gen.b.flags.server.RoomsHooks;
 import gen.b.flags.server.RoomsService;
 import gen.b.flags.server.RoomsTestHandler;
@@ -36,6 +38,11 @@ public final class FlagsServe {
       @Override
       public Room publishRoom(
           PublishRoomRequest request, PublishRoomFacts facts, Transition<Phase> transition, RequestContext ctx) {
+        throw new UnsupportedOperationException("the application's handler is not part of the examples");
+      }
+
+      @Override
+      public Room resizeRoom(ResizeRoomRequest request, ResizeRoomFacts facts, RequestContext ctx) {
         throw new UnsupportedOperationException("the application's handler is not part of the examples");
       }
 

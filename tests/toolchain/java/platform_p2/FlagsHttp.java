@@ -9,6 +9,8 @@ import gen.b.flags.server.BookRoomFacts;
 import gen.b.flags.server.BookRoomRequest;
 import gen.b.flags.server.PublishRoomFacts;
 import gen.b.flags.server.PublishRoomRequest;
+import gen.b.flags.server.ResizeRoomFacts;
+import gen.b.flags.server.ResizeRoomRequest;
 import gen.b.flags.server.RoomsFactLoaders;
 import gen.b.flags.server.RoomsHandler;
 import gen.b.flags.server.RoomsHooks;
@@ -55,6 +57,12 @@ public final class FlagsHttp {
     public Room publishRoom(PublishRoomRequest request, PublishRoomFacts facts, Transition<Phase> transition, RequestContext ctx) {
       HANDLED.incrementAndGet();
       return new Room(ID, facts.room().open(), facts.room().capacity(), Phase.LIVE);
+    }
+
+    @Override
+    public Room resizeRoom(ResizeRoomRequest request, ResizeRoomFacts facts, RequestContext ctx) {
+      HANDLED.incrementAndGet();
+      return facts.room();
     }
 
     @Override
@@ -167,6 +175,23 @@ public final class FlagsHttp {
     provider.asked.clear();
     VeldResponse unauthenticated = handler.handle(new VeldRequest("POST", "/rooms/" + ID + "/book", "", Map.of(), null, null)).get();
     check(unauthenticated.status() == 401 && provider.asked.isEmpty(), "a request refused before the flags are read reads nothing");
+
+    // The operand of an `old(...)` that only a flagged `ensure` reads is not evaluated while the flag
+    // is off (the reference removes the statement): it divides by the capacity, which is 0 here.
+    room = new Room(ID, true, 0, Phase.DRAFT);
+    errors.clear();
+    int handled = HANDLED.get();
+    check(post(handler, "resize", "staff").status() == 200, "flag off: no operand, no failure");
+    check(HANDLED.get() == handled + 1, "the handler ran");
+    check(errors.isEmpty(), "and nothing failed: " + errors);
+    // With the flag on the operand is evaluated, and what cannot be evaluated fails the `ensure`.
+    provider.on.add("capacityGuard");
+    VeldResponse unevaluable = post(handler, "resize", "staff");
+    check(unevaluable.status() == 500, "flag on: the operand is evaluated and fails the ensure: " + unevaluable.status());
+    room = new Room(ID, true, 2, Phase.DRAFT);
+    check(post(handler, "resize", "staff").status() == 200, "flag on, a capacity the operand can divide by");
+    provider.on.clear();
+    errors.clear();
 
     // A server created without the provider does not start.
     try {
