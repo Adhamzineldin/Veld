@@ -39,6 +39,7 @@ public final class DerivedEvents {
       return Transport.Outcome.DONE;
     });
     List<Integer> heard = new CopyOnWriteArrayList<>();
+    List<Events.EventRejected> rejected = new CopyOnWriteArrayList<>();
     LedgerSubscriber.subscribe(
         transport,
         new LedgerEventHandlers() {
@@ -46,7 +47,8 @@ public final class DerivedEvents {
           public void record_(Sold event, Events.EventMeta meta) {
             heard.add(event.total());
           }
-        });
+        },
+        new Events.ConsumerOptions().onEventRejected(rejected::add));
     ShopPublisher shop = ShopPublisher.create(transport);
 
     // The publisher computes the field and replaces the value the application put there.
@@ -62,6 +64,25 @@ public final class DerivedEvents {
     transport.publish(TOPIC, "a", forged);
     transport.idle();
     check(heard.equals(List.of(10, 10)), "the total of the message was not believed: " + heard);
+
+    // A consumed event whose derived field cannot be computed is rejected as a rule violation with
+    // that field's violation, whether or not the digests match (spec/rules.md section 17.2).
+    Json.Obj overflow = envelope.get("data").asObject().with("qty", Json.of((long) Integer.MAX_VALUE)).with("price", Json.of(2L));
+    byte[] same = envelope.with("data", overflow).canonical().getBytes(StandardCharsets.UTF_8);
+    transport.publish(TOPIC, "a", same);
+    transport.idle();
+    check(heard.size() == 2 && rejected.size() == 1, "the equal digests: rejected, not handled: " + rejected.size());
+    check(rejected.get(0).reason() == Events.Reason.RULE, "with the reason rule");
+    check(rejected.get(0).violations().size() == 1
+        && rejected.get(0).violations().get(0).rule().equals(Sold.DERIVED_TOTAL), "and the field's violation");
+    byte[] other = envelope.with("veldrules", Json.of("0000000000000000")).with("data", overflow).canonical().getBytes(StandardCharsets.UTF_8);
+    transport.publish(TOPIC, "a", other);
+    transport.idle();
+    check(heard.size() == 2 && rejected.size() == 2, "another digest: rejected as well: " + rejected.size());
+    check(rejected.get(1).reason() == Events.Reason.RULE, "with the reason rule");
+    check(rejected.get(1).violations().size() == 1
+        && rejected.get(1).violations().get(0).rule().equals(Sold.DERIVED_TOTAL), "and the field's violation");
+    check(rejected.get(1).violations().get(0).error() != null, "with the error set");
 
     // A derived field that fails stops the publish, like a violated invariant: nothing is sent.
     int sent = wire.size();

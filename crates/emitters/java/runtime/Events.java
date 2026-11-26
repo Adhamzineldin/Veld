@@ -781,7 +781,17 @@ public final class Events {
       Derive.take();
       prepared = Derive.output(def.schema(), prepared);
       if (!Objects.equals(env.veldrules(), def.digest())) {
-        Derive.take();
+        // The consumer cannot build the value its handler is promised, whatever the digests say
+        // (spec/rules.md section 17.2): a derived field that failed rejects the message.
+        List<Violation> uncomputed = Derive.take();
+        if (!uncomputed.isEmpty()) {
+          report(options.onRuleViolation, def, RuleWalk.Position.INPUT, RuleWalk.Outcome.REJECTED, uncomputed, System.nanoTime());
+          StringBuilder text = new StringBuilder();
+          for (Violation v : uncomputed) {
+            text.append(text.length() == 0 ? "" : "; ").append(v.message());
+          }
+          return reject(message, Reason.RULE, text.toString(), def.name(), violationIssues(uncomputed), uncomputed);
+        }
       }
       // #endif
       if (Objects.equals(env.veldrules(), def.digest())) {
