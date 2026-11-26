@@ -13,13 +13,25 @@
 
 mod canon;
 mod consume;
+mod dead_letter;
+mod delivery;
+mod inbox;
 mod publish;
 
 #[cfg(test)]
 mod tests;
 
 pub use consume::{ConsumeError, Received, decode};
-pub use publish::{Inputs, PublishError, encode, source_of};
+pub use dead_letter::{
+    ATTEMPTS_MEMBER, GROUP_MEMBER, ISSUES_MEMBER, Issue, REASON_MEMBER, Reason, VIOLATIONS_MEMBER,
+    dead_letter_copy,
+};
+pub use delivery::{
+    Answer, FailedRun, HandlerResult, Policy, Settlement, Timing, handled, ignored, rejected,
+    wait_ms,
+};
+pub use inbox::MemoryInbox;
+pub use publish::{Inputs, PublishError, encode, encode_unchecked, source_of};
 
 /// The media type of a message (`spec/events.md` section 6.2).
 pub const MEDIA_TYPE: &str = "application/cloudevents+json; charset=UTF-8";

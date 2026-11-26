@@ -86,15 +86,7 @@ pub fn encode(
     value: &Json,
     inputs: &Inputs<'_>,
 ) -> Result<Vec<u8>, PublishError> {
-    let ch = ir
-        .channels
-        .get(channel.index())
-        .ok_or(PublishError::NoSuchChannel)?;
-    let decl = ir.decls.get(event.index());
-    let (decl, rules_digest) = match decl.map(|d| (d, &d.kind)) {
-        Some((d, DeclKind::Event(e))) if ch.events.contains(&event) => (d, e.rules_digest.clone()),
-        _ => return Err(PublishError::NotCarried(event.0.to_string())),
-    };
+    let (decl, rules_digest) = carried_event(ir, channel, event)?;
     let mut canonical_value = value.clone();
     super::canon::scalars(ir, &Type::Decl(event), &mut canonical_value);
     let (data, found) = check_decl_full(ir, decl, &canonical_value, Options::default())
@@ -102,6 +94,57 @@ pub fn encode(
     if !found.is_empty() {
         return Err(PublishError::Invalid(found));
     }
+    let subject = key_text(ir, channel, &data)?;
+    assemble(decl, rules_digest, subject, data, inputs)
+}
+
+/// The message a publisher would send, without the checks of section 7: the shape and the
+/// invariants of `value` are not checked, defaults are not applied and a key that cannot be read
+/// leaves `subject` out. It exists to build the messages that a consumer must reject, for
+/// `veld test --live` (`spec/events.md` section 10.9). `rules_digest` is the event's own, so the
+/// consumer checks the rules.
+///
+/// # Errors
+/// [`PublishError`] for an event the channel does not carry, an empty id or an empty source.
+pub fn encode_unchecked(
+    ir: &Ir,
+    channel: ChannelId,
+    event: DeclId,
+    value: &Json,
+    inputs: &Inputs<'_>,
+) -> Result<Vec<u8>, PublishError> {
+    let (decl, rules_digest) = carried_event(ir, channel, event)?;
+    let mut data = value.clone();
+    super::canon::scalars(ir, &Type::Decl(event), &mut data);
+    let subject = key_text(ir, channel, &data).ok().flatten();
+    assemble(decl, rules_digest, subject, data, inputs)
+}
+
+fn carried_event(
+    ir: &Ir,
+    channel: ChannelId,
+    event: DeclId,
+) -> Result<(&veld_ir::Decl, Option<String>), PublishError> {
+    let ch = ir
+        .channels
+        .get(channel.index())
+        .ok_or(PublishError::NoSuchChannel)?;
+    match ir.decls.get(event.index()).map(|d| (d, &d.kind)) {
+        Some((d, DeclKind::Event(e))) if ch.events.contains(&event) => {
+            Ok((d, e.rules_digest.clone()))
+        }
+        _ => Err(PublishError::NotCarried(event.0.to_string())),
+    }
+}
+
+/// Steps 4 and 5 of section 7: the attributes and the canonical bytes.
+fn assemble(
+    decl: &veld_ir::Decl,
+    rules_digest: Option<String>,
+    subject: Option<String>,
+    data: Json,
+    inputs: &Inputs<'_>,
+) -> Result<Vec<u8>, PublishError> {
     if inputs.id.is_empty() {
         return Err(PublishError::EmptyId);
     }
@@ -113,7 +156,7 @@ pub fn encode(
     m.insert("id".into(), Json::from(inputs.id));
     m.insert("source".into(), Json::from(inputs.source));
     m.insert("type".into(), Json::from(decl.sig.as_str()));
-    if let Some(subject) = key_text(ir, channel, &data)? {
+    if let Some(subject) = subject {
         m.insert("subject".into(), Json::from(subject));
     }
     m.insert("time".into(), Json::from(format_datetime(inputs.time_ms)));

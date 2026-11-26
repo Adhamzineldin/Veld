@@ -135,3 +135,174 @@ fn the_failures_of_section_8_are_typed() {
     let err = receive(&ir, &other).unwrap_err();
     assert!(matches!(err, ConsumeError::UnknownType(_)) && err.rejection().is_none());
 }
+
+// ---- phase E2: the dead-letter copy, the settlement and the inbox -----------------------------
+
+#[test]
+fn a_copy_of_a_valid_message_is_a_valid_message() {
+    let ir = ir();
+    let original = send(&ir, "Paid", json!({ "id": "k" })).unwrap();
+    let issue = Issue {
+        path: "$.id".into(),
+        code: "type".into(),
+        message: "no".into(),
+    };
+    let copy = dead_letter_copy(&original, Reason::Shape, "g", 0, &[issue], &[]);
+    let handled = [event(&ir, "Paid")];
+    let got = decode(&ir, &handled, &copy).unwrap();
+    assert_eq!(got.id, "i1");
+    // The members the copy added are envelope members the consumer does not know: ignored.
+    let m: serde_json::Value = serde_json::from_slice(&copy).unwrap();
+    assert_eq!(m["veldreason"], "shape");
+    assert_eq!(m["veldgroup"], "g");
+    assert_eq!(m["veldattempts"], 0);
+    assert!(m["veldissues"].is_string() && m.get("veldviolations").is_none());
+}
+
+#[test]
+fn a_copy_without_issues_and_violations_has_neither_member() {
+    let copy = dead_letter_copy(br#"{"a":1}"#, Reason::Handler, "g", 4, &[], &[]);
+    assert_eq!(
+        String::from_utf8(copy).unwrap(),
+        r#"{"a":1,"veldattempts":4,"veldgroup":"g","veldreason":"handler"}"#
+    );
+}
+
+#[test]
+fn what_is_not_an_object_is_copied_as_it_is() {
+    for original in [&b"[]"[..], b"7", b"nope", b"\xff", b""] {
+        let copy = dead_letter_copy(original, Reason::Malformed, "g", 0, &[], &[]);
+        assert_eq!(copy, original);
+    }
+}
+
+#[test]
+fn the_reason_of_a_rejection_is_the_word_of_the_spec() {
+    assert_eq!(Reason::Malformed.name(), "malformed");
+    assert_eq!(Reason::Shape.name(), "shape");
+    assert_eq!(Reason::Rule.name(), "rule");
+    assert_eq!(Reason::Handler.name(), "handler");
+    assert_eq!(
+        Reason::of_rejection(&ConsumeError::Malformed(String::new())),
+        Some(Reason::Malformed)
+    );
+    assert_eq!(
+        Reason::of_rejection(&ConsumeError::UnknownType(String::new())),
+        None
+    );
+}
+
+#[test]
+fn the_wait_doubles_up_to_the_maximum_and_never_overflows() {
+    let t = Timing {
+        delay_ms: 1000,
+        max_delay_ms: 60_000,
+    };
+    let waits: Vec<u64> = (1..=8)
+        .map(|k| wait_ms(veld_ir::Backoff::Exponential, k, t))
+        .collect();
+    assert_eq!(
+        waits,
+        [1000, 2000, 4000, 8000, 16_000, 32_000, 60_000, 60_000]
+    );
+    assert_eq!(wait_ms(veld_ir::Backoff::Exponential, u32::MAX, t), 60_000);
+    assert_eq!(wait_ms(veld_ir::Backoff::Fixed, 5, t), 1000);
+    let huge = Timing {
+        delay_ms: u64::MAX,
+        max_delay_ms: u64::MAX,
+    };
+    assert_eq!(wait_ms(veld_ir::Backoff::Exponential, 70, huge), u64::MAX);
+}
+
+#[test]
+fn a_failed_handler_under_retry_runs_max_plus_one_times() {
+    let policy = Policy {
+        retry: Some(veld_ir::Retry {
+            max: 2,
+            backoff: veld_ir::Backoff::Fixed,
+        }),
+        dead_letter: true,
+    };
+    let s = handled(policy, Timing::default(), 1, &[HandlerResult::Failed]);
+    assert_eq!(s.runs, 3);
+    assert_eq!(s.waits_ms, [1000, 1000]);
+    assert_eq!(s.copy, Some(Reason::Handler));
+    assert_eq!(s.copy_attempts, 3);
+    assert_eq!(s.answer, Answer::Done);
+    assert_eq!(s.answer_if_the_copy_fails(), Answer::Again);
+    assert_eq!(
+        s.failures
+            .iter()
+            .map(|f| (f.attempt, f.last))
+            .collect::<Vec<_>>(),
+        [(1, false), (2, false), (3, true)]
+    );
+}
+
+#[test]
+fn without_retry_a_failed_handler_leaves_the_message_to_the_transport() {
+    let s = handled(
+        Policy::default(),
+        Timing::default(),
+        2,
+        &[HandlerResult::Failed],
+    );
+    assert_eq!((s.runs, s.answer, s.copy), (1, Answer::Again, None));
+    assert_eq!(s.failures.len(), 1);
+    assert!(!s.failures[0].last && s.failures[0].attempt == 2);
+}
+
+#[test]
+fn a_rejection_is_acknowledged_and_copied_only_with_a_dead_letter() {
+    let plain = rejected(Policy::default(), Reason::Rule);
+    assert_eq!(
+        (plain.runs, plain.copy, plain.answer),
+        (0, None, Answer::Done)
+    );
+    let dead = rejected(
+        Policy {
+            retry: None,
+            dead_letter: true,
+        },
+        Reason::Malformed,
+    );
+    assert_eq!(dead.copy, Some(Reason::Malformed));
+    assert_eq!(dead.copy_attempts, 0);
+    assert_eq!(ignored().answer, Answer::Done);
+}
+
+#[test]
+fn the_unchecked_message_is_the_message_of_a_publisher_that_did_not_check() {
+    let ir = ir();
+    let inputs = Inputs {
+        id: "i1",
+        source: &source_of(&ir, ServiceId(0)),
+        time_ms: 1_000,
+    };
+    // A value the publisher refuses: the invariant `amount > 0` is violated.
+    let bad = json!({ "id": "k", "amount": 0 });
+    assert!(matches!(
+        encode(&ir, ChannelId(0), event(&ir, "Paid"), &bad, &inputs),
+        Err(PublishError::Invalid(_))
+    ));
+    let bytes = encode_unchecked(&ir, ChannelId(0), event(&ir, "Paid"), &bad, &inputs).unwrap();
+    let m: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(m["data"], bad);
+    assert_eq!(m["subject"], "k");
+    assert!(
+        m.get("veldrules").is_some(),
+        "the consumer must check the rules"
+    );
+    // The consumer rejects it as the reference says: `rule`.
+    let got = decode(&ir, &[event(&ir, "Paid")], &bytes);
+    assert!(matches!(got, Err(ConsumeError::Rule(_))), "{got:?}");
+    // A value of the wrong shape, and a missing key, still make a message.
+    let worse = json!({ "amount": "x" });
+    let bytes = encode_unchecked(&ir, ChannelId(0), event(&ir, "Paid"), &worse, &inputs).unwrap();
+    let m: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert!(m.get("subject").is_none());
+    assert!(matches!(
+        decode(&ir, &[event(&ir, "Paid")], &bytes),
+        Err(ConsumeError::Shape(_))
+    ));
+}

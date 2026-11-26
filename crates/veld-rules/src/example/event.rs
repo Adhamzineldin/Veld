@@ -166,12 +166,39 @@ pub fn run_event_example(ir: &Ir, ex: &Example) -> Result<ExampleReport, Example
         example: ex.name.clone(),
         reason: "an event example has no `expect` line".to_owned(),
     })?;
+    let verdict = match live_only(ir, expect, &filled, &delivery) {
+        Some(why) => Verdict::Skipped(why),
+        None => compare(ir, expect, &delivery),
+    };
     Ok(ExampleReport {
         name: ex.name.clone(),
-        verdict: compare(ir, expect, &delivery),
+        verdict,
         outcome: None,
         audited: Vec::new(),
     })
+}
+
+/// An example that expects `rejected` and is delivered offline because of a constraint, which the
+/// reference does not check (`spec/events.md` section 12): only a live run can tell. The reason.
+fn live_only(
+    ir: &Ir,
+    expect: &EventExpect,
+    filled: &FilledEvent,
+    delivery: &Delivery,
+) -> Option<String> {
+    if !matches!(
+        (expect, delivery),
+        (EventExpect::Rejected, Delivery::Handled { .. })
+    ) {
+        return None;
+    }
+    let found = super::constraints::findings(ir, filled.event, &filled.value);
+    let first = found.first()?;
+    let verb = if first.decided { "breaks" } else { "may break" };
+    Some(format!(
+        "live only: `{}` {verb} {}; a generated consumer rejects it as `shape`, the reference evaluator does not check constraints",
+        first.path, first.what
+    ))
 }
 
 fn handler_name(ir: &Ir, service: ServiceId, handler: &str) -> String {
@@ -209,7 +236,11 @@ pub fn describe_expectation(ir: &Ir, expect: &EventExpect) -> String {
             .iter()
             .map(|c| {
                 let not = if c.called { "" } else { " not" };
-                format!("{}{not} called", handler_name(ir, c.service, &c.handler))
+                let once = if c.once { " once" } else { "" };
+                format!(
+                    "{}{not} called{once}",
+                    handler_name(ir, c.service, &c.handler)
+                )
             })
             .collect::<Vec<_>>()
             .join("; "),

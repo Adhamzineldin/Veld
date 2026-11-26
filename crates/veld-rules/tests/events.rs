@@ -227,3 +227,99 @@ fn every_event_vector_passes_in_the_reference_evaluator() {
     assert!(run >= 11, "only {run} event examples ran");
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
+
+// ---- phase E2: `called once`, and the constraints only a live run checks ------------------------
+
+const LIMITED: &str = r#"
+event Limited {
+  n: int @max(10)
+  s: string @pattern("^a+$")
+  t: string @length(min: 2)
+  rule even: n % 2 == 0
+}
+channel C { carries Limited }
+service P { publishes C }
+service S { subscribes C as "g" { on Limited -> h } }
+"#;
+
+fn limited(given: &str, expect: &str) -> Verdict {
+    let ir = compile_text(&format!(
+        "{LIMITED}\nexample \"x\" {{ given event Limited {given}\n {expect} }}"
+    ));
+    run_example(&ir, &ir.examples[0]).unwrap().verdict
+}
+
+fn skipped(v: Verdict) -> String {
+    match v {
+        Verdict::Skipped(why) => why,
+        other => panic!("expected a skip, found {other:?}"),
+    }
+}
+
+#[test]
+fn called_once_holds_where_called_holds_offline() {
+    let once = verdict(
+        "example \"x\" { given event Paid { amount: 1.00 }\n expect A.one called once\n expect B.two called once\n expect B.three not called }",
+    );
+    assert_eq!(once, Verdict::Passed);
+    let Verdict::Failed(m) =
+        verdict("example \"x\" { given event Paid { amount: 0.00 }\n expect A.one called once }")
+    else {
+        panic!("a rejected event calls nothing, once or not")
+    };
+    assert_eq!(m.actual, "rejected (rule: rule positive)");
+    assert_eq!(m.expected, "A.one called once");
+}
+
+#[test]
+fn a_value_that_breaks_a_constraint_and_is_expected_rejected_is_live_only() {
+    let why = skipped(limited(r#"{ n: 12, s: "aa", t: "ab" }"#, "expect rejected"));
+    assert!(why.starts_with("live only: "), "{why}");
+    assert!(why.contains("$.n") && why.contains("@max(10)"), "{why}");
+    let why = skipped(limited(r#"{ n: 2, s: "aa", t: "a" }"#, "expect rejected"));
+    assert!(
+        why.contains("$.t") && why.contains("@length(min: 2)"),
+        "{why}"
+    );
+}
+
+#[test]
+fn a_pattern_cannot_be_decided_offline_and_a_decided_constraint_comes_first() {
+    let why = skipped(limited(r#"{ n: 2, s: "b", t: "ab" }"#, "expect rejected"));
+    assert!(
+        why.contains("may break") && why.contains("@pattern"),
+        "{why}"
+    );
+    let why = skipped(limited(r#"{ n: 12, s: "b", t: "ab" }"#, "expect rejected"));
+    assert!(why.contains("breaks") && why.contains("@max(10)"), "{why}");
+}
+
+#[test]
+fn an_event_rejected_for_another_reason_is_not_live_only() {
+    // The rule `even` is violated: the reference rejects the event, so the example passes.
+    assert_eq!(
+        limited(r#"{ n: 3, s: "aa", t: "ab" }"#, "expect rejected"),
+        Verdict::Passed
+    );
+}
+
+#[test]
+fn an_example_that_expects_a_call_is_not_live_only_and_other_failures_stay_failures() {
+    assert_eq!(
+        limited(r#"{ n: 2, s: "aa", t: "ab" }"#, "expect S.h called once"),
+        Verdict::Passed
+    );
+    // A constraint is broken, the reference delivers, and the example expects a call: passes.
+    assert_eq!(
+        limited(r#"{ n: 12, s: "aa", t: "ab" }"#, "expect S.h called"),
+        Verdict::Passed
+    );
+    // Nothing breaks any constraint: an example that expects `rejected` fails as before.
+    let ir = compile_text(
+        "event Plain { n: int }\nchannel C { carries Plain }\nservice P { publishes C }\nservice S { subscribes C as \"g\" { on Plain -> h } }\nexample \"x\" { given event Plain { n: 1 }\n expect rejected }",
+    );
+    assert!(matches!(
+        run_example(&ir, &ir.examples[0]).unwrap().verdict,
+        Verdict::Failed(_)
+    ));
+}
