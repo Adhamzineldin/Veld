@@ -115,3 +115,16 @@ fn the_words_stay_ordinary_names() {
     assert_eq!(codes(src), Vec::<&str>::new());
     assert!(one(src).ir.is_some());
 }
+
+#[test]
+fn a_misspelling_is_corrected_but_the_list_of_known_annotations_is_unchanged() {
+    let out = one("model A {\n  x: string @pi\n}\n");
+    let d = out.diagnostics.iter().find(|d| d.code == "E0601").unwrap();
+    assert_eq!(d.help.as_deref(), Some("did you mean `pii`?"));
+    let out = one("@bogus\nmodel A { x: int }\n");
+    let help = out.diagnostics[0].help.clone().unwrap_or_default();
+    assert!(
+        !help.contains("@pii") && !help.contains("@secret") && !help.contains("@retain"),
+        "{help}"
+    );
+}

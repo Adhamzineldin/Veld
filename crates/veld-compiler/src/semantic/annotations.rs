@@ -141,7 +141,13 @@ fn unknown(a: &Annotation, target: Target) -> Diagnostic {
         .iter()
         .filter(|s| !hidden_from(s, target))
         .collect();
-    let known: Vec<String> = visible.iter().map(|s| format!("@{}", s.name)).collect();
+    // The list of known annotations stays as it was before `@pii`, `@secret` and `@retain`; a
+    // misspelling of one of them is still answered with `did you mean`.
+    let known: Vec<String> = visible
+        .iter()
+        .filter(|s| !matches!(s.name, "pii" | "secret" | "retain"))
+        .map(|s| format!("@{}", s.name))
+        .collect();
     Diagnostic::error(
         "E0601",
         format!("unknown annotation `@{}`", a.name.name),

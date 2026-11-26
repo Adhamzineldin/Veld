@@ -87,7 +87,9 @@ fn delete_needs_no_pii_field_and_a_date_will_do() {
 #[test]
 fn every_mistake_of_the_arguments_is_e1310() {
     let model = |args: &str| {
-        format!("@retain({args})\nmodel M {{\n  id: uuid\n  seen: datetime\n  who: string @pii\n}}\n")
+        format!(
+            "@retain({args})\nmodel M {{\n  id: uuid\n  seen: datetime\n  who: string @pii\n}}\n"
+        )
     };
     for bad in [
         "",
