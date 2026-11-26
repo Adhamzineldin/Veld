@@ -11,6 +11,7 @@ use crate::expr::{EndpointPrinter, EndpointScope, Principal};
 use crate::tree::FileCtx;
 use crate::types::ts_type;
 use crate::util::{ts_str, type_name};
+use crate::validate::schema_expr;
 
 /// Whether `d` has a `@visible` field of its own or an inherited one.
 #[must_use]
@@ -159,7 +160,28 @@ pub fn endpoint_members(fc: &mut FileCtx<'_, '_>, svc: &Service, ep: &Endpoint) 
             ts_str(tenant_kind(&field.ty))
         ));
     }
+    if fc.tree.uses_audit() && ep.audited && !ep.success.stream {
+        out.push(audit_member(fc, svc, ep));
+    }
     out
+}
+
+/// `audit: { authenticated, principal?, errors }`: what the audit event of an endpoint needs.
+fn audit_member(fc: &mut FileCtx<'_, '_>, svc: &Service, ep: &Endpoint) -> String {
+    let ir = fc.tree.ir;
+    let mut parts = vec![format!("authenticated: {}", ep.auth.kind != AuthKind::None)];
+    if let Some(p) = &svc.principal {
+        let schema = schema_expr(fc, &Type::Decl(p.decl), &veld_ir::Constraints::default());
+        parts.push(format!("principal: {schema}"));
+    }
+    let errors: Vec<String> = ep
+        .errors
+        .iter()
+        .filter(|e| ir.package(ir.decl(e.decl).package).kind != veld_ir::PackageKind::Prelude)
+        .map(|e| ts_str(&ir.decl(e.decl).sig))
+        .collect();
+    parts.push(format!("errors: [{}]", errors.join(", ")));
+    format!("audit: {{ {} }},", parts.join(", "))
 }
 
 /// Whether a fact or an answer of `ep` can hold a tenant-scoped value (`spec/platform.md` section 3).

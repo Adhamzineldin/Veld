@@ -60,6 +60,16 @@ pub fn service_uses_platform(tree: &Tree<'_>, svc: &Service) -> bool {
         .any(|ep| veld_emit_typescript::platform::endpoint_uses_platform(tree, ep))
 }
 
+/// Whether the service has an audited endpoint that the server audits: its hooks require `audit`.
+#[must_use]
+pub fn service_audits(tree: &Tree<'_>, svc: &Service) -> bool {
+    tree.uses_audit()
+        && svc
+            .endpoints
+            .iter()
+            .any(|ep| ep.audited && !ep.success.stream)
+}
+
 /// Whether the hooks of the service take a clock: endpoint rules read it, and so does every
 /// feature of platform phase P1.
 #[must_use]

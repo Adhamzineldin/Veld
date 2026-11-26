@@ -79,6 +79,10 @@ export interface FieldSchema {
   /** Set by the server (`@tenant`): a request may lack it, and one that carries it is kept as received. */
   st?: boolean;
   // #endif
+  // #if audit
+  /** `@pii` or `@secret`: the value is left out of an audit event. */
+  pii?: boolean;
+  // #endif
 }
 
 export type Schema = Bounds &
@@ -2419,6 +2423,10 @@ export interface HandlerHooks {
   /** What the platform features keep of the request that is running: set by the router core, never by the application. */
   platform?: PlatformState;
   // #endif
+  // #if audit
+  /** Called once for every request that matched an audited endpoint, after its outcome is known and before the answer is written (spec/platform.md section 4). */
+  audit?: (event: AuditEvent) => void | Promise<void>;
+  // #endif
   // #if outbox
   /** The application's outbox (`Outbox` of `runtime/events.ts`), required by an endpoint whose move emits. */
   outbox?: object;
@@ -2483,6 +2491,10 @@ export interface ServerEndpoint extends EndpointSpec {
   // #if tenancy
   /** The field of the principal that holds the caller's tenant: an answer or a fact of the endpoint can be tenant-scoped. */
   tenant?: TenantSpec;
+  // #endif
+  // #if audit
+  /** The endpoint is audited: what its event needs to know (spec/platform.md section 4). */
+  audit?: AuditSpec;
   // #endif
 }
 
@@ -2863,6 +2875,9 @@ async function guard(
   if (bound.issues.length > 0) {
     return problem(std.validation, 'ValidationError', 422, ep.sig, { issues: bound.issues });
   }
+  // #if audit
+  auditParameters(ep, bound, hooks);
+  // #endif
   // #if flags
   await readFlags(ep, ctx, hooks);
   // #endif
@@ -3094,8 +3109,12 @@ export interface PlatformState {
   hidden: string[];
   /** The parameters bound in step 4, in wire form. */
   parameters?: Record<string, unknown>;
-  /** The facts loaded so far, in wire form. */
+  /** The facts loaded so far, in wire form, with their `@pii` and `@secret` values left out. */
   facts: Record<string, unknown>;
+  /** The rooted paths left out of `parameters` and `facts` because of `@pii` or `@secret`. */
+  redacted?: string[];
+  /** Why the audit event cannot be built: a value that does not have the shape of its type cannot be known to be clean. */
+  broken?: unknown;
 }
 
 /** Who a response is for: the model of the caller (its signature) and the value the auth hook returned. */
@@ -3245,7 +3264,7 @@ function factKept(ep: ServerEndpoint, step: FactStep, value: unknown, ctx: Reque
   }
   // #endif
   // #if audit_facts
-  if (hooks.platform !== undefined && step.schema !== undefined) hooks.platform.facts[step.name] = toWire(step.schema, value);
+  if (hooks.platform !== undefined && step.schema !== undefined) auditFact(hooks.platform, step.name, step.schema, value);
   // #endif
   // #if facts_platform
   void ep;
@@ -3389,6 +3408,241 @@ function checkItemTenant(ep: ServerEndpoint, what: string, item: unknown, hooks:
   if (found.length === 0) return;
   ruleEvent(hooks, ep, 'output', 'rejected', found, started);
   throw new Error(`${ep.name}: ${what} holds a value of another tenant`);
+}
+// #endif
+// #if audit
+
+// ---------------------------------------------------------------------------
+// The audit log (spec/platform.md section 4)
+// ---------------------------------------------------------------------------
+
+/** What the application's `audit` hook is given, once per request that matched an audited endpoint. */
+export interface AuditEvent {
+  /** The operation signature of the endpoint. */
+  operation: string;
+  /** The request's clock reading, `YYYY-MM-DDTHH:MM:SS[.mmm]Z`. */
+  time: string;
+  /** The caller, as the auth hook returned it, without its `@pii` and `@secret` fields. Absent when authentication failed and for an endpoint with no auth. */
+  principal?: unknown;
+  outcome: { status: number; error?: string };
+  /** The parameters bound in step 4, by name, in wire form; `{}` for a request that ended before. */
+  parameters: Record<string, unknown>;
+  /** The facts loaded when the request ended, by name, in wire form. */
+  facts: Record<string, unknown>;
+  /** The success value, or the data of an error the contract declares itself: as it was sent. Absent when the answer has no such body. */
+  result?: unknown;
+  /** The wire paths `@visible` dropped from the result, sorted, without duplicates. */
+  hidden: string[];
+  /** The rooted paths left out of the other members because of `@pii` or `@secret`, sorted, without duplicates. */
+  redacted: string[];
+}
+
+/** What the generator says of an audited endpoint. */
+export interface AuditSpec {
+  /** The endpoint has auth: its event has a `principal` when the auth hook returned one. */
+  authenticated: boolean;
+  /** The schema of the principal's model, when the service has a principal. A principal without a model is kept as it is. */
+  principal?: Schema;
+  /** The signatures of the errors the contract declares itself (not the prelude's): only their data is a `result`. */
+  errors: readonly string[];
+}
+
+/** A hook that failed: the answer was sent unchanged, and `onError` hears this with the event. */
+export class AuditFailure extends Error {
+  readonly event: AuditEvent;
+  /** What the hook threw or rejected with. */
+  readonly reason: unknown;
+
+  constructor(reason: unknown, event: AuditEvent) {
+    super('the audit hook failed');
+    this.name = 'AuditFailure';
+    this.reason = reason;
+    this.event = event;
+  }
+}
+
+function auditMismatch(path: string, expected: string): Error {
+  return new Error(`audit: ${path} is not ${expected}: a value that does not have the shape of its type cannot be known to be clean`);
+}
+
+/**
+ * `v`, a wire value of `schema`, with every `@pii` and `@secret` field left out at any depth; the
+ * rooted paths of what was left out go to `out`. A field is removed whole, with whatever it holds.
+ * A member the type does not know is kept. This is `veld_rules::redact_type_at`.
+ */
+export function redactNode(schema: Schema, v: unknown, path: string, out: string[]): unknown {
+  if (v === null || v === undefined) return v;
+  const s = resolve(schema);
+  switch (s.k) {
+    case 'list':
+      if (!Array.isArray(v)) throw auditMismatch(path, 'an array');
+      return v.map((x, i) => redactNode(s.of, x, `${path}[${i}]`, out));
+    case 'map': {
+      if (!isObject(v)) throw auditMismatch(path, 'an object');
+      const kept: Record<string, unknown> = {};
+      for (const k of Object.keys(v)) kept[k] = redactNode(s.of, v[k], `${path}.${k}`, out);
+      return kept;
+    }
+    case 'page': {
+      if (!isObject(v)) throw auditMismatch(path, 'an object');
+      const kept: Record<string, unknown> = { ...v };
+      if (Object.prototype.hasOwnProperty.call(v, 'items')) kept['items'] = redactNode({ k: 'list', of: s.of }, v['items'], `${path}.items`, out);
+      return kept;
+    }
+    case 'object': {
+      if (!isObject(v)) throw auditMismatch(path, 'an object');
+      const kept: Record<string, unknown> = { ...v };
+      for (const f of s.fields) {
+        const key = f.w ?? f.n;
+        if (!Object.prototype.hasOwnProperty.call(v, key)) continue;
+        const here = `${path}.${key}`;
+        if (f.pii === true) {
+          delete kept[key];
+          out.push(here);
+        } else {
+          kept[key] = redactNode(f.t, v[key], here, out);
+        }
+      }
+      return kept;
+    }
+    case 'union': {
+      if (!isObject(v)) throw auditMismatch(path, 'an object');
+      const label = v[s.d];
+      const arm = typeof label === 'string' && Object.prototype.hasOwnProperty.call(s.arms, label) ? s.arms[label] : undefined;
+      if (arm === undefined) throw new Error(`audit: ${path} names no arm of the union`);
+      return redactNode(arm, v, path, out);
+    }
+    default:
+      return v;
+  }
+}
+
+function noteRedacted(state: PlatformState, paths: string[]): void {
+  state.redacted = [...(state.redacted ?? []), ...paths];
+}
+
+/** Step 4 has passed: the parameters as bound, in wire form, without their `@pii` and `@secret` values. */
+function auditParameters(ep: ServerEndpoint, bound: Bound, hooks: HandlerHooks): void {
+  const state = hooks.platform;
+  if (state === undefined || ep.audit === undefined) return;
+  const parameters: Record<string, unknown> = {};
+  try {
+    for (const p of ep.params) {
+      const v = bound.value[p.name];
+      if (p.s === true || v === undefined) continue;
+      const paths: string[] = [];
+      parameters[p.name] = redactNode(p.t, toWire(p.t, v), `parameters.${p.name}`, paths);
+      noteRedacted(state, paths);
+    }
+    state.parameters = parameters;
+  } catch (err) {
+    state.broken = err;
+  }
+}
+
+/** A fact that was loaded (and was not refused): kept in wire form, as the handler gets it, without its `@pii` and `@secret` values. */
+function auditFact(state: PlatformState, name: string, schema: Schema, value: unknown): void {
+  try {
+    const paths: string[] = [];
+    state.facts[name] = redactNode(schema, toWire(schema, value), `facts.${name}`, paths);
+    noteRedacted(state, paths);
+  } catch (err) {
+    state.broken = err;
+  }
+}
+
+/** `YYYY-MM-DDTHH:MM:SS[.mmm]Z`: the fraction only when it is not zero. */
+function eventTime(at: Date): string {
+  return at.toISOString().replace(/\.000Z$/, 'Z');
+}
+
+function auditBody(res: VeldResponse): unknown {
+  if (res.body === null) return undefined;
+  try {
+    return JSON.parse(res.body) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The event of one request, from the answer that is about to be written and what the request kept. */
+function buildAuditEvent(ep: ServerEndpoint, spec: AuditSpec, res: VeldResponse, state: PlatformState): AuditEvent {
+  if (state.broken !== undefined) throw state.broken;
+  const redacted: string[] = [...(state.redacted ?? [])];
+  const doc = auditBody(res);
+  const outcome: AuditEvent['outcome'] = { status: res.status };
+  let result: unknown;
+  if (res.status >= 400) {
+    const problemDoc = isObject(doc) ? doc : {};
+    if (typeof problemDoc['title'] === 'string') outcome.error = problemDoc['title'];
+    const declared = ep.errors.find((e) => e.sig === problemDoc['type']);
+    if (declared !== undefined && spec.errors.includes(declared.sig) && problemDoc['data'] !== undefined) {
+      result = redactNode(declared.schema, problemDoc['data'], 'result', redacted);
+    }
+  } else if (ep.success !== null && doc !== undefined) {
+    result = redactNode(ep.success, doc, 'result', redacted);
+  }
+  const event: AuditEvent = {
+    operation: ep.sig,
+    time: eventTime(state.at ?? new Date()),
+    outcome,
+    parameters: state.parameters ?? {},
+    facts: state.facts,
+    hidden: [...new Set(state.hidden)].sort(),
+    redacted: [...new Set(redacted)].sort(),
+  };
+  const who = state.ctx?.principal;
+  if (spec.authenticated && who !== undefined && who !== null) {
+    const paths: string[] = [];
+    event.principal = spec.principal === undefined ? who : redactNode(spec.principal, toWire(spec.principal, who), 'principal', paths);
+    event.redacted = [...new Set([...event.redacted, ...paths])].sort();
+  }
+  if (result !== undefined) event.result = result;
+  return event;
+}
+
+function auditFailed(hooks: HandlerHooks, state: PlatformState, err: unknown): void {
+  try {
+    hooks.onError?.(err, state.ctx ?? { method: '', path: '', headers: {}, principal: undefined, raw: undefined });
+  } catch {
+    // A failing hook must not change the answer.
+  }
+}
+
+/** Calls the hook once with the event of this request. The answer is sent whatever happens here. */
+async function recordAudit(ep: ServerEndpoint, res: VeldResponse, hooks: HandlerHooks): Promise<void> {
+  const spec = ep.audit;
+  const state = hooks.platform;
+  if (spec === undefined || state === undefined || hooks.audit === undefined) return;
+  let event: AuditEvent;
+  try {
+    event = buildAuditEvent(ep, spec, res, state);
+  } catch (err) {
+    auditFailed(hooks, state, err);
+    return;
+  }
+  try {
+    await hooks.audit(event);
+  } catch (err) {
+    auditFailed(hooks, state, new AuditFailure(err, event));
+  }
+}
+
+/** The audit event of every request that matched an audited endpoint, whatever the outcome: the answer of the deadline too. */
+function withAudit(go: RunFn): RunFn {
+  return async (r, m, req, std, hooks) => {
+    if (r.ep.audit === undefined) return go(r, m, req, std, hooks);
+    const own: HandlerHooks = { ...hooks, platform: hooks.platform ?? { hidden: [], facts: {} } };
+    let res: VeldResponse;
+    try {
+      res = await go(r, m, req, std, own);
+    } catch (err) {
+      await recordAudit(r.ep, problem(std.internal, 'Internal', 500, r.ep.sig, {}), own);
+      throw err;
+    }
+    await recordAudit(r.ep, res, own);
+    return res;
+  };
 }
 // #endif
 // #if run_fn
@@ -4381,6 +4635,11 @@ function assertHooks(endpoints: readonly ServerEndpoint[], hooks: HandlerHooks):
       throw new Error(`${ep.name}: hooks.flags is required`);
     }
     // #endif
+    // #if audit
+    if (ep.audit !== undefined && hooks.audit === undefined) {
+      throw new Error(`${ep.name}: hooks.audit is required`);
+    }
+    // #endif
     // #if outbox
     if (ep.rules?.transition?.emits !== undefined && hooks.outbox === undefined) {
       throw new Error(`${ep.name}: hooks.outbox is required`);
@@ -4416,15 +4675,21 @@ export function createHandler(endpoints: readonly ServerEndpoint[], std: StdSigs
     }
     return null;
   };
-  // #if bounded
+  // #if bounded_plain
   const exec = bound(run);
+  // #endif
+  // #if audit_unbounded
+  const exec = withAudit(run);
+  // #endif
+  // #if audit_bounded
+  const exec = withAudit(bound(run));
   // #endif
   const handler = async (req: VeldRequest): Promise<VeldResponse | null> => {
     const hit = find(req.method.toUpperCase(), req.path);
-    // #if not_bounded
+    // #if not_execs
     return hit === null ? null : run(hit.r, hit.m, req, std, hooks);
     // #endif
-    // #if bounded
+    // #if execs
     return hit === null ? null : exec(hit.r, hit.m, req, std, hooks);
     // #endif
   };

@@ -72,6 +72,7 @@ fn write_service(
             d.origin = Some(ep.origin.clone());
             diags.push(d);
         }
+        audited_stream(svc, ep, diags);
         let request = names.get(svc.id, &ep.name);
         write_request_type(w, fc, &request, ep);
         w.blank();
@@ -91,6 +92,24 @@ fn write_service(
     if !timed_endpoints(fc.tree.ir, svc).is_empty() {
         w.blank();
         write_due_moves(w, fc, names, (svc, runtime));
+    }
+}
+
+/// An audited `ws` or streaming endpoint is `E0801`: a stream has no single outcome to record
+/// (`spec/platform.md` section 9.1).
+fn audited_stream(svc: &Service, ep: &Endpoint, diags: &mut Vec<GenDiagnostic>) {
+    if ep.audited && (ep.success.stream || ep.method == Method::Ws) {
+        let mut d = GenDiagnostic::new(
+            "E0801",
+            format!(
+                "{}.{}: an audited `{}` endpoint is not supported by the `node` generator: a stream has no single outcome to record",
+                svc.name,
+                ep.name,
+                if ep.method == Method::Ws { "ws" } else { "sse" }
+            ),
+        );
+        d.origin = Some(ep.origin.clone());
+        diags.push(d);
     }
 }
 
@@ -399,6 +418,11 @@ fn write_hooks(
         w.line("/** The server's clock, read once per request before the facts load. Default: the system clock. */");
         w.line(format!("clock?: (ctx: {ctx}) => Date;"));
     }
+    if rules::service_audits(fc.tree, svc) {
+        let event = fc.rt("AuditEvent");
+        w.line("/** Called once for every request that matched an audited endpoint, after its outcome is known and before the answer is written (`spec/platform.md` section 4). A failing hook does not change the answer: the failure goes to `onError`. */");
+        w.line(format!("audit: (event: {event}) => void | Promise<void>;"));
+    }
     if rules::service_uses_flags(fc.tree, svc) {
         let provider = fc.rt("FlagProvider");
         w.line("/** Asks whether a flag is on, once per request and flag (`spec/platform.md` section 11). `MemoryFlagProvider` is one for tests. */");
@@ -640,6 +664,7 @@ fn write_factory(
         && svc.facts.is_empty()
         && !rules::service_is_idempotent(svc)
         && !rules::service_uses_flags(fc.tree, svc)
+        && !rules::service_audits(fc.tree, svc)
         && !outbox::service_emits(svc)
         && !runtime_required
     {
@@ -810,6 +835,7 @@ pub fn models(tree: &Tree<'_>) -> Vec<ServiceModel> {
                     || !middleware.is_empty()
                     || !svc.facts.is_empty()
                     || rules::service_is_idempotent(svc)
+                    || rules::service_audits(tree, svc)
                     || rules::service_uses_flags(tree, svc),
                 endpoints: endpoints.into_iter().map(|(_, e)| e).collect(),
             }

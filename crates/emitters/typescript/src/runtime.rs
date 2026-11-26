@@ -796,4 +796,40 @@ mod tests {
         // The caller's field values are read by the rules helpers, so the helpers come too.
         assert!(visibility.contains("RuleViolationEvent"));
     }
+
+    #[test]
+    fn the_audit_log_adds_its_regions_and_nothing_else_sees_them() {
+        let audit = source_gated(Gates {
+            audit: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        for word in [
+            "withAudit",
+            "redactNode",
+            "AuditFailure",
+            "recordAudit",
+            "auditParameters",
+        ] {
+            assert!(audit.contains(word), "`{word}` is missing");
+        }
+        // Visibility, tenancy and limits are not part of it, and it needs no rule helper.
+        for word in [
+            "showNode",
+            "tenantNode",
+            "MemoryLimiter",
+            "RuleViolationEvent",
+        ] {
+            assert!(!audit.contains(word), "`{word}` is in an audit build");
+        }
+        // With a deadline, the answer of the deadline is audited too.
+        let bounded = source_gated(Gates {
+            audit: true,
+            timeouts: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        assert!(bounded.contains("withAudit(bound(run))"));
+        assert!(audit.contains("withAudit(run)") && !audit.contains("bound(run)"));
+    }
 }

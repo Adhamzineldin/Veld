@@ -70,6 +70,14 @@ pub fn schema_expr(fc: &mut FileCtx<'_, '_>, ty: &Type, c: &Constraints) -> Stri
     format!("{{ {} }}", parts.join(", "))
 }
 
+/// `pii: true` for a `@pii` or `@secret` field of a server that audits: the audit event leaves its
+/// value out (`spec/platform.md` section 4).
+fn push_redaction(fc: &FileCtx<'_, '_>, f: &Field, parts: &mut Vec<String>) {
+    if fc.tree.uses_audit() && (f.pii || f.secret) {
+        parts.push("pii: true".to_string());
+    }
+}
+
 fn field_expr(fc: &mut FileCtx<'_, '_>, f: &Field) -> String {
     let mut parts = vec![format!("n: {}", ts_str(&f.name))];
     if f.wire != f.name {
@@ -83,6 +91,7 @@ fn field_expr(fc: &mut FileCtx<'_, '_>, f: &Field) -> String {
         parts.push(format!("t: {t}"));
         parts.push("o: true".to_string());
         parts.push("dv: true".to_string());
+        push_redaction(fc, f, &mut parts);
         return format!("{{ {} }},", parts.join(", "));
     }
     parts.push(format!("t: {}", schema_expr(fc, &f.ty, &f.constraints)));
@@ -95,6 +104,7 @@ fn field_expr(fc: &mut FileCtx<'_, '_>, f: &Field) -> String {
     if f.readonly {
         parts.push("ro: true".to_string());
     }
+    push_redaction(fc, f, &mut parts);
     if f.tenant {
         // Set by the server, like a `@readonly` field: a request may lack it, but one that carries
         // it is kept as received (`spec/platform.md` section 9.1).

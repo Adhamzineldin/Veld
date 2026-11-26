@@ -14,7 +14,9 @@ use veld_emit_typescript::validate::schema_expr;
 use veld_ir::{Constraints, Service, Type};
 
 use crate::events;
-use crate::rules::{loaders_name, service_has_builder, service_is_idempotent, service_uses_flags};
+use crate::rules::{
+    loaders_name, service_audits, service_has_builder, service_is_idempotent, service_uses_flags,
+};
 use crate::server::{builder_name, module_of, std_sigs};
 
 /// Root-relative module path of the test handler of a service.
@@ -379,7 +381,7 @@ fn inner_handler(
     create: &str,
     std: &str,
     per_request: &[(&str, &str)],
-    completes: bool,
+    (completes, audits): (bool, bool),
 ) -> String {
     let ctx = fc.rt("RequestContext");
     let mut clock = if fc.tree.uses_endpoint_rules() || fc.tree.uses_platform() {
@@ -389,6 +391,10 @@ fn inner_handler(
     };
     if completes {
         clock.push_str(", middleware: { 'veld-test-principal': primePrincipal }");
+    }
+    // The audit hook is the application's: a test handler that is given none records nothing.
+    if audits {
+        clock.push_str(", audit: hooks.audit ?? (() => undefined)");
     }
     if per_request.is_empty() {
         return format!("const inner = {create}(endpoints, {std}, {{ ...hooks{clock} }});");
@@ -485,6 +491,16 @@ fn write_handler(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service) {
     if flagged {
         omitted.push_str(" | 'flags'");
     }
+    let audits = service_audits(fc.tree, svc);
+    let audit_hook = if audits {
+        omitted.push_str(" | 'audit'");
+        format!(
+            " & {{ audit?: (event: {}) => void | Promise<void> }}",
+            fc.rt("AuditEvent")
+        )
+    } else {
+        String::new()
+    };
     // The output mode of the rules is a setting of the runtime config, which the test handler
     // does not take: its hooks keep the member, so a test can choose the mode.
     let (output, note) = if fc.tree.uses_rules() {
@@ -498,7 +514,7 @@ fn write_handler(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service) {
     };
     w.line(format!(
         "/** What the test handler of `{name}` takes from the hooks: the observers of the production hooks{note}. */
-export type {name}TestHooks = Omit<{name}Hooks, {omitted}>{output};
+export type {name}TestHooks = Omit<{name}Hooks, {omitted}>{output}{audit_hook};
 
 /** Takes the endpoint apart from authentication and the application's handler. */
 function open(ep: {endpoint}): {endpoint} {{
@@ -539,7 +555,7 @@ export function create{name}TestHandler(impl: {name}Service, hooks: {name}TestHo
 }}",
         builder = builder_name(svc),
         middleware = if completes { "['veld-test-principal']" } else { "[]" },
-        inner = inner_handler(fc, &create, &std, &per_request, completes),
+        inner = inner_handler(fc, &create, &std, &per_request, (completes, audits)),
         key = ts_str(&svc.name),
         subscribes = subscribes_member(fc.tree, svc),
         event_branch = event_branch(svc),
