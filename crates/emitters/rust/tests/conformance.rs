@@ -375,8 +375,8 @@ fn rust_generates_timed_moves() {
 }
 
 #[test]
-fn rust_refuses_flags() {
-    veld_emit_conformance::check_flags_are_refused(&Rust).unwrap();
+fn rust_generates_flags() {
+    veld_emit_conformance::check_flags_are_generated(&Rust).unwrap();
 }
 
 #[test]

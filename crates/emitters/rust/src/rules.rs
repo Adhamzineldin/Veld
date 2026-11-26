@@ -941,6 +941,11 @@ fn rule_statement(
     // The conditions of the rule: not in a request when it reads a read-only field, and not when
     // it reads a derived field that has no value.
     let mut conditions: Vec<String> = Vec::new();
+    // A flagged invariant is evaluated while its flag is on (or its provider failed); with no
+    // flag view in force (a client's local check) it is not (`spec/platform.md` section 11).
+    if let Some(flag) = &rule.flag {
+        conditions.push(format!("vr::invariant_on({})", lit(flag)));
+    }
     if rule.reads_readonly {
         conditions.push("mode != vr::Mode::Request".to_string());
     }

@@ -221,6 +221,26 @@ fn absent_terms(
     Some(terms.join(" || "))
 }
 
+/// The condition that skips a statement: it reads a derived field without a value, or its flag is
+/// off (a failed reading counts as on: a `require` and an `ensure` restrict).
+fn skip_condition(absent: Option<String>, flag: Option<&str>, view: &str) -> Option<String> {
+    let mut terms: Vec<String> = Vec::new();
+    if let Some(flag) = flag {
+        terms.push(format!("!{view}.statement_on({}, true)", lit(flag)));
+    }
+    terms.extend(absent);
+    if terms.is_empty() {
+        None
+    } else {
+        Some(terms.join(" || "))
+    }
+}
+
+/// Whether step 9 of the endpoint skips an `ensure` by its flag: it keeps the readings of step 6.
+fn has_flagged_ensure(ep: &Endpoint) -> bool {
+    ep.rules.ensures.iter().any(|e| e.flag.is_some())
+}
+
 fn has_result(ep: &Endpoint) -> bool {
     ep.success.ty.is_some() && !ep.success.stream
 }
@@ -445,6 +465,9 @@ fn state_struct(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service, ep: &Endpo
     w.line("now: i64,");
     if ctx.tree.derived {
         w.line("absent: std::collections::BTreeMap<String, Vec<String>>,");
+    }
+    if has_flagged_ensure(ep) {
+        w.line("flags: veld::rules::FlagView,");
     }
     w.close().blank();
 }
@@ -705,7 +728,11 @@ fn require(
         r.name.as_deref().unwrap_or("(unnamed)")
     ));
     // A read of a derived field that has no value skips the statement.
-    let skip = absent_condition(ctx, ep, &[&r.expr], "ctx.absent");
+    let skip = skip_condition(
+        absent_condition(ctx, ep, &[&r.expr], "ctx.absent"),
+        r.flag.as_deref(),
+        "ctx.flags",
+    );
     let call = violated_call(
         &r.id,
         r.name.as_deref(),
@@ -791,11 +818,19 @@ fn finish6(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service, index: usize, e
     let principal = state_principal(ctx, svc, ep).map_or(String::new(), |_| {
         ", principal: principal.clone()".to_string()
     });
-    let absent = if ctx.tree.derived {
-        ", absent: ctx.absent.clone()"
-    } else {
-        ""
-    };
+    let absent = format!(
+        "{}{}",
+        if ctx.tree.derived {
+            ", absent: ctx.absent.clone()"
+        } else {
+            ""
+        },
+        if has_flagged_ensure(ep) {
+            ", flags: ctx.flags.clone()"
+        } else {
+            ""
+        }
+    );
     if has_facts(ep) {
         let names: Vec<String> = ep
             .rules
@@ -943,7 +978,12 @@ fn ensure_line(
         "// ensure {}",
         e.name.as_deref().unwrap_or("(unnamed)")
     ));
-    if let Some(c) = absent_condition(ctx, ep, &[&e.expr], "state.absent") {
+    let skip = skip_condition(
+        absent_condition(ctx, ep, &[&e.expr], "state.absent"),
+        e.flag.as_deref(),
+        "state.flags",
+    );
+    if let Some(c) = &skip {
         w.open(format!("if !({c})"));
     }
     w.line(format!(
@@ -953,7 +993,7 @@ fn ensure_line(
         fields.join(", "),
         lit(&message)
     ));
-    if absent_condition(ctx, ep, &[&e.expr], "state.absent").is_some() {
+    if skip.is_some() {
         w.close();
     }
     Ok(())

@@ -12,6 +12,7 @@ pub mod conditional;
 pub mod config;
 pub mod endpoints;
 pub mod events;
+pub mod flags;
 pub mod guards;
 pub mod models;
 pub mod package;
@@ -102,6 +103,7 @@ fn all_capabilities() -> Capabilities {
         .with(Feature::RulesDerived)
         .with(Feature::EventsDelivery)
         .with(Feature::RulesTimed)
+        .with(Feature::RulesFlags)
 }
 
 fn precheck(req: &GenRequest<'_>, caps: &Capabilities) -> Result<(), Vec<GenDiagnostic>> {
@@ -292,6 +294,11 @@ impl Generator for Rust {
                 let svc = req.ir.service(*s);
                 guards::svc_has_guards(svc) || svc.endpoints.iter().any(conditional::has_guard)
             });
+        let flags = used_features.contains(&Feature::RulesFlags)
+            || req
+                .ir
+                .http_features_used(&req.consumes)
+                .contains(&Feature::RulesFlags);
         let timed = server
             && served_http(req).iter().any(|s| {
                 req.ir
@@ -299,6 +306,11 @@ impl Generator for Rust {
                     .endpoints
                     .iter()
                     .any(|e| e.rules.transition.as_ref().is_some_and(|t| t.is_timed()))
+            });
+        let flags_server = server
+            && flags
+            && served_http(req).iter().any(|s| {
+                flags::svc_reads_flags(&main_tree(req).with_flags(true), req.ir.service(*s))
             });
         let etag = server && conditional::any_version(req.ir, &served_http(req));
         let version = etag
@@ -310,6 +322,7 @@ impl Generator for Rust {
         let derived = crate_has_derived(req);
         let rules = crate_has_rules(req)
             || derived
+            || flags
             || endpoint_rules
             || policies
             || rollout
@@ -331,6 +344,8 @@ impl Generator for Rust {
             endpoint_rules,
             guards,
             timed,
+            flags,
+            flags_server: server && flags_server,
             policies,
             rollout,
             server: serving,
@@ -369,6 +384,7 @@ impl Generator for Rust {
             .with_derived(derived)
             .with_idempotency(idempotency)
             .with_timed(timed)
+            .with_flags(flags)
             .with_runtime(runtime);
         if let Some(model) = &model {
             config::emit(&mut files, model, req.ir, req.role, tr)?;

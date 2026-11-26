@@ -30,9 +30,11 @@ pub(crate) struct Needs {
     idempotency: bool,
     /// An `@idempotent` endpoint whose keys are scoped to the caller: the hooks give the caller text.
     caller: bool,
+    /// An endpoint can reach a flag: the hooks give the provider.
+    flags: bool,
 }
 
-pub(crate) fn needs(svc: &Service) -> Needs {
+pub(crate) fn needs(tree: &Tree<'_>, svc: &Service) -> Needs {
     let mut n = Needs {
         bearer: false,
         basic: false,
@@ -40,6 +42,7 @@ pub(crate) fn needs(svc: &Service) -> Needs {
         middleware: Vec::new(),
         idempotency: crate::conditional::svc_idempotent(svc),
         caller: crate::conditional::svc_needs_caller(svc),
+        flags: crate::flags::svc_reads_flags(tree, svc),
     };
     for ep in &svc.endpoints {
         match ep.auth.kind {
@@ -59,7 +62,13 @@ pub(crate) fn needs(svc: &Service) -> Needs {
 
 impl Needs {
     pub(crate) fn any(&self) -> bool {
-        self.bearer || self.basic || self.api_key || !self.middleware.is_empty() || self.idempotency
+        self.bearer
+            || self.basic
+            || self.api_key
+            || !self.middleware.is_empty()
+            || self.idempotency
+            || self.flags
+            || self.flags
     }
 }
 
@@ -112,20 +121,27 @@ fn service_file(
     endpoint_statics(w, ctx, svc);
     std_sigs(w, ctx.tree);
     service_trait(w, ctx, svc);
-    let n = needs(svc);
+    let n = needs(ctx.tree, svc);
     let typed = typed_principal(ctx, svc);
     hooks_trait(
         w,
         svc,
         &n,
         ctx.tree.validate,
-        (ctx.tree.rules, ctx.tree.timed),
+        (
+            ctx.tree.rules,
+            ctx.tree.timed,
+            crate::flags::svc_reads_flags(ctx.tree, svc),
+        ),
         typed.as_deref(),
     );
     if !svc.facts.is_empty() {
         block::loader_trait(w, ctx, svc);
     }
     block::steps(w, ctx, svc)?;
+    if crate::flags::svc_reads_flags(ctx.tree, svc) {
+        crate::flags::names_fn(w, ctx.tree, svc);
+    }
     dispatch(w, ctx.tree, svc, &n, typed.as_deref());
     handler(w, ctx.tree, svc, &n);
     if ctx.tree.timed {
@@ -182,7 +198,7 @@ fn hooks_trait(
     svc: &Service,
     n: &Needs,
     validate: bool,
-    (rules, ctx_timed): (bool, bool),
+    (rules, ctx_timed, reads_flags): (bool, bool, bool),
     typed: Option<&str>,
 ) {
     let name = service_type(svc);
@@ -243,6 +259,9 @@ fn hooks_trait(
     }
     if n.idempotency {
         idempotency_hooks(w, n, typed);
+    }
+    if reads_flags {
+        crate::flags::hooks(w);
     }
     if ctx_timed && crate::timed::svc_timed(svc) {
         w.blank();
@@ -343,6 +362,9 @@ fn dispatch(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service, n: &Needs, typed
         block_methods(w, svc, tree.timed);
     }
     conditional_method(w, tree, svc);
+    if crate::flags::svc_reads_flags(tree, svc) {
+        crate::flags::forwards(w);
+    }
     if tree.timed && crate::timed::svc_timed(svc) {
         timer_forwards(w, typed);
     }

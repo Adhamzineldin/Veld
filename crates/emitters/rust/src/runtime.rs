@@ -56,6 +56,13 @@ pub struct Features {
     /// The target has a runtime config (`spec/runtime-config.md`): `src/veld/config.rs` (the
     /// engine of its check) is emitted, next to `src/runtime_config.rs`.
     pub config: bool,
+    /// The crate has a flagged statement (`spec/platform.md` section 11): the `// #if flags` regions
+    /// of the runtime (the readings of a request, `vr::flag_on`, `vr::invariant_on`) are kept.
+    /// Implies `rules`.
+    pub flags: bool,
+    /// A served endpoint can reach a flag: `src/veld/flags.rs` (the provider) is emitted and the
+    /// hooks name one.
+    pub flags_server: bool,
     /// A served endpoint takes a timed edge (`spec/platform.md` section 10): the due check of the
     /// guard and the due-moves runner. Implies `guards`.
     pub timed: bool,
@@ -84,6 +91,7 @@ impl Features {
             "!rollout" => !self.rollout,
             "derived" => self.derived,
             "timed" => self.timed,
+            "flags" => self.flags,
             "rollout_endpoint" => self.rollout && self.endpoint_rules,
             "rules_plain" => self.rules && !self.rollout,
             _ => false,
@@ -149,6 +157,7 @@ const CONFIG: &str = include_str!("../runtime/config.rs");
 const CONDITIONAL: &str = include_str!("../runtime/conditional.rs");
 const IDEMPOTENCY: &str = include_str!("../runtime/idempotency.rs");
 const ERROR: &str = include_str!("../runtime/error.rs");
+const FLAGS: &str = include_str!("../runtime/flags.rs");
 const EVENTS: &str = include_str!("../runtime/events.rs");
 const PAGE: &str = include_str!("../runtime/page.rs");
 const REGEX: &str = include_str!("../runtime/regex.rs");
@@ -178,6 +187,7 @@ pub fn mod_rs(f: &Features) -> String {
         ("conditional", f.version),
         ("error", true),
         ("events", f.events),
+        ("flags", f.flags_server),
         ("idempotency", f.idempotency),
         ("page", true),
         ("regex", true),
@@ -234,6 +244,7 @@ pub fn emit(files: &mut FileSet, f: &Features) -> Result<(), Vec<GenDiagnostic>>
     put("src/veld/idempotency.rs", IDEMPOTENCY, f.idempotency)?;
     put("src/veld/error.rs", ERROR, true)?;
     put("src/veld/events.rs", EVENTS, f.events)?;
+    put("src/veld/flags.rs", FLAGS, f.flags_server)?;
     put("src/veld/page.rs", PAGE, true)?;
     put("src/veld/regex.rs", REGEX, true)?;
     put("src/veld/rules/mod.rs", RULES, f.rules)?;

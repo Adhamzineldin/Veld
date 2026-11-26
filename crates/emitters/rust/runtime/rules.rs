@@ -566,6 +566,115 @@ pub fn denial(verdict: Res<Result<(), String>>) -> Option<String> {
     }
 }
 // #endif
+// #if flags
+
+// ---------------------------------------------------------------------------
+// Flags (`spec/platform.md` section 11)
+// ---------------------------------------------------------------------------
+
+/// What one request read of a flag.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reading {
+    On,
+    Off,
+    /// The provider failed.
+    Failed,
+}
+
+/// The flags one request read, once each, after authentication (`spec/platform.md` section 11). A
+/// flag the endpoint does not reach is not in it.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct FlagView {
+    readings: std::collections::BTreeMap<String, Reading>,
+}
+
+impl FlagView {
+    /// An empty view.
+    #[must_use]
+    pub fn new() -> Self {
+        FlagView::default()
+    }
+
+    /// Records a reading.
+    pub fn insert(&mut self, name: &str, reading: Reading) {
+        self.readings.insert(name.to_string(), reading);
+    }
+
+    /// The reading of a flag, when there is one.
+    #[must_use]
+    pub fn get(&self, name: &str) -> Option<Reading> {
+        self.readings.get(name).copied()
+    }
+
+    /// Whether a statement that grants or restricts is in force: `when_failed` is what it counts
+    /// as when the provider failed or there is no reading (a `permit` and a `flow` are off, a
+    /// `require`, `ensure` and `forbid` are on).
+    #[must_use]
+    pub fn statement_on(&self, name: &str, when_failed: bool) -> bool {
+        match self.get(name) {
+            Some(Reading::On) => true,
+            Some(Reading::Off) => false,
+            Some(Reading::Failed) | None => when_failed,
+        }
+    }
+}
+
+/// A view from the answers of a caller's function: one reading for each flag the contract names.
+#[must_use]
+pub fn answers(answer: Option<&dyn Fn(&str) -> bool>, names: &[&str]) -> Option<FlagView> {
+    let answer = answer?;
+    let mut view = FlagView::new();
+    for name in names {
+        view.insert(name, if answer(name) { Reading::On } else { Reading::Off });
+    }
+    Some(view)
+}
+
+thread_local! {
+    static VIEW: std::cell::RefCell<Option<FlagView>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Runs `body` with `view` in force: the invariants, the policy clauses and the guards that body
+/// evaluates read their flags from it. Checks are synchronous, so the view belongs to one thread
+/// for the length of the call; the previous view is put back (checks nest).
+pub fn with_view<T>(view: Option<&FlagView>, body: impl FnOnce() -> T) -> T {
+    let previous = VIEW.with(|v| v.replace(view.cloned()));
+    let out = body();
+    VIEW.with(|v| *v.borrow_mut() = previous);
+    out
+}
+
+/// The view of a request in force until the guard is dropped: the checks of the server core run
+/// inside one (they are synchronous: never hold it across an `.await`).
+pub struct Window(Option<FlagView>);
+
+/// Puts `view` in force until the returned guard is dropped; the previous view is put back.
+#[must_use]
+pub fn enter(view: &FlagView) -> Window {
+    Window(VIEW.with(|v| v.replace(Some(view.clone()))))
+}
+
+impl Drop for Window {
+    fn drop(&mut self) {
+        let previous = self.0.take();
+        VIEW.with(|v| *v.borrow_mut() = previous);
+    }
+}
+
+/// A statement that grants or restricts, read from the view in force; without a view it counts as
+/// `when_failed`, which is what "decide as a failing provider does" means for a client.
+#[must_use]
+pub fn flag_on(name: &str, when_failed: bool) -> bool {
+    VIEW.with(|v| v.borrow().as_ref().map_or(when_failed, |view| view.statement_on(name, when_failed)))
+}
+
+/// A flagged invariant: evaluated when its flag is on, or the provider failed (it counts as on). With
+/// no view in force (a client's local check, `partial`) it is not evaluated.
+#[must_use]
+pub fn invariant_on(name: &str) -> bool {
+    VIEW.with(|v| v.borrow().as_ref().is_some_and(|view| view.statement_on(name, true)))
+}
+// #endif
 // #if timed
 
 /// Whether a value that entered its state at `since` (datetime text) has waited `after_ms` by `now`

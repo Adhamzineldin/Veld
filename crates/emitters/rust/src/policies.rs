@@ -187,13 +187,37 @@ fn write_policy(
     w.line("///");
     w.line("/// Whether the policy permits, at the system clock. A clause that cannot be evaluated fails");
     w.line("/// closed.");
+    let flags = policy_flags(p);
+    let answers = if flags.is_empty() {
+        ""
+    } else {
+        ", flag_answers: Option<&dyn Fn(&str) -> bool>"
+    };
+    if !flags.is_empty() {
+        w.line("/// `flag_answers` says which flags are on (`spec/platform.md` section 11); without it a clause");
+        w.line("/// with a flag counts as it does when a provider fails: a `forbid` applies, a `permit` does not.");
+    }
     w.line(ALLOW);
-    w.open(format!("pub fn {}({}) -> bool", e.func, params.join(", ")));
-    w.line(format!(
-        "{}_verdict({}, veld::rules::system_now_ms()).is_ok()",
+    w.open(format!(
+        "pub fn {}({}{answers}) -> bool",
         e.func,
-        names.join(", ")
+        params.join(", ")
     ));
+    if flags.is_empty() {
+        w.line(format!(
+            "{}_verdict({}, veld::rules::system_now_ms()).is_ok()",
+            e.func,
+            names.join(", ")
+        ));
+    } else {
+        let list: Vec<String> = flags.iter().map(|f| lit(f)).collect();
+        w.line(format!(
+            "veld::rules::with_view(veld::rules::answers(flag_answers, &[{}]).as_ref(), || {}_verdict({}, veld::rules::system_now_ms()).is_ok())",
+            list.join(", "),
+            e.func,
+            names.join(", ")
+        ));
+    }
     w.close().blank();
     w.line(format!(
         "/// The policy `{}` at the instant `now` (milliseconds since the epoch): `Ok` when it permits,",
@@ -214,6 +238,13 @@ fn write_policy(
     w.close().blank();
 }
 
+/// The flags of the clauses of a policy, sorted.
+pub(crate) fn policy_flags(p: &Policy) -> Vec<String> {
+    let set: std::collections::BTreeSet<String> =
+        p.clauses.iter().filter_map(|c| c.flag.clone()).collect();
+    set.into_iter().collect()
+}
+
 fn write_clauses(
     w: &mut CodeWriter,
     ctx: &Ctx<'_, '_>,
@@ -225,7 +256,13 @@ fn write_clauses(
     for clause in &p.clauses {
         let code = print_expr(&mut printer, &clause.expr).code;
         let test = |fallback: bool| {
-            format!("(|| -> vr::Res<bool> {{ Ok({code}) }})().unwrap_or({fallback})")
+            let test = format!("(|| -> vr::Res<bool> {{ Ok({code}) }})().unwrap_or({fallback})");
+            // A flagged clause exists while its flag is on; a failing provider keeps a `forbid`
+            // and drops a `permit` (`spec/platform.md` section 11).
+            match &clause.flag {
+                Some(flag) => format!("(vr::flag_on({}, {fallback}) && {test})", lit(flag)),
+                None => test,
+            }
         };
         match clause.effect {
             PolicyEffect::Forbid => {
@@ -394,6 +431,18 @@ fn can_signature(ctx: &Ctx<'_, '_>, given: &Inputs<'_>) -> String {
     parts.join(", ")
 }
 
+/// The flags `can_<endpoint>` reads: the clauses of its policies and the edges of its transition.
+fn can_flags(ctx: &Ctx<'_, '_>, ep: &Endpoint) -> Vec<String> {
+    let mut set = std::collections::BTreeSet::new();
+    for a in &ep.rules.allows {
+        if let Some(policy) = ctx.tree.ir.policies.get(a.policy.index()) {
+            set.extend(policy_flags(policy));
+        }
+    }
+    set.extend(crate::flags::transition_edge_flags(ctx.tree.ir, ep));
+    set.into_iter().collect()
+}
+
 /// The name of `can_<endpoint>`: `can_pay_booking`.
 #[must_use]
 pub fn can_name(ep: &Endpoint) -> String {
@@ -457,19 +506,37 @@ fn write_can(
     w.line("/// or rejects anything, and answers `false` when something cannot be evaluated: use it to show");
     w.line("/// or hide a button. The server decides.");
     w.line(ALLOW);
-    w.open(format!(
-        "pub fn {}({}) -> bool",
-        can_name(ep),
-        can_signature(ctx, &given)
-    ));
-    if ep.rules.allows.is_empty() {
-        w.line(checks.join(" && "));
+    let flags = can_flags(ctx, ep);
+    let signature = can_signature(ctx, &given);
+    let signature = if flags.is_empty() {
+        signature
+    } else {
+        w.line("/// `flag_answers` says which flags are on; without it a flagged statement counts as it does");
+        w.line("/// when a provider fails (`spec/platform.md` section 11).");
+        if signature.is_empty() {
+            "flag_answers: Option<&dyn Fn(&str) -> bool>".to_string()
+        } else {
+            format!("{signature}, flag_answers: Option<&dyn Fn(&str) -> bool>")
+        }
+    };
+    w.open(format!("pub fn {}({signature}) -> bool", can_name(ep)));
+    let body = if ep.rules.allows.is_empty() {
+        checks.join(" && ")
     } else {
         w.line("use veld::rules as vr;");
         w.line("let now = vr::system_now_ms();");
-        w.line(format!(
+        format!(
             "(|| -> veld::rules::Res<bool> {{ Ok({}) }})().unwrap_or(false)",
             checks.join(" && ")
+        )
+    };
+    if flags.is_empty() {
+        w.line(body);
+    } else {
+        let list: Vec<String> = flags.iter().map(|f| lit(f)).collect();
+        w.line(format!(
+            "veld::rules::with_view(veld::rules::answers(flag_answers, &[{}]).as_ref(), || {body})",
+            list.join(", ")
         ));
     }
     w.close();

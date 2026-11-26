@@ -160,6 +160,11 @@ pub struct RequestContext {
     /// The audited rules this request reported (`@rollout(audit)`).
     audit: AuditLog,
     // #endif
+    // #if flags
+    /// What this request read of each flag it can reach, once, after authentication.
+    #[doc(hidden)]
+    pub flags: super::rules::FlagView,
+    // #endif
     // @if timed
     /// Set for a call of the due-moves runner (`spec/platform.md` section 10.1): the caller is the
     /// timer's, no authentication and no middleware run, and `now` is the run's.
@@ -371,6 +376,14 @@ pub trait Endpoints: Send + Sync + 'static {
     /// has one.
     fn trusted_principal(&self, _ctx: &RequestContext) -> Option<Principal> {
         None
+    }
+    // #endif
+    // #if flags
+
+    /// Reads, once, every flag the endpoint can reach (`spec/platform.md` section 11). A failing
+    /// provider is a `Failed` reading and goes to `on_error`.
+    fn read_flags<'a>(&'a self, _endpoint: usize, _ctx: &'a RequestContext) -> impl Future<Output = super::rules::FlagView> + Send + 'a {
+        async { super::rules::FlagView::new() }
     }
     // #endif
     // @if timed
@@ -1475,6 +1488,9 @@ impl<E: Endpoints> Handler<E> {
             // #if rollout
             audit: AuditLog::default(),
             // #endif
+            // #if flags
+            flags: super::rules::FlagView::new(),
+            // #endif
             // @if timed
             timer: None,
             // @end
@@ -1644,6 +1660,12 @@ impl<E: Endpoints> Handler<E> {
             }
         }
         // @end
+        // #if flags
+        if let Some(index) = e.endpoints().iter().position(|x| std::ptr::eq(x, ep)) {
+            let read = e.read_flags(index, ctx).await;
+            ctx.flags = read;
+        }
+        // #endif
         let bound = self.bind(ep, caps, req, ctx, ws);
         // @if derived
         ctx.absent = bound.absent.clone();
@@ -1690,6 +1712,9 @@ impl<E: Endpoints> Handler<E> {
     }
 
     fn bind(&self, ep: &EndpointSpec, caps: &[(String, String)], req: &Request, ctx: &RequestContext, ws: bool) -> Bound {
+        // #if flags
+        let _window = super::rules::enter(&ctx.flags);
+        // #endif
         // #if !rules
         let mut b = Bound { value: Map::new(), issues: Vec::new(), check: self.inner.endpoints.validate_requests() };
         // #endif
@@ -1733,6 +1758,9 @@ impl<E: Endpoints> Handler<E> {
     }
 
     fn success(&self, ep: &EndpointSpec, value: &Value, ctx: &RequestContext) -> Response {
+        // #if flags
+        let _window = super::rules::enter(&ctx.flags);
+        // #endif
         let Some(schema) = ep.success else {
             // #if endpoint_rules
             if let Some(resp) = self.ensure_rules(ep, value, ctx) {
@@ -2007,6 +2035,9 @@ impl<E: Endpoints> Handler<E> {
     }
 
     fn problem_of(&self, err: &Error, ep: &EndpointSpec, ctx: &RequestContext) -> (u16, Problem) {
+        // #if flags
+        let _window = super::rules::enter(&ctx.flags);
+        // #endif
         let e = &self.inner.endpoints;
         let std = e.std_sigs();
         let problem = |sig: &str, title: &str, status: u16, data: Value| {

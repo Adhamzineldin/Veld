@@ -175,8 +175,13 @@ pub fn transition_guard(
         field_place(&fact_local(&fact.name), t)
     ));
     w.open(format!(
-        "if !matches!(transition_from, {})",
-        sources.join(" | ")
+        "if !({})",
+        live_sources(
+            "transition_from",
+            &sources,
+            &flagged_sources(machine, t),
+            "ctx.flags.statement_on"
+        )
     ));
     w.line(format!(
         "return Err(vr::refusal(&ENDPOINTS[{index}], {}, &[(\"field\", {field}), (\"from\", transition_from.wire()), (\"to\", {})], vr::guard_violation({}, &[], \"violates rule transition\")));",
@@ -231,6 +236,65 @@ fn due_check(
     Ok(())
 }
 
+/// The call of a policy's verdict in step 6: with the flags of the request in force when the
+/// contract has flags (`ctx.flags`).
+fn verdict_call(ctx: &Ctx<'_, '_>, verdict: &str, args: &[String]) -> String {
+    let call = format!("{verdict}({})", args.join(", "));
+    if ctx.tree.flags {
+        format!("vr::with_view(Some(&ctx.flags), || {call})")
+    } else {
+        call
+    }
+}
+
+/// The flag of the edge from each source of the transition to its target, in source order
+/// (`spec/platform.md` section 11: a flagged edge is not an edge while its flag is off).
+fn flagged_sources(machine: &veld_ir::Enum, t: &EndpointTransition) -> Vec<Option<String>> {
+    t.from
+        .iter()
+        .map(|s| {
+            machine
+                .flows
+                .iter()
+                .find(|f| &f.from == s && f.to == t.to)
+                .and_then(|f| f.flag.clone())
+        })
+        .collect()
+}
+
+/// The condition that the state in `place` is a source whose edge exists: `matches!(place, A | B)`
+/// when no edge is flagged, else one `matches!` per source, a flagged one with its flag read by
+/// `flag_fn(name, false)` (a failing provider counts a `flow` as off).
+fn live_sources(
+    place: &str,
+    sources: &[String],
+    flags: &[Option<String>],
+    flag_fn: &str,
+) -> String {
+    if flags.iter().all(Option::is_none) {
+        return format!("matches!({place}, {})", sources.join(" | "));
+    }
+    let parts: Vec<String> = sources
+        .iter()
+        .zip(flags)
+        .map(|(source, flag)| match flag {
+            Some(flag) => format!(
+                "(matches!({place}, {source}) && {flag_fn}({}, false))",
+                lit(flag)
+            ),
+            None => format!("matches!({place}, {source})"),
+        })
+        .collect();
+    parts.join(" || ")
+}
+
+fn machine_enum<'a>(
+    ctx: &'a Ctx<'_, '_>,
+    t: &EndpointTransition,
+) -> Result<&'a veld_ir::Enum, String> {
+    machine(ctx, t).map(|(e, _)| e)
+}
+
 /// Whether the state of the fact, a local of `can_<endpoint>`, is one of the sources of the
 /// transition: the condition of the guard as a boolean expression.
 ///
@@ -249,7 +313,12 @@ pub fn transition_holds(
         .map(|s| format!("{ty}::{}", variant(s)))
         .collect();
     let place = field_place(&format!("(*{})", local_ident(&t.fact)), t);
-    Ok(format!("matches!({place}, {})", sources.join(" | ")))
+    Ok(live_sources(
+        &place,
+        &sources,
+        &flagged_sources(machine_enum(ctx, t)?, t),
+        "vr::flag_on",
+    ))
 }
 
 /// What step 6 hands to the handler next to the facts: the `transition`, in the bound arguments.
@@ -334,8 +403,8 @@ pub fn allow(
             format!("if {c} {{ return Err(vr::Fail::Absent); }} ")
         });
     w.open(format!(
-        "if let Some(text) = vr::denial((|| -> vr::Res<Result<(), String>> {{ {absent}Ok({verdict}({})) }})())",
-        args.join(", ")
+        "if let Some(text) = vr::denial((|| -> vr::Res<Result<(), String>> {{ {absent}Ok({}) }})())",
+        verdict_call(ctx, &verdict, &args)
     ));
     w.line(format!(
         "return Err(vr::refusal(&ENDPOINTS[{index}], {}, &[(\"message\", &text)], vr::guard_violation({}, &[{}], &text)));",

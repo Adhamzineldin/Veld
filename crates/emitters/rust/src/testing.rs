@@ -103,7 +103,7 @@ fn write_file(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service) {
     if !svc.facts.is_empty() {
         imports.push(block::loaders_name(svc));
     }
-    if !needs(svc).any() {
+    if !needs(ctx.tree, svc).any() {
         imports.push("NoHooks".to_string());
     }
     imports.extend(steps);
@@ -226,7 +226,30 @@ fn dispatch(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service, name: &str) {
         w.line("self.inner.complete_principal(ctx)");
         w.close().blank();
     }
+    if crate::flags::svc_reads_flags(ctx.tree, svc) {
+        test_flags(w, ctx, svc);
+    }
     call(w, svc);
+    w.close().blank();
+}
+
+/// `read_flags` of the test handler: the flags that are on are the names in `Veld-Test-Flags`
+/// (base64url of a JSON array); without the header every flag is off. The provider of the hooks is
+/// never asked.
+fn test_flags(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service) {
+    let prod = format!(
+        "{}::{}::{}",
+        ctx.tree.root,
+        ctx.tree.pkg_mod(svc.package),
+        service_mod(svc)
+    );
+    w.open("async fn read_flags(&self, endpoint: usize, ctx: &RequestContext) -> veld::rules::FlagView");
+    w.line("let on: Vec<String> = header_json(ctx, \"veld-test-flags\").ok().flatten().and_then(|v| serde_json::from_value(v).ok()).unwrap_or_default();");
+    w.line("let mut view = veld::rules::FlagView::new();");
+    w.open(format!("for name in {prod}::flag_names(endpoint)"));
+    w.line("view.insert(name, if on.iter().any(|n| n == name) { veld::rules::Reading::On } else { veld::rules::Reading::Off });");
+    w.close();
+    w.line("view");
     w.close().blank();
 }
 
@@ -407,7 +430,7 @@ fn call(w: &mut CodeWriter, svc: &Service) {
 
 fn handler(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service, name: &str) {
     let loaders = !svc.facts.is_empty();
-    let n = needs(svc);
+    let n = needs(tree, svc);
     // The output mode is a member of the test handler's own hooks (`spec/runtime-config.md` 4).
     let member = if mode_in_runtime(tree) {
         ", output"
@@ -475,7 +498,7 @@ fn test_hooks(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service, name: &str) {
     w.line("veld::rules::RuleOutput::Strict");
     w.close();
     w.close().blank();
-    if !needs(svc).any() {
+    if !needs(tree, svc).any() {
         w.line(format!("impl {name}TestHooks for NoHooks {{}}"))
             .blank();
     }
