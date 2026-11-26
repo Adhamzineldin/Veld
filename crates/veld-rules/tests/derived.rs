@@ -9,6 +9,7 @@ use std::path::Path;
 use serde_json::{Value as Json, json};
 use veld_compiler::{CompileInput, PackageInput, SourceFile, compile};
 use veld_ir::{Ir, PackageKind};
+use veld_rules::envelope::{Inputs, PublishError, decode, encode};
 use veld_rules::vectors::{load_cases, run_case, value_at};
 use veld_rules::{
     Options, Outcome, OutputMode, Pipeline, Request, check_value, fill_example, run_example,
@@ -339,4 +340,102 @@ fn an_example_never_fills_in_a_derived_field_and_the_fact_is_computed() {
         "{body}"
     );
     assert!(body["items"][0].get("total").is_none());
+}
+
+// --- events ---------------------------------------------------------------------------------------------
+
+const EVENTS: &str = r#"
+event OrderPlaced {
+  orderId: uuid
+  net: int
+  tax: int
+  gross: int = net + tax
+  unit: int = net / tax
+  rule positive: gross > 0
+}
+
+event OrderShipped {
+  orderId: uuid
+  boxes: int
+  weight: int = boxes * 12
+}
+
+@topic("shop.orders.v1")
+channel Orders {
+  carries OrderPlaced, OrderShipped
+  key orderId
+}
+
+@auth(none)
+service Shop at "/shop" {
+  publishes Orders
+  get "/ping" ping() -> 204
+}
+
+service Billing {
+  subscribes Orders as "billing" {
+    on OrderPlaced -> bill
+    on OrderShipped -> pack
+  }
+}
+"#;
+
+fn event(ir: &Ir, name: &str) -> veld_ir::DeclId {
+    ir.decls.iter().find(|d| d.name == name).unwrap().id
+}
+
+fn publish(ir: &Ir, name: &str, value: &Json) -> Result<Json, PublishError> {
+    let inputs = Inputs {
+        id: "e1",
+        source: "veld:t/Shop",
+        time_ms: 0,
+    };
+    let bytes = encode(ir, veld_ir::ChannelId(0), event(ir, name), value, &inputs)?;
+    Ok(serde_json::from_slice(&bytes).unwrap())
+}
+
+#[test]
+fn a_published_event_has_its_derived_fields_and_the_value_the_publisher_gave_is_replaced() {
+    let ir = compile_text(EVENTS);
+    let sent = json!({ "orderId": ID, "net": 10, "tax": 2, "gross": 999, "unit": "x" });
+    let message = publish(&ir, "OrderPlaced", &sent).unwrap();
+    assert_eq!(message["data"]["gross"], json!(12));
+    assert_eq!(message["data"]["unit"], json!(5));
+}
+
+#[test]
+fn the_digest_of_an_event_covers_its_derived_fields_even_without_an_invariant() {
+    let ir = compile_text(EVENTS);
+    let shipped = publish(&ir, "OrderShipped", &json!({ "orderId": ID, "boxes": 2 })).unwrap();
+    assert_eq!(shipped["data"]["weight"], json!(24));
+    assert!(shipped["veldrules"].is_string(), "{shipped}");
+}
+
+#[test]
+fn a_derived_field_that_fails_stops_the_publish_with_a_violation_of_the_field() {
+    let ir = compile_text(EVENTS);
+    let err = publish(
+        &ir,
+        "OrderPlaced",
+        &json!({ "orderId": ID, "net": 10, "tax": 0 }),
+    )
+    .unwrap_err();
+    let PublishError::Invalid(found) = err else {
+        panic!("expected a violation: {err:?}")
+    };
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(found[0].rule_name, "unit");
+    assert_eq!(found[0].error, Some(veld_rules::EvalError::DivisionByZero));
+}
+
+#[test]
+fn a_subscriber_computes_the_derived_fields_of_what_it_receives() {
+    let ir = compile_text(EVENTS);
+    let message = publish(&ir, "OrderShipped", &json!({ "orderId": ID, "boxes": 3 })).unwrap();
+    let mut tampered = message.clone();
+    tampered["data"]["weight"] = json!(1);
+    let bytes = serde_json::to_vec(&tampered).unwrap();
+    let got = decode(&ir, &[event(&ir, "OrderShipped")], &bytes).unwrap();
+    assert_eq!(got.data["weight"], json!(36));
+    assert!(got.rules_checked);
 }

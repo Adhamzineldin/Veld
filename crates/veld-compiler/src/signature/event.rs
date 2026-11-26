@@ -1,7 +1,7 @@
 //! The rules digest of an event, exactly `spec/events.md` section 6.1.
 //!
-//! `hex16( sha256( RFC 8785 JSON array of the sorted, distinct rule ids of every invariant the
-//! event reaches ) )`: the formula of `spec/rules.md` section 9.7 applied to one event. The event
+//! `hex16( sha256( RFC 8785 JSON array of the sorted, distinct rule ids of every invariant and the
+//! ids of every derived field the event reaches ) )`: the formula of `spec/rules.md` section 9.7 applied to one event. The event
 //! reaches its own invariants and those of everything its fields name, transitively.
 
 use std::collections::BTreeSet;
@@ -23,6 +23,8 @@ pub fn event_rules_digest(ir: &Ir, event: DeclId) -> Option<String> {
         let d = ir.decl(id);
         let enforced = d.rules().iter().filter(|r| !r.is_audited());
         ids.extend(enforced.map(|r| r.id.as_str()));
+        // A subscriber reads the derived values the publisher computed (`spec/rules.md` 17.2).
+        ids.extend(d.fields().iter().filter_map(|f| f.derived_id.as_deref()));
         for f in d.fields() {
             f.ty.collect_decls(&mut stack);
         }

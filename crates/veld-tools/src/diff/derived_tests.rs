@@ -125,10 +125,11 @@ fn a_field_that_becomes_derived_in_a_response_only_changes_nothing_a_consumer_se
 
 #[test]
 fn a_field_that_stops_being_derived_is_required_of_callers_and_not_of_consumers() {
+    // The field is "required" now, which only matters where callers send the type: a note here.
     expect(
         &response("  b: int = a + 1"),
         &response("  b: int"),
-        &[(FieldNoLongerDerived, N)],
+        &[(FieldNoLongerDerived, N), (FieldBecameRequired, N)],
     );
     expect(
         &request("  b: int = a + 1"),
@@ -150,4 +151,38 @@ fn a_derived_field_that_is_removed_is_a_removed_field() {
 fn a_contract_without_derived_fields_reports_what_it_always_did() {
     expect(&both("  b: int"), &both("  b: int"), &[]);
     expect(&both(""), &both("  b?: int"), &[(FieldAdded, N)]);
+}
+
+// --- an event with a derived field --------------------------------------------------------------------
+
+fn event(body: &str) -> String {
+    format!(
+        "event Paid {{\n  id: uuid\n  net: int\n{body}\n}}\nchannel C {{ carries Paid }}\n\
+         service P at \"/p\" {{\n  publishes C\n  get \"/\" ping() -> 204\n}}\n"
+    )
+}
+
+#[test]
+fn a_changed_expression_of_an_event_changes_the_event() {
+    // An event is compared by its signature and its rules digest, which covers the ids of its
+    // derived fields: a rule and an expression are alike in that.
+    expect(
+        &event("  gross: int = net + 1"),
+        &event("  gross: int = net + 2"),
+        &[(EventChanged, P)],
+    );
+    expect(
+        &event("  gross: int = net + 1"),
+        &event("  gross: int = (net + 1)"),
+        &[],
+    );
+}
+
+#[test]
+fn a_derived_field_added_to_an_event_changes_the_event_like_any_field() {
+    expect(
+        &event(""),
+        &event("  gross: int = net + 1"),
+        &[(EventChanged, P)],
+    );
 }
