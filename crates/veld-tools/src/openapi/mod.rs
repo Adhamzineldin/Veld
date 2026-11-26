@@ -2,6 +2,7 @@
 //! are emitted in sorted order and every object is built with a fixed key
 //! order.
 
+mod conditional;
 mod paths;
 mod rules;
 mod schema;
@@ -130,6 +131,8 @@ fn security_schemes(ir: &Ir, ids: &[ServiceId]) -> Map<String, Value> {
     found.into_iter().collect()
 }
 
+#[cfg(test)]
+mod conditional_tests;
 #[cfg(test)]
 mod event_tests;
 #[cfg(test)]

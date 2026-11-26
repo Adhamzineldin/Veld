@@ -55,6 +55,7 @@ pub(super) fn decorate_decl(d: &Decl, m: &mut Map<String, Value>) {
     {
         machine(e, m);
     }
+    super::conditional::decorate_decl(d, m);
 }
 
 fn variant_wire<'a>(e: &'a Enum, name: &'a str) -> &'a str {
@@ -153,4 +154,5 @@ pub(super) fn decorate_operation(ir: &Ir, ep: &Endpoint, o: &mut Map<String, Val
     if let Some(t) = &rules.transition {
         o.insert("x-veld-transition".into(), transition(ir, t));
     }
+    super::conditional::decorate_operation(ep, o);
 }
