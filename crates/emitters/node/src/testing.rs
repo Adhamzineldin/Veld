@@ -348,6 +348,25 @@ function auditedHeader(found: readonly {violation}[]): string {{
     )
 }
 
+/// The answer of the test handler of a service with an emitting endpoint: `Veld-Test-Emitted`, the
+/// declaration names of the events the request wrote to its memory outbox, comma-separated and in
+/// write order (`spec/events.md` section 11.2). It is absent when nothing was written.
+fn write_emitted(fc: &mut FileCtx<'_, '_>, answer: String, emits: bool) -> String {
+    if !emits {
+        return answer;
+    }
+    let emitted = fc.rt("emittedOf");
+    let response = fc.rt("VeldResponse");
+    format!(
+        "const res = await (async (): Promise<{response} | null> => {{
+      {answer}
+    }})();
+    const emitted = {emitted}(req);
+    if (res === null || emitted === undefined || emitted.length === 0) return res;
+    return {{ ...res, headers: {{ ...res.headers, 'veld-test-emitted': emitted.join(',') }} }};"
+    )
+}
+
 /// `const inner = ...`: the production handler built from the endpoints of the test handler. A
 /// service with an `@idempotent` endpoint or a flag builds one per request, because the store and
 /// the flags of a request come from its headers.
@@ -411,7 +430,13 @@ fn write_handler(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service) {
     if flagged {
         write_flags(w, fc, idempotent);
     }
+    let emits = crate::outbox::service_emits(svc);
+    let memory_outbox = format!("new {}.MemoryOutbox()", fc.events_ns());
     let mut per_request: Vec<(&str, &str)> = Vec::new();
+    if emits {
+        // Every request gets an outbox of its own: the events it wrote are the header of the answer.
+        per_request.push(("outbox", &memory_outbox));
+    }
     if idempotent {
         per_request.push(("idempotency", "idempotencyOf(REQ, endpoints)"));
     }
@@ -419,7 +444,13 @@ fn write_handler(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service) {
         per_request.push(("flags", "flagsOf(REQ)"));
     }
     write_loaders(w, fc, svc, &name);
-    let answer = write_audited(w, fc);
+    let audited = write_audited(w, fc);
+    let answer = write_emitted(fc, audited, emits);
+    let skip = if emits {
+        format!("{}(ctx);\n    ", fc.rt("skipEmitted"))
+    } else {
+        String::new()
+    };
     let handler = fc.rt("VeldHandler");
     let endpoint = fc.rt("ServerEndpoint");
     let early = fc.rt("EarlyResponse");
@@ -437,6 +468,9 @@ fn write_handler(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service) {
         ", loaders"
     };
     let mut omitted = String::from("'facts' | 'clock' | 'auth' | 'middleware'");
+    if emits {
+        omitted.push_str(" | 'outbox'");
+    }
     if idempotent {
         omitted.push_str(" | 'idempotency'");
     }
@@ -467,7 +501,7 @@ function open(ep: {endpoint}): {endpoint} {{
     }}
     const wire = decode(header(ctx, 'veld-test-result'));
     if (wire === undefined) return ep.call(req, ctx, session);
-    return ep.success === null ? undefined : {from_wire}(ep.success, wire);
+    {skip}return ep.success === null ? undefined : {from_wire}(ep.success, wire);
   }};
   const copy: {endpoint} = {{ ...ep, middleware: {middleware}, call }};
   delete copy.auth;

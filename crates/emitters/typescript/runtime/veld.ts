@@ -1822,6 +1822,100 @@ function describeTarget(rules: EndpointRuleSet, violations: Violation[], result:
   if (failed !== undefined) failed.message = `${failed.message}, found \`${step.found(result as never)}\``;
 }
 // #endif
+// #if outbox
+
+// ---------------------------------------------------------------------------
+// The outbox (spec/events.md section 11)
+// ---------------------------------------------------------------------------
+
+/** What the `emit` of one request is built from (`runtime/events.ts` builds the typed functions). */
+export interface EmitSession {
+  /** `hooks.outbox`: the application's outbox. */
+  readonly outbox: unknown;
+  /** `hooks.events`: the id source, the clock and the rule hook of the publisher steps. */
+  readonly options: unknown;
+  /** Told the declaration name of every event the handler writes, in write order. */
+  readonly record: (event: string) => void;
+}
+
+/** The events a move writes: by wire value of the source state, and how to build `emit`. */
+export interface EmitStep {
+  /** The declaration names of the events of the edge from each source to the target. */
+  readonly edges: Readonly<Record<string, readonly string[]>>;
+  readonly make: (session: EmitSession) => object;
+}
+
+export interface TransitionStep {
+  /** The events the move emits (`flow a -> b emits E`): the handler gets `emit`, and the server checks what it wrote. */
+  emits?: EmitStep;
+}
+
+/** What one request of an emitting endpoint has written. */
+interface EmitState {
+  /** The events the edge taken emits. */
+  expected: readonly string[];
+  written: string[];
+  /** The handler did not run (the test handler answers from `Veld-Test-Result`): nothing is checked. */
+  skipped: boolean;
+}
+
+const emitByRequest = new WeakMap<VeldRequest, EmitState>();
+const emitByContext = new WeakMap<RequestContext, EmitState>();
+
+/**
+ * What the server checks after the handler of a move that emits (spec/events.md section 11.2): each
+ * expected event written exactly once and nothing else. `'ok'`, or `'missing E'`, `'twice E'` or
+ * `'unexpected E'`: the first fault, a missing event first, then a repeated one, then an unexpected one.
+ */
+export function checkWritten(expected: readonly string[], written: readonly string[]): string {
+  const count = (name: string): number => written.filter((w) => w === name).length;
+  for (const name of expected) {
+    const n = count(name);
+    if (n === 0) return `missing ${name}`;
+    if (n > 1) return `twice ${name}`;
+  }
+  const stray = written.find((w) => !expected.includes(w));
+  return stray === undefined ? 'ok' : `unexpected ${stray}`;
+}
+
+/**
+ * Gives the handler of a move that emits its `emit`, next to the facts and the transition (the edge
+ * taken is known: the guard has set `transition`). `undefined` for any other endpoint.
+ */
+function beginEmit(ep: ServerEndpoint, bound: Bound, ctx: RequestContext, req: VeldRequest, hooks: HandlerHooks): EmitState | undefined {
+  const step = ep.rules?.transition?.emits;
+  const taken = bound.value['transition'] as { from?: string } | undefined;
+  if (step === undefined || taken?.from === undefined) return undefined;
+  const state: EmitState = { expected: step.edges[taken.from] ?? [], written: [], skipped: false };
+  bound.value['emit'] = step.make({ outbox: hooks.outbox, options: hooks.events, record: (name) => void state.written.push(name) });
+  emitByRequest.set(req, state);
+  emitByContext.set(ctx, state);
+  return state;
+}
+
+/** After the handler: a success must have written what its edge emits (`500 Internal` through `onError` otherwise). */
+function checkEmitted(ep: ServerEndpoint, state: EmitState | undefined, result: unknown): void {
+  if (state === undefined || state.skipped || ep.stream === true || result instanceof EarlyResponse) return;
+  const verdict = checkWritten(state.expected, state.written);
+  if (verdict !== 'ok') throw new Error(`${ep.name}: the handler of a move that emits wrote the wrong events: ${verdict}`);
+}
+
+/** The declaration names of the events a request wrote to the outbox, in order. `undefined` when its endpoint emits nothing. */
+export function emittedOf(req: VeldRequest): readonly string[] | undefined {
+  return emitByRequest.get(req)?.written;
+}
+
+/**
+ * The test handler answers from `Veld-Test-Result` and the application's handler does not run:
+ * nothing is checked, and the events written are the ones the edge taken emits.
+ */
+export function skipEmitted(ctx: RequestContext): void {
+  const state = emitByContext.get(ctx);
+  if (state === undefined) return;
+  state.skipped = true;
+  state.written.splice(0, state.written.length, ...state.expected);
+}
+// #endif
 // #if timed
 
 // ---------------------------------------------------------------------------
@@ -2289,6 +2383,12 @@ export interface HandlerHooks {
   // #if endpoint_rules
   /** The server's clock, read once per request before the facts load. Default: the system clock. */
   clock?: (ctx: RequestContext) => Date;
+  // #endif
+  // #if outbox
+  /** The application's outbox (`Outbox` of `runtime/events.ts`), required by an endpoint whose move emits. */
+  outbox?: object;
+  /** The id source, the clock and the rule hook of `emit` (`PublisherOptions` of `runtime/events.ts`). */
+  events?: object;
   // #endif
   // #if flags
   /** Asks whether a flag is on, once per request and flag (spec/platform.md section 11). */
@@ -2790,6 +2890,9 @@ async function runCore(
     const prepared = await prepare(ep, bound, ctx, std, hooks);
     if (prepared !== null && 'status' in prepared) return prepared;
     // #endif
+    // #if outbox
+    const emitted = beginEmit(ep, bound, ctx, req, hooks);
+    // #endif
     // #if not_derived
     const result = await ep.call(bound.value, ctx);
     // #endif
@@ -2798,6 +2901,9 @@ async function runCore(
     // #endif
     // #if endpoint_rules
     if (result instanceof EarlyResponse) return result.response;
+    // #endif
+    // #if outbox
+    checkEmitted(ep, emitted, result);
     // #endif
     // #if idempotency_only
     if (result instanceof EarlyResponse) return result.response;
@@ -3867,6 +3973,11 @@ function assertHooks(endpoints: readonly ServerEndpoint[], hooks: HandlerHooks):
     // #if flags
     if (ep.flags !== undefined && ep.flags.length > 0 && hooks.flags === undefined) {
       throw new Error(`${ep.name}: hooks.flags is required`);
+    }
+    // #endif
+    // #if outbox
+    if (ep.rules?.transition?.emits !== undefined && hooks.outbox === undefined) {
+      throw new Error(`${ep.name}: hooks.outbox is required`);
     }
     // #endif
     // #if idempotency

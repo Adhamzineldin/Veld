@@ -546,17 +546,36 @@ function keyText(channel: ChannelDef, wire: unknown): string | null {
   throw new TypeError(`veld events: the key \`${channel.key.wire}\` is not a string or a number`);
 }
 
+// #if outbox
+/** What steps 1 to 5 of publishing make of one event: what a transport or an outbox is handed. */
+interface PreparedEvent {
+  readonly topic: string;
+  readonly key: string | null;
+  readonly bytes: Uint8Array;
+  readonly options: ChannelOptions;
+  readonly published: PublishedEvent;
+}
+
+/** The part of a publisher that steps 1 to 5 need: `emit` has no transport and shares them. */
+type PrepareContext = Pick<PublisherContext, 'source' | 'options' | 'validation'>;
+
+// #endif
 /**
  * Publishes one event (section 7): defaults, shape, invariants, the key, the envelope with its
  * canonical bytes, then the transport. Nothing is sent when a step fails: the call throws the
  * typed `ValidationError`.
  */
+// #if not_outbox
 export async function publishEvent(
   ctx: PublisherContext,
   channel: ChannelDef,
   def: EventDef,
   value: unknown,
 ): Promise<PublishedEvent> {
+// #endif
+// #if outbox
+async function prepareEvent(ctx: PrepareContext, channel: ChannelDef, def: EventDef, value: unknown): Promise<PreparedEvent> {
+// #endif
   // #if not_derived
   const wire = canonScalars(def.schema, toWire(def.schema, value));
   // #endif
@@ -595,9 +614,138 @@ export async function publishEvent(
   if (subject !== null) envelope['subject'] = subject;
   if (def.digest !== null) envelope['veldrules'] = def.digest;
   const options: ChannelOptions = { ordered: channel.ordered === true, deadLetter: channel.deadLetter === true };
+  // #if not_outbox
   await ctx.transport.publish(channel.topic, subject, encodeUtf8(canonical(envelope)), options);
   return { id, source: ctx.source, type: def.sig, subject: subject ?? undefined, time };
+  // #endif
+  // #if outbox
+  const published = { id, source: ctx.source, type: def.sig, subject: subject ?? undefined, time };
+  return { topic: channel.topic, key: subject, bytes: encodeUtf8(canonical(envelope)), options, published };
+  // #endif
 }
+// #if outbox
+
+/** Publishes one event: steps 1 to 5 (`prepareEvent`), then the transport. */
+export async function publishEvent(
+  ctx: PublisherContext,
+  channel: ChannelDef,
+  def: EventDef,
+  value: unknown,
+): Promise<PublishedEvent> {
+  const made = await prepareEvent(ctx, channel, def, value);
+  await ctx.transport.publish(made.topic, made.key, made.bytes, made.options);
+  return made.published;
+}
+
+// ---------------------------------------------------------------------------
+// The outbox (section 11)
+// ---------------------------------------------------------------------------
+
+/** One message the application's store holds until the relay has published it. `id` is the application's own. */
+export interface OutboxEntry {
+  readonly id: string;
+  readonly topic: string;
+  readonly key: string | null;
+  readonly bytes: Uint8Array;
+}
+
+/**
+ * The application's outbox, over its own store: `save` MUST run in the transaction that changes
+ * the state (section 11.1). `pending` lists the entries not yet done, in the order they were saved
+ * (at most `limit`), `done` removes one.
+ */
+export interface Outbox {
+  save(topic: string, key: string | null, bytes: Uint8Array): Promise<void> | void;
+  pending(limit: number): Promise<readonly OutboxEntry[]> | readonly OutboxEntry[];
+  done(entry: OutboxEntry): Promise<void> | void;
+}
+
+/** An outbox in memory, for tests: ids are `"1"`, `"2"`, ... in the order of the saves. */
+export class MemoryOutbox implements Outbox {
+  #next = 1;
+  readonly #entries: OutboxEntry[] = [];
+
+  save(topic: string, key: string | null, bytes: Uint8Array): void {
+    this.#entries.push({ id: String(this.#next), topic, key, bytes });
+    this.#next += 1;
+  }
+
+  pending(limit: number): readonly OutboxEntry[] {
+    return this.#entries.slice(0, Math.max(0, limit));
+  }
+
+  done(entry: OutboxEntry): void {
+    const at = this.#entries.findIndex((e) => e.id === entry.id);
+    if (at >= 0) this.#entries.splice(at, 1);
+  }
+
+  /** The entries still pending. */
+  get size(): number {
+    return this.#entries.length;
+  }
+}
+
+/** What `emit` of one request needs: the publisher's steps 1 to 5, the outbox, and a way to tell the server what was written. */
+export interface EmitContext extends PrepareContext {
+  readonly outbox: Outbox;
+  /** Told the declaration name of the event once it is saved. */
+  readonly record: (event: string) => void;
+}
+
+/**
+ * `emit.<event>(value)`: steps 1 to 5 of publishing (the same code as a publisher, with the options
+ * of the hooks), then `outbox.save`. Nothing goes to a transport. A violation throws the typed
+ * `ValidationError` and writes nothing.
+ */
+export async function emitEvent(ctx: EmitContext, channel: ChannelDef, def: EventDef, value: unknown): Promise<PublishedEvent> {
+  const made = await prepareEvent(ctx, channel, def, value);
+  await ctx.outbox.save(made.topic, made.key, made.bytes);
+  ctx.record(def.name);
+  return made.published;
+}
+
+/** The options of `run<Service>OutboxRelay`. */
+export interface RelayOptions {
+  /** The most entries one run looks at. Default 100. */
+  limit?: number;
+  /** Hears the failure that stopped the run: a transport that refused an entry, or a `done` that failed. */
+  onError?: (error: unknown, entry: OutboxEntry) => void;
+}
+
+/**
+ * The relay (section 11.1): takes up to `limit` pending entries, publishes each with the options of
+ * its channel (`channels`, by topic), in the order `pending` gave them, and calls `done` after the
+ * transport accepted it. It stops at the first entry that fails, so the order of a key is kept, and
+ * answers how many entries the transport accepted. An entry whose `done` failed is counted and is
+ * pending again: it will be sent again (at least once, section 1).
+ */
+export async function relayOutbox(
+  outbox: Outbox,
+  transport: Transport,
+  channels: Readonly<Record<string, ChannelOptions>>,
+  options: RelayOptions = {},
+): Promise<number> {
+  const limit = options.limit ?? 100;
+  const entries = (await outbox.pending(limit)).slice(0, Math.max(0, limit));
+  let sent = 0;
+  for (const entry of entries) {
+    try {
+      await transport.publish(entry.topic, entry.key, entry.bytes, channels[entry.topic] ?? { ordered: false, deadLetter: false });
+    } catch (error) {
+      hook((e: unknown) => options.onError?.(e, entry), error);
+      return sent;
+    }
+    sent += 1;
+    try {
+      await outbox.done(entry);
+    } catch (error) {
+      hook((e: unknown) => options.onError?.(e, entry), error);
+      return sent;
+    }
+  }
+  return sent;
+}
+// #endif
 
 // ---------------------------------------------------------------------------
 // Consuming (section 8)

@@ -212,6 +212,7 @@ fn transition_step(
         return;
     }
     write_flagged_edges(w, mv);
+    write_emits(w, fc, site, mv);
     w.line(format!("otherwise: {{ sig: {class}.sig }},"));
     w.close_with("},");
 }
@@ -238,6 +239,22 @@ fn write_flagged_edges(w: &mut CodeWriter, mv: &Move<'_>) {
     if !items.is_empty() {
         w.line(format!("flagged: {{ {} }},", items.join(", ")));
     }
+}
+
+/// `emits: { edges, make }` of a move that emits events (`spec/events.md` section 11.1): the
+/// events of the edge from each source, for the check after the handler, and the builder of the
+/// `emit` the handler gets (in the events module of the service).
+fn write_emits(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, site: &Site<'_>, mv: &Move<'_>) {
+    if mv.transition.emits.is_empty() {
+        return;
+    }
+    let module = crate::events::module_of(fc.tree, site.svc);
+    let make = crate::outbox::make_name(site.request);
+    fc.import(&module, &make, true);
+    w.line(format!(
+        "emits: {{ edges: {}, make: {make} }},",
+        crate::outbox::edges(fc.tree.ir, mv)
+    ));
 }
 
 /// `due: { afterMs, since }` of a timed transition (`spec/platform.md` section 10): the wait of

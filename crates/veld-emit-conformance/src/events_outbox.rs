@@ -130,6 +130,40 @@ pub fn check_events_outbox_is_refused(generator: &dyn DynGenerator) -> Result<()
     Ok(())
 }
 
+/// A server generator that has built phase E3 must declare `events_outbox`, let the gate pass the
+/// service `Orders` with an emitting `transition`, and generate at least one file for it, the same
+/// files on every run.
+///
+/// # Errors
+/// A description of the first server role for which the generator does not behave so.
+pub fn check_events_outbox_is_generated(generator: &dyn DynGenerator) -> Result<(), String> {
+    for role in generator.roles().iter().filter(|r| **r == Role::Server) {
+        let caps = generator.capabilities(*role);
+        if !caps.supports(Feature::EventsOutbox) {
+            return Err(format!("{}: does not declare `events_outbox`", role.name()));
+        }
+        let ir = compiled_events_outbox_contract(true);
+        let req = request(&ir, *role, vec![orders(&ir)?]);
+        let gate = check_capabilities(&ir, &req, &caps);
+        if !gate.is_empty() {
+            return Err(format!("{}: the gate reported {gate:?}", role.name()));
+        }
+        let first = generator
+            .generate_dyn(&req, &crate::options())
+            .map_err(|d| format!("{}: generation failed: {d:?}", role.name()))?;
+        let second = generator
+            .generate_dyn(&req, &crate::options())
+            .map_err(|d| format!("{}: the second generation failed: {d:?}", role.name()))?;
+        if first.is_empty() || first != second {
+            return Err(format!(
+                "{}: no files, or two runs gave different files",
+                role.name()
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// A client generator must generate the same files, byte for byte, with and without `emits` on
 /// the flow (`spec/events.md` section 11): a client does not see the outbox.
 ///
@@ -237,6 +271,18 @@ mod tests {
     fn a_server_that_refuses_the_outbox_conforms() {
         let refuses = server(Capabilities::all_except(&[]), true);
         check_events_outbox_is_refused(&refuses).unwrap();
+    }
+
+    #[test]
+    fn a_server_that_generates_the_outbox_conforms_and_one_that_does_not_declare_it_is_caught() {
+        let builds = server(
+            Capabilities::all_except(&[]).with(Feature::EventsOutbox),
+            false,
+        );
+        check_events_outbox_is_generated(&builds).unwrap();
+        let silent = server(Capabilities::all_except(&[]), false);
+        let err = check_events_outbox_is_generated(&silent).unwrap_err();
+        assert!(err.contains("does not declare `events_outbox`"), "{err}");
     }
 
     #[test]

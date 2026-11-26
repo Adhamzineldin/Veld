@@ -73,6 +73,9 @@ pub struct Gates {
     /// A timed `transition` (`spec/platform.md` section 10): the `timed` regions. They need the
     /// transition guard (`transitions`).
     pub timed: bool,
+    /// An endpoint whose move emits an event (`spec/events.md` section 11): the `outbox` regions.
+    /// They need the transition guard (`transitions`).
+    pub outbox: bool,
     /// An endpoint with a `@timeout` (`spec/platform.md` section 12): the `timeouts` regions (the
     /// server's deadline, the client's default timeout).
     pub timeouts: bool,
@@ -91,7 +94,7 @@ impl Gates {
     /// The same gates with everything they build on switched on.
     #[must_use]
     pub fn normalised(self) -> Self {
-        let transitions = self.transitions || self.timed;
+        let transitions = self.transitions || self.timed || self.outbox;
         let endpoint_rules = self.endpoint_rules || transitions || self.policies;
         Self {
             rules: self.rules || endpoint_rules || self.rollout || self.derived,
@@ -109,6 +112,7 @@ impl Gates {
             endpoint_rules: self.endpoint_rules || other.endpoint_rules,
             transitions: self.transitions || other.transitions,
             timed: self.timed || other.timed,
+            outbox: self.outbox || other.outbox,
             timeouts: self.timeouts || other.timeouts,
             slo: self.slo || other.slo,
             flags: self.flags || other.flags,
@@ -178,6 +182,7 @@ pub fn source_gated(gates: Gates) -> Result<String, GateError> {
         "timed_plain" => g.timed && !(g.timeouts || g.slo),
         "timed_bounded" => g.timed && (g.timeouts || g.slo),
         "policies" => g.policies,
+        "outbox" => g.outbox,
         // The code the transition guard and `allow` share.
         "guards" => g.transitions || g.policies || (g.version && g.endpoint_rules),
         "version" => g.version,
@@ -418,7 +423,7 @@ mod tests {
 
     #[test]
     fn every_combination_with_derived_fields_pairs_up_and_keeps_no_marker() {
-        for bits in 0..8192u32 {
+        for bits in 0..16384u32 {
             let gates = Gates {
                 rules: bits & 1 != 0,
                 endpoint_rules: bits & 2 != 0,
@@ -433,6 +438,7 @@ mod tests {
                 timeouts: bits & 1024 != 0,
                 slo: bits & 2048 != 0,
                 flags: bits & 4096 != 0,
+                outbox: bits & 8192 != 0,
             };
             let text = source_gated(gates).unwrap();
             assert!(!text.contains("// #"), "{gates:?}");
@@ -478,6 +484,38 @@ mod tests {
         }
         // A timed move needs the transition guard.
         assert!(timed.contains("checkTransition"));
+    }
+
+    #[test]
+    fn the_outbox_adds_its_regions_and_nothing_else_sees_them() {
+        let words = [
+            "EmitSession",
+            "emitByRequest",
+            "checkWritten",
+            "beginEmit",
+            "checkEmitted",
+            "skipEmitted",
+            "emittedOf",
+        ];
+        let plain = source_gated(Gates {
+            transitions: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        for word in words {
+            assert!(!plain.contains(word), "`{word}` leaked into the runtime");
+        }
+        let outbox = source_gated(Gates {
+            outbox: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        for word in words {
+            assert!(outbox.contains(word), "`{word}` is missing");
+        }
+        // The outbox needs the transition guard, and a server without it fails when it is created.
+        assert!(outbox.contains("checkTransition"));
+        assert!(outbox.contains("hooks.outbox is required"));
     }
 
     #[test]

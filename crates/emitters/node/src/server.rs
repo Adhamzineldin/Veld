@@ -14,6 +14,7 @@ use veld_ir::{AuthKind, Constraints, DeclKind, Endpoint, Ir, Method, Service};
 use crate::events;
 use crate::frameworks::{EndpointModel, ServiceModel};
 use crate::guards;
+use crate::outbox;
 use crate::rules::{self, Site};
 
 /// Root-relative module path of a service's server file.
@@ -60,6 +61,17 @@ fn write_service(
 ) {
     for ep in &svc.endpoints {
         veld_emit_typescript::version::reserved_names(svc, ep, diags);
+        if let (true, Some(name)) = (outbox::emits(ep), outbox::clashes(ep)) {
+            let mut d = GenDiagnostic::new(
+                "E0801",
+                format!(
+                    "{}.{}: a parameter or fact called `{name}` clashes with the `emit` the handler of a move that emits receives",
+                    svc.name, ep.name
+                ),
+            );
+            d.origin = Some(ep.origin.clone());
+            diags.push(d);
+        }
         let request = names.get(svc.id, &ep.name);
         write_request_type(w, fc, &request, ep);
         w.blank();
@@ -211,7 +223,7 @@ pub(crate) fn service_has_slo(svc: &Service) -> bool {
 }
 
 /// The request type of an endpoint as the implementation receives it: with its loaded facts.
-fn impl_request(ep: &Endpoint, request: &str) -> String {
+fn impl_request(fc: &mut FileCtx<'_, '_>, svc: &Service, ep: &Endpoint, request: &str) -> String {
     let mut parts = vec![request.to_string()];
     if !ep.rules.facts.is_empty() {
         parts.push(rules::facts_name(request));
@@ -221,6 +233,11 @@ fn impl_request(ep: &Endpoint, request: &str) -> String {
     }
     if ep.rules.transition.is_some() {
         parts.push(guards::transition_name(request));
+    }
+    if crate::outbox::emits(ep) {
+        let emit = crate::outbox::emit_name(request);
+        fc.import(&events::module_of(fc.tree, svc), &emit, false);
+        parts.push(emit);
     }
     parts.join(" & ")
 }
@@ -250,7 +267,7 @@ fn write_interface(
         };
         let key = method_key(&ep.name);
         let request = names.get(svc.id, &ep.name);
-        let req = impl_request(ep, &request);
+        let req = impl_request(fc, svc, ep, &request);
         if ep.method == Method::Ws {
             let (incoming, outgoing) = ws_types(fc, ep);
             let session = fc.rt("WsSession");
@@ -387,6 +404,13 @@ fn write_hooks(
         w.line("/** Asks whether a flag is on, once per request and flag (`spec/platform.md` section 11). `MemoryFlagProvider` is one for tests. */");
         w.line(format!("flags: {provider};"));
     }
+    if outbox::service_emits(svc) {
+        let ns = fc.events_ns();
+        w.line("/** The application's outbox, over its own store (`spec/events.md` section 11.1): the handler of a move that emits writes to it, in the transaction that changes the state. `MemoryOutbox` is one for tests. */");
+        w.line(format!("outbox: {ns}.Outbox;"));
+        w.line("/** The id source, the clock and the rule hook of `emit`. Default: a random UUID and the system clock. */");
+        w.line(format!("events?: {ns}.PublisherOptions;"));
+    }
     if !timed_endpoints(fc.tree.ir, svc).is_empty() {
         w.line("/** The principal the application gives its own timer, for `run<Service>DueMoves`. Required there when a timed endpoint has auth. */");
         w.line(format!(
@@ -502,7 +526,7 @@ fn write_endpoint(
         }
     }
     let request = names.get(svc.id, &ep.name);
-    let req = impl_request(ep, &request);
+    let req = impl_request(fc, svc, ep, &request);
     if ep.method == Method::Ws {
         let (incoming, outgoing) = ws_types(fc, ep);
         let session = fc.rt("WsSession");
@@ -613,6 +637,7 @@ fn write_factory(
         && svc.facts.is_empty()
         && !rules::service_is_idempotent(svc)
         && !rules::service_uses_flags(fc.tree, svc)
+        && !outbox::service_emits(svc)
         && !runtime_required
     {
         " = {}"

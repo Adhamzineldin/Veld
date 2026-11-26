@@ -11,6 +11,7 @@ mod brokers;
 mod events;
 mod frameworks;
 mod guards;
+mod outbox;
 mod rules;
 mod server;
 mod testing;
@@ -80,6 +81,7 @@ impl Generator for Node {
             .with(veld_ir::Feature::Timeouts)
             .with(veld_ir::Feature::Slo)
             .with(veld_ir::Feature::EventsDelivery)
+            .with(veld_ir::Feature::EventsOutbox)
     }
 
     fn warnings(&self, req: &GenRequest<'_>, opts: &Options) -> Vec<GenDiagnostic> {

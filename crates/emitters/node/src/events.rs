@@ -30,6 +30,9 @@ pub fn runtime_source(tree: &Tree<'_>) -> Result<String, GateError> {
     gate_regions(RAW, &|name| match name {
         "rules" => gates.rules,
         "rollout" => gates.rollout,
+        // The outbox (`spec/events.md` section 11) and what a build without it has.
+        "outbox" => gates.outbox,
+        "not_outbox" => !gates.outbox,
         // Derived fields (`spec/rules.md` section 17.2) and what a build without them has.
         "derived" => gates.derived,
         "not_derived" => !gates.derived,
@@ -92,6 +95,9 @@ fn write_service(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service) {
     if !svc.subscriptions.is_empty() {
         write_subscriber(w, fc, svc);
     }
+    if crate::outbox::service_emits(svc) {
+        crate::outbox::write(w, fc, svc);
+    }
 }
 
 /// The events the service's code needs a description of: everything its channels carry when it
@@ -108,12 +114,12 @@ fn used_events(svc: &Service, tree: &Tree<'_>) -> BTreeSet<DeclId> {
 }
 
 /// The name of the constant that describes an event to the pipelines.
-fn def_name(tree: &Tree<'_>, id: DeclId) -> String {
+pub(crate) fn def_name(tree: &Tree<'_>, id: DeclId) -> String {
     format!("{}Def", naming::camel(&tree.ir.decl(id).name))
 }
 
 /// The name of the constant that describes a channel to the publisher.
-fn channel_name(channel: &Channel) -> String {
+pub(crate) fn channel_name(channel: &Channel) -> String {
     format!("{}Channel", naming::camel(&channel.name))
 }
 
@@ -180,7 +186,7 @@ fn write_channel_def(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, channel: &Cha
 }
 
 /// The channels a service publishes to, once each, in source order.
-fn published(svc: &Service) -> Vec<ChannelId> {
+pub(crate) fn published(svc: &Service) -> Vec<ChannelId> {
     let mut out: Vec<ChannelId> = Vec::new();
     for p in &svc.publishes {
         if !out.contains(&p.channel) {

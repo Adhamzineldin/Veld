@@ -33,6 +33,7 @@ pub struct Tree<'a> {
     idempotency: bool,
     derived: bool,
     timed: bool,
+    outbox: bool,
     timeouts: bool,
     slo: bool,
     flags: bool,
@@ -107,6 +108,7 @@ impl<'a> Tree<'a> {
             idempotency,
             derived,
             timed: false,
+            outbox: false,
             timeouts,
             slo: false,
             flags,
@@ -137,6 +139,15 @@ impl<'a> Tree<'a> {
                 .endpoints
                 .iter()
                 .any(|ep| ep.rules.transition.as_ref().is_some_and(|t| t.is_timed()))
+        });
+        // The outbox is server code: the handler of a move that emits writes to it.
+        self.outbox = self.services.iter().any(|s| {
+            ir.service(*s).endpoints.iter().any(|ep| {
+                ep.rules
+                    .transition
+                    .as_ref()
+                    .is_some_and(|t| !t.emits.is_empty())
+            })
         });
         self.derived = self.derived || set.iter().any(|id| ir.decl(*id).has_derived());
         self.rules =
@@ -217,6 +228,7 @@ impl<'a> Tree<'a> {
             idempotency: self.idempotency,
             derived: self.derived,
             timed: self.timed,
+            outbox: self.outbox,
             timeouts: self.timeouts,
             slo: self.slo,
             flags: self.flags,
