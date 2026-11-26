@@ -137,6 +137,33 @@ public final class Platform {
       }
     }
     // #endif
+    // #if capture
+
+    private volatile boolean capturing;
+    private final java.util.Set<String> missing = new java.util.TreeSet<>();
+
+    /** Whether the violations of the request carry a capture of it. */
+    boolean capturing() {
+      return capturing;
+    }
+
+    void capture() {
+      this.capturing = true;
+    }
+
+    /** A fact was asked for and the loader did not find it (an optional one). */
+    void missing(String name) {
+      synchronized (missing) {
+        missing.add(name);
+      }
+    }
+
+    boolean missed(String name) {
+      synchronized (missing) {
+        return missing.contains(name);
+      }
+    }
+    // #endif
 
     RequestContext ctx() {
       return ctx;
@@ -902,7 +929,14 @@ public final class Platform {
   static void record(
       HandlerHooks hooks, EndpointSpec spec, Audited info, State state, VeldResponse response) {
     HandlerHooks.AuditHook hook = hooks.auditHook();
+    // #endif
+    // #if audit_not_capture
     if (hook == null) {
+      // #endif
+      // #if capture
+    if (hook == null || info == null) {
+      // #endif
+      // #if audit
       return;
     }
     AuditEvent event;
@@ -1119,6 +1153,100 @@ public final class Platform {
       return Json.array(listed);
     }
     return Json.of(String.valueOf(value));
+  }
+  // #endif
+  // #if capture
+
+  // -- the capture of a violation --------------------------------------------------------------
+
+  /** What a service says about one endpoint for its captures (spec/rules.md section 17.3). */
+  public static final class Captured {
+    final String service;
+    final List<Map.Entry<String, Schema>> facts;
+
+    Captured(String service, List<Map.Entry<String, Schema>> facts) {
+      this.service = service;
+      this.facts = facts;
+    }
+  }
+
+  /**
+   * An endpoint whose violations carry a capture.
+   *
+   * @param service the name of the service block
+   * @param facts the names of the facts of the endpoint, in the order it declares them, with their
+   *     wire description (a fact the loader did not find is {@code null} in the capture)
+   */
+  public static Captured captured(String service, List<Map.Entry<String, Schema>> facts) {
+    return new Captured(service, List.copyOf(facts));
+  }
+
+  /** A fact was asked for and the loader did not find it (an optional one): the capture has {@code null}. */
+  static void missing(RequestContext ctx, String name) {
+    State state = ctx.platform();
+    if (state != null && state.capturing()) {
+      state.missing(name);
+    }
+  }
+
+  /**
+   * The capture of the request that is running, for the event of {@code onRuleViolation}: {@code
+   * service}, {@code endpoint}, {@code operation}, {@code params}, {@code facts}, {@code
+   * principal}, {@code now} and {@code redacted} (spec/rules.md section 17.3), or {@code null} when
+   * the request keeps none or it cannot be built. A value that does not have the shape of its type
+   * cannot be known to be clean: the event then has no capture and {@code onError} hears why.
+   */
+  static Json.Obj captureOf(HandlerHooks hooks, EndpointSpec spec) {
+    State state = current();
+    Captured c = hooks.captured(spec.sig());
+    if (state == null || c == null || !state.capturing()) {
+      return null;
+    }
+    try {
+      List<String> redacted = new ArrayList<>();
+      Map<String, Json> params = new LinkedHashMap<>();
+      Map<String, Json> bound = state.parametersCopy();
+      for (EndpointSpec.Param p : spec.params()) {
+        Json value = bound.get(p.name());
+        if (value != null) {
+          params.put(p.name(), Redact.value(p.type(), value, "params." + p.name(), redacted));
+        }
+      }
+      Map<String, Json> facts = new LinkedHashMap<>();
+      Map<String, Json> kept = state.factsCopy();
+      for (Map.Entry<String, Schema> f : c.facts) {
+        Json wire = kept.get(f.getKey());
+        if (wire != null) {
+          facts.put(f.getKey(), Redact.value(f.getValue(), wire, "facts." + f.getKey(), redacted));
+        } else if (state.missed(f.getKey())) {
+          facts.put(f.getKey(), Json.NULL);
+        }
+      }
+      Json principal = Json.NULL;
+      Principal model = hooks.principal();
+      Object caller = state.ctx() == null ? null : state.ctx().principal();
+      Json wire = model == null || caller == null ? null : model.wireOf(caller);
+      if (wire != null) {
+        principal = Redact.value(model.schema, wire, "principal", redacted);
+      }
+      TreeSet<String> sorted = new TreeSet<>(BYTES);
+      sorted.addAll(redacted);
+      List<Json> paths = new ArrayList<>();
+      sorted.forEach(path -> paths.add(Json.of(path)));
+      return Json.object()
+          .put("service", Json.of(c.service))
+          .put("endpoint", Json.of(spec.name()))
+          .put("operation", Json.of(spec.sig()))
+          .put("params", new Json.Obj(params))
+          .put("facts", new Json.Obj(facts))
+          .put("principal", principal)
+          .put("now", Json.of(Canon.isoMillis(Instant.ofEpochMilli(state.nowOrSystem()))))
+          .put("redacted", Json.array(paths))
+          .build();
+    } catch (RuntimeException | StackOverflowError err) {
+      report(hooks, state.ctx(), err);
+      return null;
+    }
   }
   // #endif
   // #if limits_server

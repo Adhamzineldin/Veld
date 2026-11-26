@@ -155,7 +155,7 @@ pub fn write_runner(
     w.line(format!("{built} built = {};", build_call(fc)));
     w.line("long now = options.now == null ? hooks.clock().millis() : options.now.toEpochMilli();");
     w.line(format!("{to_long}<{ctx}> clock = ctx -> now;"));
-    if crate::platform::service_uses(fc.tree.ir, svc) {
+    if crate::platform::service_state(fc.tree, svc) {
         // The one reading of the clock of a request is the clock of the run (`Options.now`).
         w.line("built.setClock(clock);");
     }

@@ -31,11 +31,17 @@ pub fn generate(ir: &Ir, role: Role, package: &str, extra: &serde_json::Value) -
     run(ir, role, all, vec![], None, options_with(package, extra))
 }
 
-/// The path of a driver.
+/// The path of a driver: a name in the folder of the drivers of phase P4, or a path below
+/// `tests/toolchain/java` (`platform_p1/AuditRedaction`).
 pub fn driver(name: &str) -> PathBuf {
-    repo_root().join(DRIVERS).join(format!("{name}.java"))
+    if name.contains('/') {
+        repo_root()
+            .join("tests/toolchain/java")
+            .join(format!("{name}.java"))
+    } else {
+        repo_root().join(DRIVERS).join(format!("{name}.java"))
+    }
 }
-
 /// Compiles `trees` (generated files, one per package root) with the driver `name` for every
 /// release, runs `veldtest.<name>` and checks it printed `OK`. `copy` lists files of the repository
 /// to copy into the working directory (`(repository path, name there)`). Returns the working
@@ -58,7 +64,8 @@ pub fn run_driver(
     for release in super::releases() {
         javac_ok(work.path(), &sources, release);
     }
-    let out = java_main(work.path(), &format!("veldtest.{name}"), args);
+    let class = name.rsplit('/').next().unwrap_or(name);
+    let out = java_main(work.path(), &format!("veldtest.{class}"), args);
     assert!(
         out.status.success() && String::from_utf8_lossy(&out.stdout).contains("OK"),
         "{name} failed:\n{}\n{}",

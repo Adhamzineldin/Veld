@@ -66,6 +66,10 @@ pub struct Options {
     /// The broker adapters a server gets (`spec/events.md` section 10.7): `"kafka"`, `"rabbitmq"` or
     /// a list of both. Without it only the memory transport is generated.
     pub messaging: Option<brokers::Messaging>,
+    /// `true` adds a capture of the request to the event of `onRuleViolation` (`spec/rules.md`
+    /// section 17.3, `spec/targets/java.md` section 18.2), with the values of `@pii` and `@secret`
+    /// fields left out. A capture contains whatever the caller sent. Default: `false`.
+    pub capture_violations: Option<bool>,
 }
 
 /// The Java generator (roles `server` and `client`).
@@ -250,15 +254,29 @@ impl Generator for Java {
                 }));
         // What a server uses of platform phase P1; a service that uses it and has a principal gets
         // typed hooks (the caller is a value of the principal's model), as a service with policies.
-        let p1 = if req.role == Role::Server {
+        let mut p1 = if req.role == Role::Server {
             platform::uses(req.ir, &req.services)
         } else {
             platform::Uses::default()
         };
+        // The capture of a violation (`capture-violations`) is carried where the rule classes are:
+        // a server whose event of `onRuleViolation` exists. It keeps the state of a request, so the
+        // services have a typed caller and a clock of their own, as with the audit log.
+        p1.capture = req.role == Role::Server
+            && opts.capture_violations == Some(true)
+            && (rules
+                || features.contains(&Feature::RulesPolicies)
+                || features.contains(&Feature::RulesRollout)
+                || declares_audited(&tree)
+                || runtime_config
+                    .as_ref()
+                    .is_some_and(config::Info::has_rules_output)
+                || derived
+                || p1.any());
         let typed_principal = req.role == Role::Server
             && req.services.iter().any(|s| {
                 let svc = req.ir.service(*s);
-                svc.principal.is_some() && platform::service_uses(req.ir, svc)
+                svc.principal.is_some() && (p1.capture || platform::service_uses(req.ir, svc))
             });
         let policies = features.contains(&Feature::RulesPolicies) || typed_principal;
         // A declaration that no endpoint reaches is emitted too, and it calls `Audit` for its audited
@@ -286,7 +304,9 @@ impl Generator for Java {
             rules: rules || policies || rollout || output_mode || derived || p1.any(),
             visibility: p1.visibility,
             tenancy: p1.tenancy,
-            audit: p1.audit,
+            // The capture keeps the parameters and the facts of a request the way the audit log does.
+            audit: p1.audit || p1.capture,
+            capture: p1.capture,
             limits_server: p1.limits,
             // A client that gets `429` waits and sends again (a server's consumed clients too).
             limits: !(if req.role == Role::Client {

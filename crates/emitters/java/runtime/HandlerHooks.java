@@ -128,6 +128,10 @@ public final class HandlerHooks {
   private final AuditHook auditHook;
   private final Map<String, Platform.Audited> audited;
   // #endif
+  // #if capture
+  private final boolean captureViolations;
+  private final Map<String, Platform.Captured> captured;
+  // #endif
   // #if limits_server
   private final Limiter limiter;
   private final AddressHook address;
@@ -168,6 +172,10 @@ public final class HandlerHooks {
     // #if audit
     this.auditHook = b.auditHook;
     this.audited = Map.copyOf(b.audited);
+    // #endif
+    // #if capture
+    this.captureViolations = b.captureViolations;
+    this.captured = Map.copyOf(b.captured);
     // #endif
     // #if limits_server
     this.limits = Map.copyOf(b.limits);
@@ -261,6 +269,18 @@ public final class HandlerHooks {
   /** What the service says about the audited endpoint with this operation signature, or {@code null}. */
   Platform.Audited audited(String sig) {
     return audited.get(sig);
+  }
+  // #endif
+  // #if capture
+
+  /** What the service says about the endpoint for its captures, or {@code null}. */
+  Platform.Captured captured(String sig) {
+    return captureViolations && ruleHook != null ? captured.get(sig) : null;
+  }
+
+  /** Whether the violations of the endpoint carry a capture: a hook to hear them, and the option not turned off. */
+  boolean capturing(String sig) {
+    return captured(sig) != null;
   }
   // #endif
   // #if limits_server
@@ -380,6 +400,10 @@ public final class HandlerHooks {
     // #if audit
     private AuditHook auditHook;
     private final Map<String, Platform.Audited> audited = new LinkedHashMap<>();
+    // #endif
+    // #if capture
+    private boolean captureViolations = true;
+    private final Map<String, Platform.Captured> captured = new LinkedHashMap<>();
     // #endif
     // #if limits_server
     private Limiter limiter;
@@ -542,6 +566,25 @@ public final class HandlerHooks {
     /** The audited endpoints and what an event needs to know of each, by operation signature. */
     public Builder audited(Map<String, Platform.Audited> byOperation) {
       this.audited.putAll(byOperation);
+      return this;
+    }
+
+    // #endif
+    // #if capture
+    /**
+     * Whether the event of {@code onRuleViolation} carries a capture of the request (spec/rules.md
+     * section 17.3). The server was generated with {@code capture-violations}, so the default is
+     * {@code true}; {@code false} turns it off. A capture contains whatever the caller sent, except
+     * the values of {@code @pii} and {@code @secret} fields.
+     */
+    public Builder captureViolations(boolean value) {
+      this.captureViolations = value;
+      return this;
+    }
+
+    /** The endpoints that capture and what a capture needs to know of each, by operation signature. */
+    public Builder captured(Map<String, Platform.Captured> byOperation) {
+      this.captured.putAll(byOperation);
       return this;
     }
 

@@ -50,7 +50,16 @@ public final class RuleWalk {
    * @param outcome what the server did
    * @param violation the violation
    * @param elapsedMicros how long the check took, in microseconds
+// #if capture
+   * @param capture the request the violation came from (spec/rules.md section 17.3): {@code service},
+   *     {@code endpoint}, {@code operation}, {@code params}, {@code facts}, {@code principal}, {@code
+   *     now} and {@code redacted}, without the values of {@code @pii} and {@code @secret} fields; or
+   *     {@code null} when the handler has no capture (the option {@code captureViolations} is off,
+   *     the violation is not one of a request, or the capture could not be built). A capture
+   *     contains whatever the caller sent.
+// #endif
    */
+  // #if not_capture
   public record Event(
       String rule,
       String operation,
@@ -58,6 +67,43 @@ public final class RuleWalk {
       Outcome outcome,
       Violation violation,
       long elapsedMicros) {}
+  // #endif
+  // #if capture
+  public record Event(
+      String rule,
+      String operation,
+      Position position,
+      Outcome outcome,
+      Violation violation,
+      long elapsedMicros,
+      Json.Obj capture) {
+
+    /** An event without a capture. */
+    public Event(
+        String rule, String operation, Position position, Outcome outcome, Violation violation, long elapsedMicros) {
+      this(rule, operation, position, outcome, violation, elapsedMicros, null);
+    }
+
+    /**
+     * The event as JSON, with the member names of spec/rules.md section 17.3 (the file {@code veld
+     * test --from-violation} reads): {@code rule}, {@code operation}, {@code position}, {@code
+     * outcome}, {@code violation}, {@code elapsedMicros} and, when there is one, {@code capture}.
+     */
+    public Json.Obj toJson() {
+      Json.Builder out = Json.object()
+          .put("rule", Json.of(rule))
+          .put("operation", Json.of(operation))
+          .put("position", Json.of(position.name().toLowerCase(java.util.Locale.ROOT)))
+          .put("outcome", Json.of(outcome.name().toLowerCase(java.util.Locale.ROOT)))
+          .put("violation", violation.toWire())
+          .put("elapsedMicros", Json.of(elapsedMicros));
+      if (capture != null) {
+        out.put("capture", capture);
+      }
+      return out.build();
+    }
+  }
+  // #endif
 
   /** Observes violations of rules on the server. A failing hook never changes the response. */
   @FunctionalInterface
@@ -455,9 +501,17 @@ public final class RuleWalk {
       return;
     }
     long micros = (System.nanoTime() - started) / 1_000L;
+    // #if capture
+    Json.Obj capture = Platform.captureOf(hooks, spec);
+    // #endif
     for (Violation v : found) {
       try {
+        // #if not_capture
         hook.onRuleViolation(new Event(v.rule(), spec.sig(), position, outcome, v, micros));
+        // #endif
+        // #if capture
+        hook.onRuleViolation(new Event(v.rule(), spec.sig(), position, outcome, v, micros, capture));
+        // #endif
       } catch (RuntimeException ignored) {
         // A failing hook must not change the response.
       }

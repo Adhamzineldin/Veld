@@ -25,6 +25,10 @@ pub struct Uses {
     pub audit: bool,
     /// An endpoint has a `@limit`.
     pub limits: bool,
+    /// The target option `capture-violations`: the event of `onRuleViolation` carries a capture of
+    /// the request (`spec/targets/java.md` section 18.2). Not one of the four: it is no reason to
+    /// carry the rule classes, and is set only where they are carried anyway.
+    pub capture: bool,
 }
 
 impl Uses {
@@ -75,6 +79,13 @@ pub fn service_uses(ir: &Ir, svc: &Service) -> bool {
     service_uses_of(ir, svc).any()
 }
 
+/// Whether a service of the tree keeps the state of a request (the one reading of the clock and the
+/// caller): it uses one of the four, or the target captures violations.
+#[must_use]
+pub fn service_state(tree: &crate::tree::Tree<'_>, svc: &Service) -> bool {
+    tree.platform.capture || service_uses(tree.ir, svc)
+}
+
 /// Whether the success type (a stream's item type too) or a declared error of the endpoint reaches
 /// what `reaches` looks for.
 fn answers_reach(ir: &Ir, ep: &Endpoint, reaches: impl Fn(&Ir, &Type) -> bool) -> bool {
@@ -88,6 +99,7 @@ fn answers_reach(ir: &Ir, ep: &Endpoint, reaches: impl Fn(&Ir, &Type) -> bool) -
 pub fn walks_fact(fc: &FileCtx<'_, '_>, ep: &Endpoint, fact: &EndpointFact) -> bool {
     (fc.tree.platform.tenancy && fc.tree.ir.type_reaches_tenant(&fact.ty))
         || (fc.tree.platform.audit && ep.audited)
+        || fc.tree.platform.capture
 }
 
 /// Whether the service has an endpoint that is `@audited`: its hooks require `audit`.
@@ -197,7 +209,7 @@ pub fn schema_suffix(fc: &mut FileCtx<'_, '_>, d: &Decl, class: &str) -> String 
         ));
     }
     let pii = pii_fields(d);
-    if fc.tree.platform.audit && !pii.is_empty() {
+    if (fc.tree.platform.audit || fc.tree.platform.capture) && !pii.is_empty() {
         let names: Vec<String> = pii.iter().map(|w| java_str(w)).collect();
         marks.push_str(&format!(".pii({})", names.join(", ")));
     }
@@ -291,7 +303,7 @@ fn write_show(
 #[must_use]
 pub fn registrations(fc: &mut FileCtx<'_, '_>, svc: &Service) -> Vec<String> {
     let ir = fc.tree.ir;
-    if !service_uses(ir, svc) {
+    if !service_state(fc.tree, svc) {
         return Vec::new();
     }
     let mut out = vec!["builder.clock(ctx -> this.clock.millis());".to_string()];
@@ -348,7 +360,42 @@ pub fn registrations(fc: &mut FileCtx<'_, '_>, svc: &Service) -> Vec<String> {
             entries.join(", ")
         ));
     }
+    if fc.tree.platform.capture {
+        out.push(captured_registration(fc, svc));
+    }
     out
+}
+
+/// `builder.captured(Map.ofEntries(Map.entry("<operation>", Platform.captured("<service>", List.of(Map.entry("<fact>", <schema>)))), ...))`:
+/// what the capture of a violation needs to know of each endpoint of the service (the name of the
+/// service block and the wire description of the facts, which the redaction walks).
+fn captured_registration(fc: &mut FileCtx<'_, '_>, svc: &Service) -> String {
+    let (map, list, platform) = (
+        fc.name("java.util.Map"),
+        fc.name("java.util.List"),
+        fc.rt("Platform"),
+    );
+    let mut entries = Vec::new();
+    for ep in &svc.endpoints {
+        // A list, not a map: the facts keep the order the endpoint declares them in.
+        let facts: Vec<String> = ep
+            .rules
+            .facts
+            .iter()
+            .map(|f| {
+                let schema =
+                    crate::types::schema_expr(fc, &f.ty, &veld_ir::Constraints::default(), false);
+                format!("{map}.entry({}, {schema})", java_str(&f.name))
+            })
+            .collect();
+        let facts = format!("{list}.of({})", facts.join(", "));
+        entries.push(format!(
+            "{map}.entry({}, {platform}.captured({}, {facts}))",
+            java_str(&ep.sig),
+            java_str(&svc.name),
+        ));
+    }
+    format!("builder.captured({map}.ofEntries({}));", entries.join(", "))
 }
 
 /// `Map.entry("<operation>", Platform.audited(<has auth>, <facts>, <errors>))`: what an audit event

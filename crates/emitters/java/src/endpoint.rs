@@ -450,7 +450,7 @@ fn write_start(w: &mut CodeWriter, printer: &mut JavaExpr<'_, '_, '_>, site: &Si
     let request = site.request;
     w.line(format!("{request} request = {request}.fromWire(params);"));
     // The clock is read once per request, by the router, when the request is matched.
-    let now = if crate::platform::service_uses(printer.file().tree.ir, site.svc) {
+    let now = if crate::platform::service_state(printer.file().tree, site.svc) {
         "ctx.clockReading(clock)"
     } else {
         "clock.applyAsLong(ctx)"

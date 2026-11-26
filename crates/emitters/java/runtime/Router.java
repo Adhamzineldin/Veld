@@ -223,17 +223,33 @@ public final class Router implements VeldHandler {
     EndpointSpec spec = route.endpoint().spec();
     Platform.Audited info = hooks.audited(spec.sig());
     // #endif
+    // #if capture
+    boolean capturing = hooks.capturing(spec.sig());
+    // #endif
     // #if audit_timed
     if (info == null || request.raw() instanceof DueMoves.Call) {
       // #endif
       // #if audit_plain
     if (info == null) {
       // #endif
+      // #if capture_timed
+    if ((info == null && !capturing) || request.raw() instanceof DueMoves.Call) {
+      // #endif
+      // #if capture_plain
+    if (info == null && !capturing) {
+      // #endif
       // #if audit
       return run(route, match, request);
     }
     Platform.State state = new Platform.State();
     Platform.recording(state);
+    // #endif
+    // #if capture
+    if (capturing) {
+      state.capture();
+    }
+    // #endif
+    // #if audit
     inflight.put(request, state);
     VeldResponse response;
     try {

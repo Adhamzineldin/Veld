@@ -608,12 +608,12 @@ fn write_hooks(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service, clas
     w.line(format!(
         "private final {hooks}.Builder builder = {hooks}.builder(){off};"
     ));
-    let clock =
-        if endpoint::service_has_rules(svc) || crate::platform::service_uses(fc.tree.ir, svc) {
-            Some(fc.name("java.time.Clock"))
-        } else {
-            None
-        };
+    let clock = if endpoint::service_has_rules(svc) || crate::platform::service_state(fc.tree, svc)
+    {
+        Some(fc.name("java.time.Clock"))
+    } else {
+        None
+    };
     if let Some(clock) = &clock {
         w.line(format!("private {clock} clock = {clock}.systemUTC();"));
     }
@@ -755,6 +755,14 @@ fn write_rule_hooks(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, class: &str) {
     w.line("return this;");
     w.close();
     w.blank();
+    if fc.tree.platform.capture {
+        w.line("/** Whether the event of `onRuleViolation` carries a `capture` of the request (`spec/rules.md` section 17.3). The server was generated with `capture-violations`, so the default is `true`; `false` turns it off for this handler. A capture contains whatever the caller sent, except the values of `@pii` and `@secret` fields. */");
+        w.open(format!("public {class} captureViolations(boolean value)"));
+        w.line("builder.captureViolations(value);");
+        w.line("return this;");
+        w.close();
+        w.blank();
+    }
 }
 
 fn write_handler(
@@ -817,7 +825,7 @@ fn write_handler(
     // test handler builds the same endpoints (`spec/targets/java.md` section 9.5).
     if rules
         || conditional::service_uses(fc.tree.ir, svc)
-        || crate::platform::service_uses(fc.tree.ir, svc)
+        || crate::platform::service_state(fc.tree, svc)
     {
         write_create_with_endpoints(w, fc, &site, pass, rules);
         w.blank();

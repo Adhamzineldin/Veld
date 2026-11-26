@@ -317,6 +317,10 @@ pub struct Flags {
     pub tenancy: bool,
     /// The audit log (`audit`, section 4): an endpoint of a server is `@audited`.
     pub audit: bool,
+    /// The capture of a violation (`capture-violations`, `spec/targets/java.md` section 18.2): the
+    /// event of `onRuleViolation` carries the request. Needs `rules` and `audit` (the state that
+    /// keeps the parameters and the facts, and the redaction, are the audit log's).
+    pub capture: bool,
     /// Rate limits of a server (`limits`, section 5): an endpoint has a `@limit`.
     pub limits_server: bool,
     /// Rate limits of a client: the call waits and sends again on a `429`.
@@ -440,8 +444,13 @@ pub fn emit_with(
         "audit" => flags.audit,
         "declared_of" => flags.shapes() || flags.audit,
         "not_audit" => !flags.audit,
-        "audit_timed" => flags.audit && flags.timed,
-        "audit_plain" => flags.audit && !flags.timed,
+        "audit_timed" => flags.audit && flags.timed && !flags.capture,
+        "audit_plain" => flags.audit && !flags.timed && !flags.capture,
+        "capture" => flags.capture,
+        "not_capture" => !flags.capture,
+        "audit_not_capture" => flags.audit && !flags.capture,
+        "capture_timed" => flags.capture && flags.timed,
+        "capture_plain" => flags.capture && !flags.timed,
         "audit_derived" => flags.audit && flags.derived,
         "audit_plain_values" => flags.audit && !flags.derived,
         "audit_visibility" => flags.audit && flags.visibility,
@@ -591,6 +600,48 @@ mod tests {
                         assert!(!text.contains("Platform."), "{path} in {flags:?}");
                     }
                 }
+            }
+        }
+    }
+
+    /// The capture of a violation (`spec/targets/java.md` section 18.2) needs the rule classes and the
+    /// state of the audit log: its regions pair up with every combination of the other gates, no
+    /// marker survives, and its code is there exactly when `capture` is on.
+    #[test]
+    fn the_regions_of_the_capture_pair_up_in_every_combination() {
+        for base in older() {
+            for bits in 0..32u32 {
+                let capture = bits & 1 != 0;
+                let flags = Flags {
+                    capture,
+                    audit: capture || bits & 2 != 0,
+                    tenancy: bits & 4 != 0,
+                    visibility: bits & 8 != 0,
+                    limits_server: bits & 16 != 0,
+                    rules: base.rules || capture || bits & 4 != 0,
+                    ..base
+                };
+                let mut files = FileSet::new();
+                emit_with(&mut files, "a.b", Streaming::default(), flags).unwrap();
+                for (path, bytes) in files.iter() {
+                    let text = String::from_utf8_lossy(bytes);
+                    assert!(
+                        !text.contains("// #if") && !text.contains("// #endif"),
+                        "{path} in {flags:?}"
+                    );
+                    if !capture {
+                        assert!(
+                            !text.contains("captureOf") && !text.contains("Platform.Captured"),
+                            "{path} in {flags:?}"
+                        );
+                    }
+                }
+                let walk = files
+                    .iter()
+                    .find(|(p, _)| p.ends_with("/runtime/RuleWalk.java"))
+                    .map(|(_, b)| String::from_utf8_lossy(b).into_owned())
+                    .unwrap_or_default();
+                assert_eq!(walk.contains("Platform.captureOf"), capture, "{flags:?}");
             }
         }
     }

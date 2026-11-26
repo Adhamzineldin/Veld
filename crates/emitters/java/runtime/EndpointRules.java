@@ -182,6 +182,11 @@ public final class EndpointRules {
      */
     public <T> T kept(RequestContext ctx, String name, Schema schema, Codec<T> codec, T value, boolean optional) {
       if (value == null) {
+        // #endif
+        // #if capture
+        Platform.missing(ctx, name);
+        // #endif
+        // #if platform_facts
         return null;
       }
       Json wire = codec.encode(value);
