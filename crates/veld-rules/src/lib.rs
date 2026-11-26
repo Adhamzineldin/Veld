@@ -46,7 +46,7 @@ pub use helpers::num::EvalError;
 pub use idempotency::{
     IdempotencyKey, Scope, StoreEffect, StoreState, StoredAnswer, fingerprint, is_valid_key,
 };
-pub use machine::{is_final, next_states};
+pub use machine::{TimedEndpoint, is_final, next_states, timed_endpoints, timed_moves};
 pub use old::save_old;
 pub use pipeline::{
     After, Before, ErrorAnswer, Outcome, OutputMode, Pipeline, Prepared, Reported, Request,

@@ -658,7 +658,7 @@ impl<'a> Pipeline<'a> {
         let Some(fact) = env.facts.get(&t.fact) else {
             return Err(InputError::NotAvailable("the fact of a transition").into());
         };
-        match machine::guard(self.ir, self.endpoint, t, fact)? {
+        match machine::guard(self.ir, self.endpoint, t, fact, env.now.unwrap_or_default())? {
             None => Ok(None),
             Some(refusal) => {
                 let violations = vec![refusal.violation];
