@@ -308,11 +308,47 @@ public final class RuleWalk {
   /** Thrown from a stream when the output mode {@code STRICT} rejects an item. */
   static final class Rejected extends RuntimeException {
     private static final long serialVersionUID = 1L;
+    // #if derived
+    private final transient List<Violation> violations;
+    // #endif
 
     Rejected() {
       super("a stream item violates a rule", null, false, false);
+      // #if derived
+      this.violations = List.of();
+      // #endif
     }
+    // #if derived
+
+    /** A rejection that reports {@code violations} (a principal that could not be completed). */
+    Rejected(List<Violation> violations) {
+      super("a derived field could not be computed", null, false, false);
+      this.violations = List.copyOf(violations);
+    }
+
+    /** What the router reports to the rule hook; empty for a stream item, whose check reported it. */
+    List<Violation> violations() {
+      return violations;
+    }
+    // #endif
   }
+  // #if derived
+
+  /**
+   * Pipeline step 5 with request validation off: the derived fields are still computed, and a value
+   * that cannot be built is a {@code 422} with that field's violation (spec/rules.md section 17.2).
+   * Returns the response, or {@code null} when every field was computed.
+   */
+  static VeldResponse derivedFailure(EndpointSpec spec, HandlerHooks hooks, Router.StdSigs std) {
+    List<Violation> found = Derive.take();
+    if (found.isEmpty()) {
+      return null;
+    }
+    report(hooks, spec, Position.INPUT, Outcome.REJECTED, found, System.nanoTime());
+    return Router.problem(
+        std.validation(), "ValidationError", 422, spec.sig(), Router.issuesToWire(issues(found)), found);
+  }
+  // #endif
 
   /**
    * The same check for one item of a stream the server is about to send (spec/rules.md section

@@ -294,10 +294,27 @@ pub fn write_allows(
         let data = format!("{json}.object().put(\"message\", {json}.of(reason)).build()");
         let error = prelude_error(printer.file(), site, ("Forbidden", 403), &data);
         let fields = list_of(printer.file(), &a.reads);
+        // An argument that has no value (a derived field of a request that reads a `@readonly`
+        // field) skips the `allow` (`spec/rules.md` 17.2).
+        let call = if a.args.iter().any(|x| arg_reaches_derived(tree.ir, x)) {
+            let derive = printer.file().rt("Derive");
+            let permitted = printer.file().rt("Policy");
+            format!("{derive}.orSkip(() -> {call}, {permitted}.Verdict.PERMITTED)")
+        } else {
+            call
+        };
         w.line(format!(
             "run.allow({}, {fields}, () -> {call}, reason -> {error});",
             java_str(&policy.id)
         ));
+    }
+}
+
+/// Whether the value of an `allow` argument can hold a derived field.
+fn arg_reaches_derived(ir: &veld_ir::Ir, arg: &Expr) -> bool {
+    match &arg.t {
+        veld_ir::ExprType::Type(t) => ir.type_reaches_derived(t),
+        veld_ir::ExprType::Duration => false,
     }
 }
 

@@ -57,6 +57,56 @@ service Probe at "/probe" {
 }
 "#;
 
+/// Derived fields that have no value in a request, and a principal with a derived field on an
+/// endpoint that has no rule block.
+const ALIGN: &str = r#"
+model Caller {
+  id: uuid
+  level: int
+  cap: int = level * 10
+}
+
+principal Caller
+
+model Part {
+  id: uuid @readonly
+  weight: int @readonly
+  name: string
+}
+
+model Crate {
+  parts: Part[]
+  lead: Part
+  count: int = len(parts)
+  heavy: bool = any(parts, p => p.weight > 10)
+  leadWeight: int = lead.weight
+}
+
+model Seen {
+  n: int
+  cap: int
+}
+
+policy CanShip(who: Caller, crate: Crate) {
+  permit when crate.leadWeight >= 0
+}
+
+@auth(bearer)
+service Depot at "/depot" {
+  post "/ship" ship(body: Crate) -> 200 Crate {
+    allow CanShip(user, body)
+    require not body.heavy
+    ensure result.count == old(body.leadWeight)
+    @rollout(audit)
+    require not body.heavy
+    @rollout(audit)
+    ensure result.count == old(body.leadWeight)
+  }
+
+  get "/seen" seen(@query n: int) -> Seen
+}
+"#;
+
 /// An event with a derived field, published by one service and consumed by another.
 const SALES: &str = r#"
 event Sold {
@@ -128,6 +178,10 @@ fn endpoints_ir() -> Ir {
 
 fn extra_ir() -> Ir {
     compile_source(EXTRA.to_string(), "extra", "the principal contract")
+}
+
+fn align_ir() -> Ir {
+    compile_source(ALIGN.to_string(), "align", "the alignment contract")
 }
 
 fn sales_ir() -> Ir {
@@ -421,6 +475,19 @@ fn the_principal_the_output_mode_and_a_stream_get_their_derived_fields() {
         "veldtest.DerivedExtraHttp",
         &[],
     );
+    assert!(out.contains("OK"), "{out}");
+}
+
+/// A derived field that reaches a `@readonly` field through a nested value is absent in a request;
+/// a statement that reads an absent derived field is skipped; the principal is completed for every
+/// endpoint, and one that cannot be completed is a 500.
+#[test]
+fn absent_derived_fields_are_skipped_and_the_principal_is_completed_for_every_endpoint() {
+    if !require_javac("absent_derived_fields_are_skipped") {
+        return;
+    }
+    let files = generate(&align_ir(), Role::Server, None, false, "gen.b");
+    let out = compile_and_run(&files, &["DerivedAlign.java"], "veldtest.DerivedAlign", &[]);
     assert!(out.contains("OK"), "{out}");
 }
 

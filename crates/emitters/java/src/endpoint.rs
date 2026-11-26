@@ -379,17 +379,9 @@ pub fn write_call_body(
         .collect();
     let request = site.request;
     write_start(w, &mut printer, site);
-    if let Some((class, ty)) = &held {
-        let read = format!("({class}) ctx.principal()");
-        if printer.file().tree.ir.type_reaches_derived(ty) {
-            // The caller is given its derived fields before the policies read it (`spec/rules.md` 17.2).
-            let (schema, codec) = value_codec(printer.file(), ty);
-            w.line(format!(
-                "{class} principal = run.derivePrincipal(ctx, {schema}, {codec}, {read});"
-            ));
-        } else {
-            w.line(format!("{class} principal = {read};"));
-        }
+    if let Some((class, _)) = &held {
+        // The caller was completed once, after authentication, by the hooks (`spec/rules.md` 17.2).
+        w.line(format!("{class} principal = ({class}) ctx.principal();"));
     }
     let loaders: Vec<String> = service_methods(site);
     for (fact, ident) in ep.rules.facts.iter().zip(&idents) {

@@ -11,6 +11,7 @@ import gen.b.shop.server.ShopFactLoaders;
 import gen.b.shop.server.ShopHandler;
 import gen.b.shop.server.ShopHooks;
 import gen.b.shop.server.ShopService;
+import gen.b.shop.shop.Line;
 import gen.b.shop.shop.Receipt;
 import gen.b.shop.shop.Wallet;
 import java.net.InetSocketAddress;
@@ -24,10 +25,11 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * The production handler of {@code tests/rules/endpoints/derived.veld.pending} generated with
- * {@code validate = false} (spec/rules.md section 5.3): the rules of the request are off, but the
- * derived fields are still computed, because the handler's type holds them; a derived field of the
- * request that cannot be computed is left absent and is neither a {@code 422} nor, later, a
- * violation of the output (the failure of a request is not the server's own).
+ * {@code validate = false} (spec/rules.md section 5.3 and 17.2): the rules of the request are off,
+ * but the derived fields are still computed, because the handler's type holds them; a request whose
+ * derived field cannot be computed is a {@code 422 ValidationError} with that field's violation, and
+ * the handler is not called (it is never given a value its type promises and the server could not
+ * build).
  */
 public final class DerivedNoValidate {
   private DerivedNoValidate() {}
@@ -65,10 +67,13 @@ public final class DerivedNoValidate {
 
       REQUEST.set(null);
       String broken = send(server, "{\"items\":[{\"price\":100000,\"qty\":100000}]}");
-      check(broken.startsWith("200 "), "a derived field of the request that fails is not reported: " + broken);
-      check(REQUEST.get() != null && REQUEST.get().body().items().get(0).total() == null, "it is absent: " + REQUEST.get());
-      check(REQUEST.get().body().subtotal() == null, "and so is what reads it: " + REQUEST.get());
-      check(Json.parse(broken.substring(4)).asObject().get("net").asDouble() == 70, "the output is not touched by it: " + broken);
+      check(broken.startsWith("422 "), "a derived field of the request that fails is a 422: " + broken);
+      check(REQUEST.get() == null, "the handler is not called: " + REQUEST.get());
+      Json.Obj problem = Json.parse(broken.substring(4)).asObject();
+      Json.Obj violation = problem.get("violations").asArray().items().get(0).asObject();
+      check(violation.get("rule").asString().equals(Line.DERIVED_TOTAL), "with the field's violation: " + broken);
+      check(violation.get("error") != null, "and its error: " + broken);
+      check(problem.get("violations").asArray().items().size() == 1, "and only that one: " + broken);
     } finally {
       server.stop(0);
     }

@@ -135,7 +135,12 @@ final class WsConnection implements WsSession<Json, Json> {
         return;
       }
     } else {
+      VeldResponse broken = rulesHooks == null ? null : RuleWalk.derivedFailure(spec, rulesHooks, std);
       Derive.take();
+      if (broken != null) {
+        fail(broken);
+        return;
+      }
     }
     inbox.add(Wire.fillReadonly(incomingSchema, prepared));
     // #endif

@@ -302,6 +302,7 @@ pub fn emit_with(
         "plain_rules" => !(flags.conditional && flags.rules),
         "early" => flags.conditional && !flags.endpoint,
         "derived" => flags.derived,
+        "rollout_derived" => flags.rollout && flags.derived,
         "no_derived" => !flags.derived,
         "derived_conditional" => flags.derived && flags.conditional,
         "no_derived_conditional" => !flags.derived && flags.conditional,

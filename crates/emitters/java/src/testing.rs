@@ -272,9 +272,15 @@ fn write_create_body(
             let ty = veld_ir::Type::Decl(p.decl);
             let (codec, wire) = (codec_expr(fc, &ty), fc.rt("Wire"));
             let schema = schema_expr(fc, &ty, &veld_ir::Constraints::default(), false);
-            format!(
-                ", json -> {codec}.decode({wire}.prepare({schema}, json, {wire}.Mode.RESPONSE))"
-            )
+            let decode =
+                format!("{codec}.decode({wire}.prepare({schema}, json, {wire}.Mode.RESPONSE))");
+            if fc.tree.ir.type_reaches_derived(&ty) {
+                // The caller is completed once, as the hooks complete the one authentication returns.
+                let (derive, class) = (fc.rt("Derive"), fc.decl(p.decl));
+                format!(", json -> {derive}.principal({schema}, {codec}, {class}.class, {decode})")
+            } else {
+                format!(", json -> {decode}")
+            }
         }
         (Some(_) | None, _) => String::new(),
     };

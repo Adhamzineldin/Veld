@@ -264,20 +264,28 @@ fn required_hooks(fc: &mut FileCtx<'_, '_>, svc: &Service) -> Vec<Hook> {
         Some(_) => fc.rt("RequestContext"),
         None => String::new(),
     };
+    let completes = completed_principal(fc, svc).is_some();
     let mut out = Vec::new();
     for (i, (setter, ty, doc)) in auth.iter().enumerate() {
+        let register = if completes {
+            register_completing(setter, &params[i])
+        } else if principal.is_some() {
+            format!("builder.{setter}({}::authenticate);", params[i])
+        } else {
+            format!("builder.{setter}({});", params[i])
+        };
         let hook = match &principal {
             Some(class) => Hook {
                 param: params[i].clone(),
                 ty: (*ty).to_string(),
-                register: format!("builder.{setter}({}::authenticate);", params[i]),
+                register,
                 doc: (*doc).to_string(),
                 iface: typed_auth(&ctx, class, (setter, ty)),
             },
             None => Hook {
                 param: params[i].clone(),
                 ty: format!("{hooks}.{ty}"),
-                register: format!("builder.{setter}({});", params[i]),
+                register,
                 doc: (*doc).to_string(),
                 iface: Vec::new(),
             },
@@ -310,6 +318,48 @@ fn required_hooks(fc: &mut FileCtx<'_, '_>, svc: &Service) -> Vec<Hook> {
         out.push(caller_hook(fc, &hooks, principal.as_deref(), param));
     }
     out
+}
+
+/// The principal's model when it has derived fields and the service authenticates: the hooks then
+/// complete the value the authentication hook returns (`spec/rules.md` section 17.2).
+fn completed_principal(fc: &mut FileCtx<'_, '_>, svc: &Service) -> Option<veld_ir::DeclId> {
+    let p = svc.principal.as_ref()?;
+    let authenticates = svc.endpoints.iter().any(|e| e.auth.kind != AuthKind::None);
+    (authenticates
+        && fc
+            .tree
+            .ir
+            .type_reaches_derived(&veld_ir::Type::Decl(p.decl)))
+    .then_some(p.decl)
+}
+
+/// Registers an authentication hook so that its principal is completed once, after authentication,
+/// whatever the endpoint (`Derive.principal`).
+fn register_completing(setter: &str, param: &str) -> String {
+    let (names, call) = match setter {
+        "basic" => (
+            "veldUser, veldPassword, veldCtx",
+            "veldUser, veldPassword, veldCtx",
+        ),
+        "apiKey" => ("veldKey, veldCtx", "veldKey, veldCtx"),
+        _ => ("veldToken, veldCtx", "veldToken, veldCtx"),
+    };
+    format!("builder.{setter}(({names}) -> completePrincipal({param}.authenticate({call})));")
+}
+
+/// `completePrincipal`: the private helper the registrations above call.
+fn write_complete_principal(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, decl: veld_ir::DeclId) {
+    let ty = veld_ir::Type::Decl(decl);
+    let (class, derive) = (fc.decl(decl), fc.rt("Derive"));
+    let schema = crate::types::schema_expr(fc, &ty, &veld_ir::Constraints::default(), false);
+    let codec = codec_expr(fc, &ty);
+    w.line("/** The caller with its derived fields, computed once per request after authentication. */");
+    w.open("private static Object completePrincipal(Object principal)");
+    w.line(format!(
+        "return {derive}.principal({schema}, {codec}, {class}.class, principal);"
+    ));
+    w.close();
+    w.blank();
 }
 
 /// The hook that tells who the caller is, for the scope of an idempotency key: typed with the
@@ -402,6 +452,9 @@ fn write_hooks(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service, clas
     }
     w.close();
     w.blank();
+    if let Some(decl) = completed_principal(fc, svc) {
+        write_complete_principal(w, fc, decl);
+    }
     w.line(
         "/** Observes errors that become `Internal`; a failing hook never changes the response. */",
     );

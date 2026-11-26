@@ -42,11 +42,25 @@ public final class EndpointRules {
   public static final class Saved<T> {
     private final T value;
     private final RuleError error;
+    // #if derived
+    private final boolean absent;
+    // #endif
 
     private Saved(T value, RuleError error) {
       this.value = value;
       this.error = error;
+      // #if derived
+      this.absent = false;
+      // #endif
     }
+    // #if derived
+
+    private Saved() {
+      this.value = null;
+      this.error = null;
+      this.absent = true;
+    }
+    // #endif
 
     /** Evaluates {@code expr} now; an evaluation error is kept and raised when the value is read. */
     public static <T> Saved<T> of(Supplier<T> expr) {
@@ -54,6 +68,12 @@ public final class EndpointRules {
         return new Saved<>(expr.get(), null);
       } catch (RuleError e) {
         return new Saved<>(null, e);
+        // #if derived
+      } catch (NullPointerException e) {
+        // An operand that reads a derived field with no value is saved as absent: the statement
+        // that reads it later is skipped (spec/rules.md section 17.2).
+        return new Saved<>();
+        // #endif
       }
     }
 
@@ -70,6 +90,11 @@ public final class EndpointRules {
       if (error != null) {
         throw error;
       }
+      // #if derived
+      if (absent) {
+        throw new Derive.Absent();
+      }
+      // #endif
       return value;
     }
   }
@@ -230,16 +255,6 @@ public final class EndpointRules {
       return done;
     }
 
-    /**
-     * Like {@link #derive}, for the caller: the handler and the hooks that read the context after
-     * this see the principal with its derived fields.
-     */
-    public <T> T derivePrincipal(RequestContext ctx, Schema schema, Codec<T> codec, T principal) {
-      T done = derive(schema, codec, principal);
-      ctx.setPrincipal(done);
-      return done;
-    }
-
     // #endif
     private Early early(VeldError error, int status, List<Violation> found) {
       Json data = Wire.prepare(error.dataSchema(), error.dataWire(), Wire.Mode.RESPONSE);
@@ -359,6 +374,13 @@ public final class EndpointRules {
       } catch (RuleError e) {
         ok = false;
         error = e.kind();
+        // #endif
+        // #if rollout_derived
+      } catch (NullPointerException e) {
+        // The statement reads a derived field that is absent: it is skipped, the cause is reported.
+        ok = true;
+        // #endif
+        // #if rollout
       }
       if (!ok) {
         String text = error == null ? message : "rule " + name + " could not be evaluated";
@@ -454,6 +476,13 @@ public final class EndpointRules {
       } catch (RuleError e) {
         ok = false;
         error = e.kind();
+        // #endif
+        // #if rollout_derived
+      } catch (NullPointerException e) {
+        // The statement reads a derived field that is absent: it is skipped, the cause is reported.
+        ok = true;
+        // #endif
+        // #if rollout
       }
       if (!ok) {
         String text = error == null ? c.message() : "rule " + c.name() + " could not be evaluated";

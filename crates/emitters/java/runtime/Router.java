@@ -383,6 +383,9 @@ public final class Router implements VeldHandler {
     }
     // #endif
     // #if derived
+    if (out.failure == null && !hooks.validateRequests()) {
+      out.failure = RuleWalk.derivedFailure(spec, hooks, std);
+    }
     Derive.take();
     // #endif
     return out;
@@ -625,6 +628,12 @@ public final class Router implements VeldHandler {
     // #endif
     // #if rules
     if (err instanceof RuleWalk.Rejected) {
+      // #endif
+      // #if derived
+      RuleWalk.report(
+          hooks, spec, RuleWalk.Position.OUTPUT, RuleWalk.Outcome.REJECTED, ((RuleWalk.Rejected) err).violations(), System.nanoTime());
+      // #endif
+      // #if rules
       return problem(std.internal(), "Internal", 500, spec.sig(), Json.object().build());
     }
     // #endif

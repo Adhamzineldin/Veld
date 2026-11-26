@@ -16,7 +16,8 @@
 //! Nesting, dropping what was supplied and the walk are the runtime's (`Derive`).
 
 use veld_codegen::{CodeWriter, GenDiagnostic, naming};
-use veld_ir::{Decl, Field};
+use veld_ir::rules::{Expr, ExprKind, ExprType, PathRef, Root};
+use veld_ir::{Decl, DeclId, Field, Ir, Type};
 
 use crate::rule_expr::JavaExpr;
 use crate::tree::FileCtx;
@@ -92,12 +93,81 @@ fn read_wires(d: &Decl, f: &Field) -> String {
     names.join(", ")
 }
 
-/// Whether the expression reads a `@readonly` field of its own declaration: such a field is
-/// absent from a request body, so the derived field is left absent in request position.
-fn reads_readonly(d: &Decl, f: &Field) -> bool {
-    f.derived_reads()
-        .iter()
-        .any(|name| d.fields().iter().any(|g| &g.name == name && g.readonly))
+/// Whether the expression reads a `@readonly` field, of its own declaration or at any depth
+/// (`obj.field`, the variable of a lambda over a list): such a field is absent from a request body
+/// (`spec/rules.md` 17.2), so the derived field is left absent in request position.
+fn reads_readonly(ir: &Ir, d: &Decl, f: &Field) -> bool {
+    f.derived
+        .as_ref()
+        .is_some_and(|e| expr_reads_readonly(ir, e, d.id, &mut Vec::new()))
+}
+
+/// The declaration a type leads to through lists, maps and pages (a lambda variable is an element).
+fn element_decl(t: &Type) -> Option<DeclId> {
+    match t {
+        Type::Decl(id) => Some(*id),
+        Type::List(x) | Type::Map(x) | Type::Page(x) => element_decl(x),
+        Type::Scalar(_) => None,
+    }
+}
+
+fn path_reads_readonly(ir: &Ir, p: &PathRef, start: Option<DeclId>) -> bool {
+    let mut at = start;
+    for step in &p.steps {
+        let Some(id) = at else { return false };
+        let Some(field) = ir.decl(id).fields().iter().find(|g| g.name == step.name) else {
+            return false;
+        };
+        if field.readonly {
+            return true;
+        }
+        at = element_decl(&field.ty);
+    }
+    false
+}
+
+fn expr_reads_readonly(
+    ir: &Ir,
+    e: &Expr,
+    own: DeclId,
+    vars: &mut Vec<(String, Option<DeclId>)>,
+) -> bool {
+    match &e.e {
+        ExprKind::Lit(_) | ExprKind::Now(_) => false,
+        ExprKind::Path(p) | ExprKind::Has(p) => {
+            let start = match &p.root {
+                Root::SelfValue => Some(own),
+                Root::Var(name) => vars
+                    .iter()
+                    .rev()
+                    .find(|(n, _)| n == name)
+                    .and_then(|(_, t)| *t),
+                Root::Principal | Root::Result | Root::Param(_) | Root::Fact(_) => None,
+            };
+            path_reads_readonly(ir, p, start)
+        }
+        ExprKind::Not(x) | ExprKind::Neg(x) | ExprKind::Widen(x) | ExprKind::Old(x) => {
+            expr_reads_readonly(ir, x, own, vars)
+        }
+        ExprKind::Bin(b) => {
+            expr_reads_readonly(ir, &b.l, own, vars) || expr_reads_readonly(ir, &b.r, own, vars)
+        }
+        ExprKind::Call(c) => c.args.iter().any(|a| expr_reads_readonly(ir, a, own, vars)),
+        ExprKind::List(items) => items.iter().any(|a| expr_reads_readonly(ir, a, own, vars)),
+        ExprKind::Quant(q) => {
+            if expr_reads_readonly(ir, &q.list, own, vars) {
+                return true;
+            }
+            let element = match &q.list.t {
+                ExprType::Type(t) => element_decl(t),
+                ExprType::Duration => None,
+            };
+            vars.push((q.var.clone(), element));
+            let found = expr_reads_readonly(ir, &q.body, own, vars);
+            vars.pop();
+            found
+        }
+    }
 }
 
 /// Writes the derived members of `d` into the body of its class. `record` is the Java type of the
@@ -162,7 +232,7 @@ fn write_wire_function(
     w.line(format!("{json} x;"));
     for (i, (f, n)) in ordered.iter().zip(names).enumerate() {
         let call = format!("{}(v, path, out)", n.method);
-        let call = if reads_readonly(d, f) {
+        let call = if reads_readonly(fc.tree.ir, d, f) {
             format!("request ? null : {call}")
         } else {
             call

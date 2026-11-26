@@ -74,9 +74,51 @@ public final class Derive {
    */
   public static <T> T present(T value) {
     if (value == null) {
-      throw new NullPointerException("a derived field is absent");
+      throw new Absent();
     }
     return value;
+  }
+
+  /**
+   * The read of a derived field that has no value. It is a {@link NullPointerException}, so that
+   * every place that skips a statement for it takes it for "skip", and a class of its own, so that
+   * a place that must skip only for this cause ({@link #orSkip}) does not hide another one.
+   */
+  public static final class Absent extends NullPointerException {
+    private static final long serialVersionUID = 1L;
+
+    Absent() {
+      super("a derived field is absent");
+    }
+  }
+
+  /** The value of {@code value}, or {@code skipped} when it reads a derived field that has no value. */
+  public static <T> T orSkip(java.util.function.Supplier<T> value, T skipped) {
+    try {
+      return value.get();
+    } catch (Absent e) {
+      return skipped;
+    }
+  }
+
+  /**
+   * The principal the authentication hook returned, completed with its derived fields (spec/rules.md
+   * section 17.2): once per request, after authentication, for every endpoint. A value that is not
+   * of {@code type} (the untyped hook of a service that never reads the caller) and {@code null}
+   * (the caller is rejected) are returned as they are. A field that cannot be computed is the
+   * application's mistake: the request ends with {@code 500 Internal} and the violations go to the
+   * rule hook as output violations.
+   */
+  public static <T> Object principal(Schema schema, Codec<T> codec, Class<T> type, Object principal) {
+    if (!type.isInstance(principal)) {
+      return principal;
+    }
+    List<Violation> found = new ArrayList<>();
+    T done = value(schema, codec, type.cast(principal), found);
+    if (!found.isEmpty()) {
+      throw new RuleWalk.Rejected(found);
+    }
+    return done;
   }
 
   /** A statement that reads derived fields: it holds, that is it is skipped, when one of them is absent. */
