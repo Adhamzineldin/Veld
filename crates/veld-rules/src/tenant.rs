@@ -29,6 +29,20 @@ pub fn caller_tenant(ir: &Ir, model: DeclId, principal: &Json) -> Option<Json> {
     principal.get(&field.wire).filter(|v| !v.is_null()).cloned()
 }
 
+/// The text of a tenant value of `field`: a `string` as it is, a `uuid` in lowercase, an `int` or a
+/// `long` in decimal digits. It is what the envelope attribute `veldtenant` and the key of a
+/// limit by tenant carry. `None` for a value that is not a text or a number.
+#[must_use]
+pub fn text(field: &veld_ir::Field, value: &Json) -> Option<String> {
+    use veld_ir::Scalar;
+    match (&field.ty, value) {
+        (Type::Scalar(Scalar::String | Scalar::Long), Json::String(s)) => Some(s.clone()),
+        (Type::Scalar(Scalar::Uuid), Json::String(s)) => Some(s.to_ascii_lowercase()),
+        (Type::Scalar(Scalar::Int | Scalar::Long), Json::Number(n)) => Some(n.to_string()),
+        _ => None,
+    }
+}
+
 /// True when the tenant `have` of a value of the field `field` is the caller's tenant `caller`.
 fn same(ir: &Ir, field: &veld_ir::Field, have: &Json, caller: &Json) -> bool {
     let Ok(a) = Value::from_json(ir, &field.ty, have) else {

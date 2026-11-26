@@ -114,6 +114,7 @@ pub fn endpoint(
         slo: None,
         timeout_ms: None,
         audited: false,
+        limit: None,
         name: name.to_owned(),
         method: Method::Post,
         path: format!("/{name}"),

@@ -142,13 +142,7 @@ fn carried_event(
 /// such a field, and for one whose field is absent or not a text or number.
 fn tenant_text(decl: &veld_ir::Decl, data: &Json) -> Option<String> {
     let field = decl.tenant_field()?;
-    match (&field.ty, data.get(&field.wire)?) {
-        (Type::Scalar(Scalar::String | Scalar::Uuid | Scalar::Long), Json::String(s)) => {
-            Some(s.clone())
-        }
-        (Type::Scalar(Scalar::Int | Scalar::Long), Json::Number(n)) => Some(n.to_string()),
-        _ => None,
-    }
+    crate::tenant::text(field, data.get(&field.wire)?)
 }
 
 /// Steps 4 and 5 of section 7: the attributes and the canonical bytes.
