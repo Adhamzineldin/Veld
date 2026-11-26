@@ -589,14 +589,11 @@ impl ExprPrinter for RustPrinter<'_, '_, '_> {
         let base = match &path.root {
             Root::SelfValue => "self".to_string(),
             Root::Var(name) => var_ident(name),
-            Root::Param(_) | Root::Fact(_) | Root::Principal => {
+            Root::Param(_) | Root::Fact(_) | Root::Principal | Root::Result => {
                 let Some((base, optional)) = self.block_root(&path.root) else {
                     return self.no("`has` on a name that is not in scope");
                 };
                 return Printed::atom(self.has_root(&base, optional, &path.steps));
-            }
-            Root::Result => {
-                return self.no("`has` on the result");
             }
         };
         Printed::atom(self.has_chain(&base, &path.steps, 0))

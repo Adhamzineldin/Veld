@@ -135,6 +135,7 @@ fn service_file(
             ctx.tree.rules,
             ctx.tree.timed,
             crate::flags::svc_reads_flags(ctx.tree, svc),
+            crate::platform::svc_uses(ctx.tree.ir, svc),
         ),
         typed.as_deref(),
     );
@@ -202,7 +203,7 @@ fn hooks_trait(
     svc: &Service,
     n: &Needs,
     validate: bool,
-    (rules, ctx_timed, reads_flags): (bool, bool, bool),
+    (rules, ctx_timed, reads_flags, platform): (bool, bool, bool, bool),
     typed: Option<&str>,
 ) {
     let name = service_type(svc);
@@ -286,10 +287,15 @@ fn hooks_trait(
         w.line("async { None }");
         w.close();
     }
-    if block::has_block(svc) {
+    if block::has_block(svc) || platform {
         w.blank();
-        w.line("/// The clock of the endpoint rules (`now`): read once per request, before the facts are");
-        w.line("/// loaded. The default is the system clock.");
+        if platform {
+            w.line("/// The clock of the request (`now` of the endpoint rules and of `@visible`): read once per");
+            w.line("/// request, when it is matched. The default is the system clock.");
+        } else {
+            w.line("/// The clock of the endpoint rules (`now`): read once per request, before the facts are");
+            w.line("/// loaded. The default is the system clock.");
+        }
         w.open("fn clock(&self, _ctx: &veld::server::RequestContext) -> std::time::SystemTime");
         w.line("std::time::SystemTime::now()");
         w.close();
@@ -337,7 +343,10 @@ fn dispatch(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service, n: &Needs, typed
     };
     w.open(format!("pub struct {name}Dispatch<{decl}>"));
     // The test handler of a service with endpoint rules reaches into its dispatch.
-    let vis = if block::has_block(svc) || n.idempotency || crate::flags::svc_reads_flags(tree, svc)
+    let vis = if block::has_block(svc)
+        || n.idempotency
+        || crate::flags::svc_reads_flags(tree, svc)
+        || crate::platform::svc_uses(tree.ir, svc)
     {
         "pub(crate) "
     } else {
@@ -373,8 +382,16 @@ fn dispatch(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service, n: &Needs, typed
     if rules {
         rules_forwards(w, tree, svc);
     }
+    let platform = crate::platform::svc_uses(tree.ir, svc);
+    if platform {
+        w.open(
+            "fn request_clock(&self, ctx: &veld::server::RequestContext) -> std::time::SystemTime",
+        );
+        w.line("self.hooks.clock(ctx)");
+        w.close().blank();
+    }
     if block::has_block(svc) {
-        block_methods(w, svc, tree.timed);
+        block_methods(w, svc, tree.timed, platform);
     }
     conditional_method(w, tree, svc);
     if crate::flags::svc_reads_flags(tree, svc) {
@@ -431,12 +448,14 @@ fn timer_forwards(w: &mut CodeWriter, typed: Option<&str>) {
 }
 
 /// `prepare` and `ensure` of a dispatch whose service has endpoint rules.
-fn block_methods(w: &mut CodeWriter, svc: &Service, tree_timed: bool) {
+fn block_methods(w: &mut CodeWriter, svc: &Service, tree_timed: bool, platform: bool) {
     let loaders = !svc.facts.is_empty();
     let pass = if loaders { "&self.loaders, " } else { "" };
     w.open("async fn prepare(&self, endpoint: usize, args: &mut serde_json::Map<String, serde_json::Value>, ctx: &veld::server::RequestContext) -> Result<veld::server::Prepared, veld::server::Halt>");
     w.line("let enforce = self.hooks.validate_requests();");
-    if tree_timed {
+    if platform {
+        w.line("let now = ctx.now_ms();");
+    } else if tree_timed {
         w.line("let now = veld::rules::clock_ms(ctx.timer_now().unwrap_or_else(|| self.hooks.clock(ctx)));");
     } else {
         w.line("let now = veld::rules::clock_ms(self.hooks.clock(ctx));");
@@ -494,6 +513,7 @@ fn audited_ensure(w: &mut CodeWriter, svc: &Service) {
 /// changes no bytes.
 pub(crate) fn typed_principal(ctx: &Ctx<'_, '_>, svc: &Service) -> Option<String> {
     if principal_has_derived(ctx.tree, svc)
+        || crate::platform::svc_reads_caller(ctx.tree.ir, svc)
         || svc
             .endpoints
             .iter()

@@ -189,6 +189,14 @@ pub struct RequestContext {
     #[doc(hidden)]
     pub emitted: super::events::EmitLog,
     // @end
+    // @if platform
+    /// The clock reading of the request, taken once when the request is matched
+    /// (`spec/platform.md` section 9.2): the `now` of the rules and of `@visible`.
+    now: std::time::SystemTime,
+    /// What the platform features keep of the request; the clones of the context share it.
+    #[doc(hidden)]
+    pub platform: Arc<super::platform::State>,
+    // @end
 }
 // #if rollout
 
@@ -317,6 +325,17 @@ impl RequestContext {
         self.principal.as_ref().and_then(Principal::get::<T>)
     }
 }
+// @if platform
+
+impl RequestContext {
+    /// The clock reading of the request in milliseconds since the epoch. For generated code.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn now_ms(&self) -> i64 {
+        super::rules::clock_ms(self.now)
+    }
+}
+// @end
 // @if etag
 
 impl RequestContext {
@@ -462,6 +481,14 @@ pub trait Endpoints: Send + Sync + 'static {
         Vec::new()
     }
     // #endif
+    // @if platform
+
+    /// The clock of the request (`now` of the rules and of `@visible`, `time` of an audit event):
+    /// read once, when the request is matched.
+    fn request_clock(&self, _ctx: &RequestContext) -> std::time::SystemTime {
+        std::time::SystemTime::now()
+    }
+    // @end
 
     /// Observes every error that becomes `Internal`. It cannot change the response.
     fn on_error(&self, _err: &Error, _ctx: &RequestContext) {}
@@ -1651,6 +1678,10 @@ impl<E: Endpoints> Handler<E> {
             // @if outbox
             emitted: super::events::EmitLog::new(self.inner.endpoints.test_emitted()),
             // @end
+            // @if platform
+            now: std::time::SystemTime::now(),
+            platform: Arc::new(super::platform::State::default()),
+            // @end
         }
     }
 
@@ -1844,6 +1875,9 @@ impl<E: Endpoints> Handler<E> {
     ) -> Result<Map<String, Value>, Response> {
         let e = &self.inner.endpoints;
         let std = e.std_sigs();
+        // @if platform
+        self.open(ctx);
+        // @end
         // #if endpoint_rules
         let trusted = e.trusted_principal(ctx);
         // @if timed
@@ -2016,6 +2050,10 @@ impl<E: Endpoints> Handler<E> {
                 return self.failure(&err, ep, ctx);
             }
         }
+        // @if visibility
+        // What the caller may see is sent; the rules above judged the whole value.
+        let wire = self.shown(ep, schema, &wire, ctx);
+        // @end
         // @if !etag
         Response {
             status: ep.status,
@@ -2309,6 +2347,9 @@ impl<E: Endpoints> Handler<E> {
                         e.on_error(&Error::other(why), ctx);
                         return problem(std.internal, "Internal", 500, serde_json::json!({}));
                     }
+                    // @if visibility
+                    let p = &Problem { data: self.shown(ep, d.schema, &p.data, ctx), ..p.clone() };
+                    // @end
                     let (status, mut out) = problem(d.sig, d.name, d.status, p.data.clone());
                     out.rulings = p.rulings.clone();
                     return (status, out);
@@ -2326,7 +2367,12 @@ impl<E: Endpoints> Handler<E> {
     }
 
     // @if sse
+    // @if !shapes
     fn frame(&self, ep: &EndpointSpec, ev: &SseEvent<Value>) -> Result<Vec<u8>, Error> {
+    // @end
+    // @if shapes
+    fn frame(&self, ep: &EndpointSpec, ev: &SseEvent<Value>, ctx: &RequestContext) -> Result<Vec<u8>, Error> {
+    // @end
         let schema = ep.success.ok_or_else(|| Error::other(format!("{}: a stream needs an item type", ep.name)))?;
         // @if derived
         let item = self.inner.derive_output(ep, schema, &ev.data, "stream item").map_err(Error::other)?;
@@ -2347,7 +2393,12 @@ impl<E: Endpoints> Handler<E> {
                 return Err(Error::other(format!("{}: stream item failed validation: {issues:?}", ep.name)));
             }
         }
+        // @if !shapes
         let data = String::from_utf8_lossy(&schema.canonical_typed(&ev.data)).into_owned();
+        // @end
+        // @if shapes
+        let data = self.item_text(ep, schema, &ev.data, ctx)?;
+        // @end
         sse_frame(&data, ev.id.as_deref(), ev.event.as_deref(), ev.retry).map(String::into_bytes)
     }
 
@@ -2366,10 +2417,20 @@ impl<E: Endpoints> Handler<E> {
             None => None,
             Some(Err(err)) => return self.failure(&err, ep, &ctx),
             // @if !flags
+            // @if !shapes
             Some(Ok(ev)) => match self.frame(ep, &ev) {
             // @end
+            // @if shapes
+            Some(Ok(ev)) => match self.frame(ep, &ev, &ctx) {
+            // @end
+            // @end
             // @if flags
+            // @if !shapes
             Some(Ok(ev)) => match super::rules::with_view(Some(&ctx.flags), || self.frame(ep, &ev)) {
+            // @end
+            // @if shapes
+            Some(Ok(ev)) => match super::rules::with_view(Some(&ctx.flags), || self.frame(ep, &ev, &ctx)) {
+            // @end
             // @end
                 Ok(frame) => Some(frame),
                 Err(err) => return self.failure(&err, ep, &ctx),
@@ -2387,10 +2448,20 @@ impl<E: Endpoints> Handler<E> {
                 let ep = &st.handler.inner.endpoints.endpoints()[st.index];
                 let frame = match next(&mut st.stream).await? {
                     // @if !flags
+                    // @if !shapes
                     Ok(ev) => st.handler.frame(ep, &ev),
                     // @end
+                    // @if shapes
+                    Ok(ev) => st.handler.frame(ep, &ev, &st.ctx),
+                    // @end
+                    // @end
                     // @if flags
+                    // @if !shapes
                     Ok(ev) => super::rules::with_view(Some(&st.ctx.flags), || st.handler.frame(ep, &ev)),
+                    // @end
+                    // @if shapes
+                    Ok(ev) => super::rules::with_view(Some(&st.ctx.flags), || st.handler.frame(ep, &ev, &st.ctx)),
+                    // @end
                     // @end
                     Err(err) => Err(err),
                 };
@@ -2416,6 +2487,54 @@ impl<E: Endpoints> Handler<E> {
     }
     // @end
 }
+// @if platform
+
+impl<E: Endpoints> Handler<E> {
+    /// The first thing a request does once it is matched: the clock is read once, and that
+    /// reading is the `now` of everything the request evaluates.
+    fn open(&self, ctx: &mut RequestContext) {
+        // @if timed
+        let own = ctx.timer_now();
+        // @end
+        // @if !timed
+        let own: Option<std::time::SystemTime> = None;
+        // @end
+        ctx.now = own.unwrap_or_else(|| self.inner.endpoints.request_clock(ctx));
+    }
+
+    // @if shapes
+
+    /// The caller as far as the platform features are concerned: the principal of an endpoint
+    /// that has authentication. A request with no caller has none.
+    fn caller<'a>(ep: &EndpointSpec, ctx: &'a RequestContext) -> Option<&'a Principal> {
+        if ep.auth.is_some() { ctx.principal.as_ref() } else { None }
+    }
+    // @end
+    // @if visibility
+
+    /// `wire`, a value of `schema` that is about to be sent for `ep`, without the `@visible`
+    /// fields its caller may not see (`spec/platform.md` section 2). What was dropped is noted.
+    fn shown(&self, ep: &EndpointSpec, schema: &Schema, wire: &Value, ctx: &RequestContext) -> Value {
+        let shown = super::platform::show_value(schema, wire, Self::caller(ep, ctx), ctx.now_ms(), "$");
+        ctx.platform.note_hidden(&shown.hidden);
+        shown.value
+    }
+    // @end
+    // @if shapes
+    // @if sse
+
+    /// The canonical text of a stream item as it is sent.
+    fn item_text(&self, ep: &EndpointSpec, schema: &Schema, typed: &Value, ctx: &RequestContext) -> Result<String, Error> {
+        let wire = schema.to_wire(typed, false, true);
+        // @if visibility
+        let wire = self.shown(ep, schema, &wire, ctx);
+        // @end
+        Ok(super::canonical::canonical(&wire))
+    }
+    // @end
+    // @end
+}
+// @end
 
 // @if sse
 struct SseState<E: Endpoints> {

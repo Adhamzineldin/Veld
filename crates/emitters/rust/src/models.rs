@@ -74,14 +74,14 @@ pub fn with_imports(body: &str) -> String {
 fn emit_decl(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, d: &Decl) -> Result<(), Vec<GenDiagnostic>> {
     match &d.kind {
         DeclKind::Enum(e) => emit_enum(w, d, e),
-        DeclKind::Model(m) => emit_model(w, ctx, d, m, None),
-        DeclKind::Error(e) => emit_model(w, ctx, d, &e.fields, Some(e)),
+        DeclKind::Model(m) => emit_model(w, ctx, d, m, None)?,
+        DeclKind::Error(e) => emit_model(w, ctx, d, &e.fields, Some(e))?,
         DeclKind::Union(u) => emit_union(w, ctx, d, u),
         DeclKind::Const(c) => return emit_const(w, d, &c.ty, &c.value),
         // An event is a record with event identity (`spec/events.md` section 3): the same struct,
         // schema and check functions as a model. Only a server that publishes or subscribes has
         // the declaration in its tree (`Tree::with_events`).
-        DeclKind::Event(e) => emit_model(w, ctx, d, &event_model(e), None),
+        DeclKind::Event(e) => emit_model(w, ctx, d, &event_model(e), None)?,
     }
     if ctx.tree.derived && d.has_derived() {
         crate::rules::emit_derived(w, ctx, d)?;
@@ -250,7 +250,7 @@ fn emit_model(
     d: &Decl,
     m: &Model,
     error: Option<&ErrorDecl>,
-) {
+) -> Result<(), Vec<GenDiagnostic>> {
     let name = type_name(&d.name);
     doc(w, d.docs.as_deref());
     deprecated(w, d.deprecated.as_ref());
@@ -292,9 +292,13 @@ fn emit_model(
     w.close().blank();
     model_schema(w, ctx, d, m);
     decl_impl(w, d, &name);
+    if ctx.tree.p1.visibility && crate::platform::has_visible(m) {
+        crate::platform::emit_visible(w, ctx, d, m)?;
+    }
     if let Some(e) = error {
         error_impls(w, d, e, &name);
     }
+    Ok(())
 }
 
 fn model_schema(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, d: &Decl, m: &Model) {
@@ -340,6 +344,17 @@ fn model_schema(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, d: &Decl, m: &Model) {
             "None".to_string()
         };
         w.line(format!("derive: {derive},"));
+    }
+    if ctx.tree.p1.visibility {
+        let show = if crate::platform::has_visible(m) {
+            format!(
+                "Some(veld::platform::show_record::<{}>)",
+                type_name(&d.name)
+            )
+        } else {
+            "None".to_string()
+        };
+        w.line(format!("show: {show},"));
     }
     w.close_with("});");
     w.blank();

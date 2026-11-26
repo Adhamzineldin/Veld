@@ -49,6 +49,8 @@ pub struct Tree<'a> {
     /// The runtime config of the target (`spec/runtime-config.md`), when it has settings: the
     /// server entry of every served service takes it.
     pub runtime: Option<crate::config::RuntimeCfg>,
+    /// What the crate uses of platform phase P1 (`spec/platform.md` sections 2 to 5).
+    pub p1: crate::platform::Flags,
     /// True when some service of the tree publishes or subscribes: the tree then emits the events
     /// of its channels (`spec/events.md` section 14).
     events: bool,
@@ -91,6 +93,7 @@ impl<'a> Tree<'a> {
             slo: false,
             flags: false,
             runtime: None,
+            p1: crate::platform::Flags::default(),
             events: false,
         }
     }
@@ -202,6 +205,13 @@ impl<'a> Tree<'a> {
     #[must_use]
     pub fn with_idempotency(mut self, idempotency: bool) -> Self {
         self.idempotency = idempotency;
+        self
+    }
+
+    /// Sets what the crate uses of platform phase P1.
+    #[must_use]
+    pub fn with_p1(mut self, p1: crate::platform::Flags) -> Self {
+        self.p1 = p1;
         self
     }
 

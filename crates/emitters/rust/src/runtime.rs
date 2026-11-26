@@ -90,9 +90,33 @@ pub struct Features {
     pub test_events: bool,
     /// The same for RabbitMQ: `src/adapters/rabbitmq.rs` and `lapin`.
     pub rabbitmq: bool,
+    /// A served endpoint can send a `@visible` field (`spec/platform.md` section 2): the server
+    /// core shows every answer to its caller. Implies `platform`.
+    pub visibility: bool,
+    /// A served answer or fact can be tenant-scoped (`spec/platform.md` section 3): the server
+    /// core compares tenants. Implies `platform`.
+    pub tenancy: bool,
+    /// A declaration of the crate has a `@tenant` field, in either role: a request may lack it.
+    pub tenant_fields: bool,
+    /// A served endpoint is `@audited` (`spec/platform.md` section 4). Implies `platform`.
+    pub audit_log: bool,
+    /// A served endpoint has a `@limit` (`spec/platform.md` section 5). Implies `platform`.
+    pub limits: bool,
+    /// A client of the crate (its own or a consumed one) has an endpoint with a `@limit`: it
+    /// waits and sends again.
+    pub limits_client: bool,
+    /// A declaration of the crate has a `@pii` or `@secret` field and a served endpoint is audited:
+    /// the schemas carry the marks the redaction reads.
+    pub pii: bool,
 }
 
 impl Features {
+    /// A served endpoint uses one of the four features of platform phase P1.
+    #[must_use]
+    pub fn platform(&self) -> bool {
+        self.server && (self.visibility || self.tenancy || self.audit_log || self.limits)
+    }
+
     /// Whether the region `name` of a runtime file is kept (`// #if rules`, `// #if !rules`,
     /// `// #if endpoint_rules`).
     fn region(&self, name: &str) -> bool {
@@ -102,6 +126,14 @@ impl Features {
             "endpoint_rules" => self.endpoint_rules,
             "guards" => self.guards,
             "policies" => self.policies,
+            "platform" => self.platform(),
+            "visibility" => self.visibility,
+            "tenancy" => self.tenancy,
+            "tenant_fields" => self.tenant_fields,
+            "audit_log" => self.audit_log,
+            "limits" => self.limits,
+            "limits_client" => self.limits_client,
+            "pii" => self.pii,
             "rollout" => self.rollout,
             "!rollout" => !self.rollout,
             "derived" => self.derived,
@@ -131,9 +163,21 @@ impl Features {
             "event_flags" => self.event_flags,
             "timed" => self.timed,
             "timeouts" => self.timeouts,
+            "platform" => self.platform(),
+            "visibility" => self.visibility,
+            "tenancy" => self.tenancy,
+            "tenant_fields" => self.tenant_fields,
+            "audit_log" => self.audit_log,
+            "limits" => self.limits,
+            "limits_client" => self.limits_client,
+            "pii" => self.pii,
+            "shapes" => self.server && (self.visibility || self.tenancy),
+            "sleep" => self.sse || self.limits_client,
             "slo" => self.slo && self.server,
             "timeouts_server" => self.timeouts && self.server,
-            "refactor" => self.timed || (self.timeouts && self.server) || self.outbox,
+            "refactor" => {
+                self.timed || (self.timeouts && self.server) || self.outbox || self.platform()
+            }
             "outbox" => self.outbox,
             "split" => self.idempotency || (self.timeouts && self.server),
             "reqwest" => self.reqwest,
@@ -183,6 +227,7 @@ const ERROR: &str = include_str!("../runtime/error.rs");
 const FLAGS: &str = include_str!("../runtime/flags.rs");
 const EVENTS: &str = include_str!("../runtime/events.rs");
 const PAGE: &str = include_str!("../runtime/page.rs");
+const PLATFORM: &str = include_str!("../runtime/platform.rs");
 const REGEX: &str = include_str!("../runtime/regex.rs");
 const SCHEMA: &str = include_str!("../runtime/schema.rs");
 const SERVER: &str = include_str!("../runtime/server.rs");
@@ -213,6 +258,7 @@ pub fn mod_rs(f: &Features) -> String {
         ("flags", f.flags_server),
         ("idempotency", f.idempotency),
         ("page", true),
+        ("platform", f.platform()),
         ("regex", true),
         ("rules", f.rules),
         ("schema", true),
@@ -269,6 +315,7 @@ pub fn emit(files: &mut FileSet, f: &Features) -> Result<(), Vec<GenDiagnostic>>
     put("src/veld/events.rs", EVENTS, f.events)?;
     put("src/veld/flags.rs", FLAGS, f.flags_server)?;
     put("src/veld/page.rs", PAGE, true)?;
+    put("src/veld/platform.rs", PLATFORM, f.platform())?;
     put("src/veld/regex.rs", REGEX, true)?;
     put("src/veld/rules/mod.rs", RULES, f.rules)?;
     put("src/veld/rules/decimal.rs", RULES_DECIMAL, f.rules)?;

@@ -125,6 +125,12 @@ pub struct ModelSchema {
     /// Computes the derived fields of one object of this declaration (typed JSON form), if it has any.
     pub derive: Option<fn(&mut Value, super::rules::Mode, &str, &mut Vec<super::rules::Violation>)>,
     // #endif
+    // #if visibility
+    /// The wire names of the `@visible` fields of one wire record of this declaration that the
+    /// caller may not see at the clock reading (milliseconds), if it has any such field
+    /// (`spec/platform.md` section 2).
+    pub show: Option<fn(&Value, Option<&super::server::Principal>, i64) -> Vec<&'static str>>,
+    // #endif
 }
 
 /// A discriminated union.

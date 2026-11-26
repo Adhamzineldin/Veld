@@ -17,6 +17,7 @@ pub mod guards;
 pub mod models;
 pub mod outbox;
 pub mod package;
+pub mod platform;
 pub mod policies;
 pub mod rules;
 pub mod runtime;
@@ -108,6 +109,7 @@ fn all_capabilities() -> Capabilities {
         .with(Feature::Timeouts)
         .with(Feature::Slo)
         .with(Feature::EventsOutbox)
+        .with(Feature::Visibility)
 }
 
 fn precheck(req: &GenRequest<'_>, caps: &Capabilities) -> Result<(), Vec<GenDiagnostic>> {
@@ -270,6 +272,7 @@ impl Generator for Rust {
             ));
         }
         refuse_ws_blocks(req)?;
+        platform::refusals(req)?;
         if server {
             outbox::refusals(req.ir, &req.services)?;
         }
@@ -324,11 +327,12 @@ impl Generator for Rust {
             });
         let flags_http = server && !served_flag_services(req, flags).is_empty();
         let flags_server = flags_http || (server && event_flags);
+        let p1 = platform::uses(req);
         // The test handler of a service that is only idempotent, or whose only rules are flagged
         // invariants, runs the steps of the pipeline too: it needs the endpoint rules runtime.
         let endpoint_rules = server
             && (block::served_has_blocks(req.ir, &req.services)
-                || (testing && (idempotency || flags_http)));
+                || (testing && (idempotency || flags_http || p1.server())));
         let etag = server && conditional::any_version(req.ir, &served_http(req));
         let version = etag
             || conditional::any_guard(req.ir, if server { &req.consumes } else { &req.services });
@@ -339,6 +343,7 @@ impl Generator for Rust {
         let derived = crate_has_derived(req);
         let rules = crate_has_rules(req)
             || derived
+            || p1.server()
             || flags
             || endpoint_rules
             || policies
@@ -391,6 +396,13 @@ impl Generator for Rust {
                     .any(|s| !req.ir.service(*s).subscriptions.is_empty()),
             kafka: chosen.contains(&brokers::Broker::Kafka),
             rabbitmq: chosen.contains(&brokers::Broker::RabbitMq),
+            visibility: serving && p1.visibility,
+            tenancy: serving && p1.tenancy,
+            tenant_fields: p1.tenant_fields,
+            audit_log: serving && p1.audit,
+            limits: serving && p1.limits,
+            limits_client: p1.limits_client,
+            pii: p1.pii,
         };
         let mut files = FileSet::new();
         runtime::emit(&mut files, &f)?;
@@ -408,6 +420,7 @@ impl Generator for Rust {
             .with_timeouts(timeouts)
             .with_slo(slo)
             .with_flags(flags)
+            .with_p1(p1_of(p1, serving))
             .with_runtime(runtime);
         if let Some(model) = &model {
             config::emit(&mut files, model, req.ir, req.role, tr)?;
@@ -445,9 +458,32 @@ impl Generator for Rust {
             client::emit(&mut files, &main, tr)?;
         }
         let packages = package::emit_modules(&mut files, &main, &mods)?;
-        let has_clients = emit_consumed(&mut files, req, tr, (validate, rules, derived, timeouts))?;
+        let has_clients = emit_consumed(
+            &mut files,
+            req,
+            tr,
+            (validate, rules, derived, timeouts),
+            p1_of(p1, serving),
+        )?;
         package::emit_lib(&mut files, &packages, has_clients, &f, req.role)?;
         Ok(files)
+    }
+}
+
+/// What the trees of the crate are generated with: a crate without an HTTP surface serves
+/// nothing, so it has no server features.
+fn p1_of(p1: platform::Flags, serving: bool) -> platform::Flags {
+    if serving {
+        p1
+    } else {
+        platform::Flags {
+            visibility: false,
+            tenancy: false,
+            audit: false,
+            limits: false,
+            pii: false,
+            ..p1
+        }
     }
 }
 
@@ -557,6 +593,7 @@ fn emit_consumed(
     req: &GenRequest<'_>,
     tr: Transports,
     (validate, rules, derived, timeouts): (bool, bool, bool, bool),
+    p1: platform::Flags,
 ) -> Result<bool, Vec<GenDiagnostic>> {
     if req.consumes.is_empty() {
         return Ok(false);
@@ -571,6 +608,7 @@ fn emit_consumed(
             .with_validate(validate)
             .with_rules(rules)
             .with_derived(derived)
+            .with_p1(p1)
             .with_timeouts(timeouts);
         models::emit(files, &tree)?;
         policies::emit(files, &tree)?;

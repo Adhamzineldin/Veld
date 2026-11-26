@@ -49,7 +49,8 @@ pub fn emit(
         let svc = tree.ir.service(*sid);
         let blocks = block::has_block(svc)
             || crate::conditional::svc_idempotent(svc)
-            || crate::flags::svc_reads_flags(tree, svc);
+            || crate::flags::svc_reads_flags(tree, svc)
+            || crate::platform::svc_uses(tree.ir, svc);
         if !blocks && svc.subscriptions.is_empty() {
             continue;
         }
@@ -222,7 +223,8 @@ fn dispatch(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service, name: &str) {
     conditional(w, ctx, svc);
     audited(w, ctx, svc);
     emitted(w, svc);
-    prepare(w, svc);
+    platform_clock(w, ctx, svc);
+    prepare(w, svc, crate::platform::svc_uses(ctx.tree.ir, svc));
     trusted(w, ctx, svc);
     if crate::server::principal_has_derived(ctx.tree, svc) {
         w.open("fn complete_principal(&self, ctx: &mut RequestContext) -> Result<(), Vec<veld::rules::Violation>>");
@@ -354,21 +356,44 @@ fn delegates(w: &mut CodeWriter) {
     w.close().blank();
 }
 
+/// `request_clock` of the test handler of a service that uses a feature of platform phase P1: the
+/// one reading of the request is `Veld-Test-Now`, else the system clock.
+fn platform_clock(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service) {
+    if !crate::platform::svc_uses(ctx.tree.ir, svc) {
+        return;
+    }
+    w.open("fn request_clock(&self, ctx: &RequestContext) -> std::time::SystemTime");
+    w.line(
+        "let at = ctx.header(\"veld-test-now\").and_then(veld::rules::instant::parse_datetime);",
+    );
+    w.line("at.map_or_else(std::time::SystemTime::now, |ms| std::time::UNIX_EPOCH + std::time::Duration::from_millis(u64::try_from(ms).unwrap_or(0)))");
+    w.close().blank();
+}
+
 /// Step 6 with the facts, the clock and the dry run of the request.
-fn prepare(w: &mut CodeWriter, svc: &Service) {
+fn prepare(w: &mut CodeWriter, svc: &Service, platform: bool) {
     let loaders = !svc.facts.is_empty();
     let pass = if loaders { "&HeaderFacts, " } else { "" };
     w.open("async fn prepare(&self, endpoint: usize, args: &mut serde_json::Map<String, serde_json::Value>, ctx: &RequestContext) -> Result<Prepared, Halt>");
     w.line("let enforce = self.inner.hooks.validate_requests();");
-    w.open("let now = match ctx.header(\"veld-test-now\")");
-    w.line("Some(text) => veld::rules::instant::parse_datetime(text).ok_or_else(|| Halt::Error(veld::Error::other(\"the header Veld-Test-Now is not an RFC 3339 time\")))?,");
-    // A service without endpoint rules has no clock hook.
-    w.line(if block::has_block(svc) {
-        "None => veld::rules::clock_ms(self.inner.hooks.clock(ctx)),"
+    if platform {
+        // The one reading of the request (`request_clock`) is the clock of step 6; a header that
+        // is not a time is still an error of the request.
+        w.line("if let Some(text) = ctx.header(\"veld-test-now\") {");
+        w.line("    if veld::rules::instant::parse_datetime(text).is_none() { return Err(Halt::Error(veld::Error::other(\"the header Veld-Test-Now is not an RFC 3339 time\"))); }");
+        w.line("}");
+        w.line("let now = ctx.now_ms();");
     } else {
-        "None => veld::rules::clock_ms(std::time::SystemTime::now()),"
-    });
-    w.close_with("};");
+        w.open("let now = match ctx.header(\"veld-test-now\")");
+        w.line("Some(text) => veld::rules::instant::parse_datetime(text).ok_or_else(|| Halt::Error(veld::Error::other(\"the header Veld-Test-Now is not an RFC 3339 time\")))?,");
+        // A service without endpoint rules has no clock hook.
+        w.line(if block::has_block(svc) {
+            "None => veld::rules::clock_ms(self.inner.hooks.clock(ctx)),"
+        } else {
+            "None => veld::rules::clock_ms(std::time::SystemTime::now()),"
+        });
+        w.close_with("};");
+    }
     if block::has_block(svc) {
         w.open("let prepared = match endpoint");
         for (i, ep) in svc.endpoints.iter().enumerate() {

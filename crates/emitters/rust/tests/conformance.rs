@@ -385,11 +385,12 @@ fn rust_generates_deadlines_and_service_levels() {
     veld_emit_conformance::check_slo_is_generated(&Rust).unwrap();
 }
 
-/// `visibility` is opt-in (`spec/platform.md` section 2): the Rust server refuses a `@visible`
-/// field; the Rust client is not asked.
+/// `visibility` is opt-in (`spec/platform.md` section 2): the Rust server declares it and
+/// generates a contract with a `@visible` field (also on a declared error); the Rust client is not
+/// asked.
 #[test]
-fn rust_refuses_visibility_as_a_server() {
-    veld_emit_conformance::check_visibility_is_refused(&Rust).unwrap();
+fn rust_generates_visibility_as_a_server() {
+    veld_emit_conformance::check_visibility_is_generated(&Rust).unwrap();
 }
 
 /// `tenancy` is opt-in (`spec/platform.md` section 3): Rust refuses a `@tenant` field, as a server
