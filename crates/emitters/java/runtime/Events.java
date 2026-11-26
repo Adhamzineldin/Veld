@@ -563,12 +563,23 @@ public final class Events {
     throw new IllegalStateException("the key `" + channel.keyWire() + "` is not a string or a number");
   }
 
+  // #if outbox
+  /** What steps 1 to 5 of publishing make of one event: what a transport or an outbox is handed. */
+  private record Prepared(
+      String topic, String key, byte[] bytes, Transport.ChannelOptions options, PublishedEvent published) {}
+
+  // #endif
   /**
    * Publishes one event (section 7): defaults, shape, invariants, the key, the envelope with its
    * canonical bytes, then the transport. Nothing is sent when a step fails: the call throws the
    * typed {@code ValidationError}.
    */
+  // #if not_outbox
   public static <E> PublishedEvent publish(PublisherContext ctx, ChannelDef channel, EventDef<E> def, E event) {
+    // #endif
+    // #if outbox
+  private static <E> Prepared prepare(PublisherContext ctx, ChannelDef channel, EventDef<E> def, E event) {
+    // #endif
     Objects.requireNonNull(event, "event");
     Json prepared = Wire.prepare(def.schema(), def.codec().encode(event), Wire.Mode.RESPONSE);
     // #if derived
@@ -623,6 +634,7 @@ public final class Events {
     if (def.digest() != null) {
       envelope.put("veldrules", Json.of(def.digest()));
     }
+    // #if not_outbox
     ctx.transport()
         .publish(
             channel.topic(),
@@ -630,7 +642,115 @@ public final class Events {
             envelope.build().canonical().getBytes(StandardCharsets.UTF_8),
             channel.options());
     return new PublishedEvent(id, ctx.source(), def.sig(), subject, time);
+    // #endif
+    // #if outbox
+    return new Prepared(
+        channel.topic(),
+        subject,
+        envelope.build().canonical().getBytes(StandardCharsets.UTF_8),
+        channel.options(),
+        new PublishedEvent(id, ctx.source(), def.sig(), subject, time));
+    // #endif
   }
+  // #if outbox
+
+  /** Publishes one event: steps 1 to 5 ({@code prepare}), then the transport. */
+  public static <E> PublishedEvent publish(PublisherContext ctx, ChannelDef channel, EventDef<E> def, E event) {
+    Prepared made = prepare(ctx, channel, def, event);
+    ctx.transport().publish(made.topic(), made.key(), made.bytes(), made.options());
+    return made.published();
+  }
+
+  // -- the outbox (section 11) ----------------------------------------------------------------
+
+  /**
+   * {@code emit.<event>(value)}: steps 1 to 5 of publishing (the same code as a publisher, with the
+   * options of the hooks), then {@code outbox.save}. Nothing goes to a transport: {@code ctx} has
+   * none. A violation throws the typed {@code ValidationError} and writes nothing.
+   *
+   * @param ctx the source, the options and the error builder of the publisher; its transport is
+   *     {@code null} and is never used
+   */
+  static <E> PublishedEvent emit(
+      Outbox outbox, PublisherContext ctx, ChannelDef channel, EventDef<E> def, E event) throws Exception {
+    Prepared made = prepare(ctx, channel, def, event);
+    outbox.save(made.topic(), made.key(), made.bytes());
+    return made.published();
+  }
+
+  /** The options of the relay of a service. */
+  public static final class RelayOptions {
+    private int limit = 100;
+    private java.util.function.BiConsumer<Throwable, OutboxEntry> onError;
+
+    /** Creates the default options: up to 100 entries per run, no hook. */
+    public RelayOptions() {}
+
+    /** The most entries one run looks at (default 100). */
+    public RelayOptions limit(int value) {
+      this.limit = value;
+      return this;
+    }
+
+    /** Hears the failure that stopped the run: a transport that refused an entry, or a {@code done} that failed. */
+    public RelayOptions onError(java.util.function.BiConsumer<Throwable, OutboxEntry> hook) {
+      this.onError = hook;
+      return this;
+    }
+  }
+
+  /**
+   * The relay (section 11.1): takes up to {@code limit} pending entries, publishes each with the
+   * options of its channel ({@code channels}, by topic; a topic of no channel is published with
+   * none), in the order {@code pending} gave them, and calls {@code done} after the transport
+   * accepted it. It stops at the first entry that fails, so the order of a key is kept, and answers
+   * how many entries the transport accepted. An entry whose {@code done} failed is counted and is
+   * pending again: it will be sent again (at least once, section 1).
+   */
+  public static int relay(
+      Outbox outbox, Transport transport, Map<String, Transport.ChannelOptions> channels, RelayOptions options) {
+    int limit = options.limit;
+    int sent = 0;
+    List<OutboxEntry> entries;
+    try {
+      entries = outbox.pending(limit);
+    } catch (Exception e) {
+      reportRelay(options, e, null);
+      return 0;
+    }
+    for (OutboxEntry entry : entries.subList(0, Math.max(0, Math.min(limit, entries.size())))) {
+      try {
+        transport.publish(
+            entry.topic(),
+            entry.key(),
+            entry.bytes(),
+            channels.getOrDefault(entry.topic(), Transport.ChannelOptions.NONE));
+      } catch (Exception e) {
+        reportRelay(options, e, entry);
+        return sent;
+      }
+      sent += 1;
+      try {
+        outbox.done(entry);
+      } catch (Exception e) {
+        reportRelay(options, e, entry);
+        return sent;
+      }
+    }
+    return sent;
+  }
+
+  private static void reportRelay(RelayOptions options, Throwable error, OutboxEntry entry) {
+    if (options.onError == null) {
+      return;
+    }
+    try {
+      options.onError.accept(error, entry);
+    } catch (RuntimeException ignored) {
+      // A failing hook must not change what the run does.
+    }
+  }
+  // #endif
 
   // -- consuming (section 8) ------------------------------------------------------------------
 

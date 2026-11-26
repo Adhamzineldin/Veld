@@ -570,4 +570,96 @@ public final class TestSupport {
     return new VeldResponse(response.status(), headers, response.body());
   }
   // #endif
+  // #if testing_outbox
+
+  /** The response header that lists the events a request wrote to its outbox (spec/events.md section 11.2). */
+  public static final String EMITTED_HEADER = "veld-test-emitted";
+
+  /** What one request of a test handler wrote: its own memory outbox and the names, in write order. */
+  private static final class RequestOutbox {
+    final MemoryOutbox memory = new MemoryOutbox();
+    final List<String> written = new java.util.ArrayList<>();
+  }
+
+  private static final ThreadLocal<RequestOutbox> EMITTED = new ThreadLocal<>();
+
+  private static RequestOutbox currentOutbox() {
+    RequestOutbox state = EMITTED.get();
+    if (state == null) {
+      throw new IllegalStateException("the test handler's outbox is used outside a request");
+    }
+    return state;
+  }
+
+  /**
+   * What the endpoints of a test handler write to: every request gets a memory outbox of its own,
+   * and the names of the events it wrote are the header {@code Veld-Test-Emitted} of the answer
+   * (see {@link #emitted}). The outbox of the application is not used. {@code options} are the id
+   * source and the clock of the hooks.
+   */
+  public static Emission.Source emissions(Events.PublisherOptions options) {
+    Outbox outbox =
+        new Outbox() {
+          @Override
+          public void save(String topic, String key, byte[] bytes) {
+            currentOutbox().memory.save(topic, key, bytes);
+          }
+
+          @Override
+          public List<OutboxEntry> pending(int limit) {
+            return currentOutbox().memory.pending(limit);
+          }
+
+          @Override
+          public void done(OutboxEntry entry) {
+            currentOutbox().memory.done(entry);
+          }
+        };
+    return new Emission.Source(
+        outbox,
+        options == null ? new Events.PublisherOptions() : options,
+        name -> currentOutbox().written.add(name));
+  }
+
+  /**
+   * Adds the header {@code Veld-Test-Emitted} to every answer of {@code inner}: the declaration
+   * names of the events the request wrote to its memory outbox, separated by {@code ,} without
+   * spaces, in the order written. It is absent when nothing was written. With {@code
+   * Veld-Test-Result} the application's handler does not run and the header names the events the
+   * edge taken emits.
+   */
+  public static VeldHandler emitted(VeldHandler inner) {
+    return new VeldHandler() {
+      @Override
+      public Optional<VeldResponse> handle(VeldRequest request) {
+        return withEmitted(() -> inner.handle(request));
+      }
+
+      @Override
+      public Optional<VeldResponse> invoke(String endpoint, VeldRequest request) {
+        return withEmitted(() -> inner.invoke(endpoint, request));
+      }
+    };
+  }
+
+  private static Optional<VeldResponse> withEmitted(java.util.function.Supplier<Optional<VeldResponse>> call) {
+    RequestOutbox state = new RequestOutbox();
+    EMITTED.set(state);
+    Optional<VeldResponse> answer;
+    try {
+      answer = call.get();
+    } finally {
+      EMITTED.remove();
+    }
+    if (state.written.isEmpty()) {
+      return answer;
+    }
+    return answer.map(
+        r -> {
+          Map<String, String> headers = new LinkedHashMap<>(r.headers());
+          headers.put(EMITTED_HEADER, String.join(",", state.written));
+          return new VeldResponse(r.status(), headers, r.body());
+        });
+  }
+  // #endif
 }

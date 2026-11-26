@@ -54,6 +54,10 @@ const PRECONDITION_FILES: &[&str] = &["IfMatch"];
 /// publishes or subscribes. They need the rule classes (`Flags::rules`).
 const EVENT_FILES: &[&str] = &["Events", "MemoryTransport", "Transport"];
 
+/// The runtime classes of the outbox of events phase E3 (`spec/events.md` section 11,
+/// `spec/targets/java.md` section 12.6): emitted only for a server with an emitting move.
+const OUTBOX_FILES: &[&str] = &["Emission", "MemoryOutbox", "Outbox", "OutboxEntry"];
+
 /// The canonical scalars (`Canon`), shared by the data of an event and the fingerprint of an
 /// idempotency key: emitted for a server with events or with `@idempotent`/`@version` endpoints.
 const CANON_FILES: &[&str] = &["Canon"];
@@ -84,6 +88,7 @@ runtime_files!(
     "Derive",
     "DigestHandler",
     "DueMoves",
+    "Emission",
     "EndpointRules",
     "EndpointSpec",
     "Events",
@@ -96,8 +101,11 @@ runtime_files!(
     "JsonParser",
     "JsonWriter",
     "MemoryIdempotencyStore",
+    "MemoryOutbox",
     "MemoryTransport",
     "Metric",
+    "Outbox",
+    "OutboxEntry",
     "Page",
     "Policy",
     "Reconnect",
@@ -282,6 +290,9 @@ pub struct Flags {
     pub preconditions: bool,
     /// Derived fields (`Derive` and the `// #if derived` regions). Needs `rules`.
     pub derived: bool,
+    /// The outbox of events phase E3 (`// #if outbox` regions, `Outbox`, `MemoryOutbox`, `Emission`):
+    /// a server with a move that emits. Needs `events` and `machine`.
+    pub outbox: bool,
     /// The typed runtime config (`spec/runtime-config.md`): `RuntimeCheck`, `VeldConfigException`
     /// and the `// #if runtimecfg` regions. Without it a client keeps the environment fallback of
     /// before, so a target without settings keeps its bytes.
@@ -308,6 +319,7 @@ pub fn emit_with(
             && (flags.flags || !FLAG_FILES.contains(&name))
             && (flags.policies || !POLICY_FILES.contains(&name))
             && (flags.rollout || !ROLLOUT_FILES.contains(&name))
+            && (flags.outbox || !OUTBOX_FILES.contains(&name))
             && (flags.events || !EVENT_FILES.contains(&name))
             && (flags.events || flags.conditional || !CANON_FILES.contains(&name))
             && (flags.derived || !DERIVED_FILES.contains(&name))
@@ -351,6 +363,9 @@ pub fn emit_with(
         "preconditions" => flags.preconditions,
         "testing_conditional" => flags.testing && flags.conditional,
         "testing_events" => flags.testing && flags.events,
+        "outbox" => flags.outbox,
+        "not_outbox" => !flags.outbox,
+        "testing_outbox" => flags.testing && flags.outbox,
         "testing_rules" => flags.testing && flags.rules,
         "testing_rules_conditional" => flags.testing && flags.rules && flags.conditional,
         "testing_plain" => !(flags.testing && flags.conditional),

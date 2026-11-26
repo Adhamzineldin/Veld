@@ -283,6 +283,12 @@ impl Generator for Java {
             policies,
             rollout,
             events: tree.events,
+            // A server with a move that emits an event (`spec/events.md` section 11).
+            outbox: req.role == Role::Server
+                && req
+                    .ir
+                    .features_used(&req.services)
+                    .contains(&Feature::EventsOutbox),
             conditional: conditional_server,
             preconditions: conditional::services_use(
                 req.ir,

@@ -283,6 +283,19 @@ public final class EndpointRules {
     }
 
     // #endif
+    // #if outbox
+    /**
+     * The {@code emit} of this request (spec/events.md section 11.1): {@code edges} holds, by wire
+     * value of each source state, the declaration names of the events the edge from it to the
+     * target emits (a source whose edge emits nothing is left out); {@code from} is the wire value
+     * the guard found. The events written are checked after the handler ({@link Emission#check}).
+     */
+    public Emission emission(
+        Emission.Source source, String publisher, java.util.Map<String, List<String>> edges, String from) {
+      return new Emission(source, publisher, validation, edges.getOrDefault(from, List.of()));
+    }
+
+    // #endif
     // #if timed
     /**
      * The guard of a timed edge (spec/platform.md section 10): the state check of {@link #transition}
