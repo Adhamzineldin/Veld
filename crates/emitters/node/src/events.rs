@@ -34,6 +34,11 @@ pub fn runtime_source(tree: &Tree<'_>) -> Result<String, GateError> {
         "derived" => gates.derived,
         "not_derived" => !gates.derived,
         "rules_not_derived" => gates.rules && !gates.derived,
+        // Flags (`spec/platform.md` section 11) and what a build without them has.
+        "flags" => gates.flags,
+        "not_flags" => !gates.flags,
+        "flags_rules" => gates.flags && gates.rules,
+        "not_flags_rules" => gates.rules && !gates.flags,
         _ => false,
     })
 }
@@ -131,6 +136,11 @@ fn write_event_def(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, id: DeclId) {
     w.line(format!("sig: {companion}.sig,"));
     w.line(format!("schema: {companion}.schema,"));
     w.line(format!("digest: {digest},"));
+    let flags = crate::rules::decl_flags(fc.tree);
+    if fc.tree.uses_flags() && !flags.is_empty() {
+        let list: Vec<String> = flags.iter().map(|f| ts_str(f)).collect();
+        w.line(format!("flags: [{}],", list.join(", ")));
+    }
     w.close_with("};");
 }
 

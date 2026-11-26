@@ -14,7 +14,7 @@ use veld_emit_typescript::validate::schema_expr;
 use veld_ir::{Constraints, Service, Type};
 
 use crate::events;
-use crate::rules::{loaders_name, service_has_builder, service_is_idempotent};
+use crate::rules::{loaders_name, service_has_builder, service_is_idempotent, service_uses_flags};
 use crate::server::{builder_name, module_of, std_sigs};
 
 /// Root-relative module path of the test handler of a service.
@@ -233,6 +233,35 @@ function idempotencyOf(req: {request}, endpoints: readonly {endpoint}[]): {hooks
     w.blank();
 }
 
+/// The part of the test handler that gives a request the flag provider of its header
+/// (`Veld-Test-Flags`, `spec/rules.md` section 12.4). Only a service that uses a flag has it.
+fn write_flags(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, idempotent: bool) {
+    let request = fc.rt("VeldRequest");
+    let memory = fc.rt("MemoryFlagProvider");
+    // The header reader belongs to the idempotency part when there is one.
+    if !idempotent {
+        w.line(format!(
+            "function requestHeader(req: {request}, name: string): string | undefined {{
+  for (const key of Object.keys(req.headers)) {{
+    if (key.toLowerCase() !== name) continue;
+    const v = req.headers[key];
+    return Array.isArray(v) ? v[0] : v;
+  }}
+  return undefined;
+}}"
+        ));
+        w.blank();
+    }
+    w.line(format!(
+        "/** `Veld-Test-Flags`: base64url JSON of the names of the flags that are on. Without the header every flag is off. */
+function flagsOf(req: {request}): {memory} {{
+  const raw = decode(requestHeader(req, 'veld-test-flags'));
+  return new {memory}(Array.isArray(raw) ? raw.filter((n): n is string => typeof n === 'string') : []);
+}}"
+    ));
+    w.blank();
+}
+
 fn write_loaders(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service, name: &str) {
     if svc.facts.is_empty() {
         return;
@@ -284,24 +313,40 @@ function auditedHeader(found: readonly {violation}[]): string {{
 }
 
 /// `const inner = ...`: the production handler built from the endpoints of the test handler. A
-/// service with an `@idempotent` endpoint builds one per request, because the store of a request
-/// comes from its header.
-fn inner_handler(fc: &mut FileCtx<'_, '_>, create: &str, std: &str, idempotent: bool) -> String {
+/// service with an `@idempotent` endpoint or a flag builds one per request, because the store and
+/// the flags of a request come from its headers.
+fn inner_handler(
+    fc: &mut FileCtx<'_, '_>,
+    create: &str,
+    std: &str,
+    per_request: &[(&str, &str)],
+) -> String {
     let ctx = fc.rt("RequestContext");
     let clock = if fc.tree.uses_endpoint_rules() {
         format!(", clock: (ctx: {ctx}) => prime(ctx)")
     } else {
         String::new()
     };
-    if !idempotent {
+    if per_request.is_empty() {
         return format!("const inner = {create}(endpoints, {std}, {{ ...hooks{clock} }});");
     }
     let handler = fc.rt("VeldHandler");
     let request = fc.rt("VeldRequest");
+    let members = |req: &str| {
+        per_request
+            .iter()
+            .map(|(name, make)| format!("{name}: {}", make.replace("REQ", req)))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let (empty, own) = (
+        members("{ headers: {}, method: 'GET', path: '/' }"),
+        members("req"),
+    );
     format!(
-        "const base = {create}(endpoints, {std}, {{ ...hooks{clock}, idempotency: idempotencyOf({{ headers: {{}}, method: 'GET', path: '/' }}, endpoints) }});
+        "const base = {create}(endpoints, {std}, {{ ...hooks{clock}, {empty} }});
   const inner: {handler} = Object.assign(
-    (req: {request}) => {create}(endpoints, {std}, {{ ...hooks{clock}, idempotency: idempotencyOf(req, endpoints) }})(req),
+    (req: {request}) => {create}(endpoints, {std}, {{ ...hooks{clock}, {own} }})(req),
     {{ ws: base.ws }},
   );"
     )
@@ -322,6 +367,17 @@ fn write_handler(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service) {
     if idempotent {
         write_idempotency(w, fc);
     }
+    let flagged = service_uses_flags(fc.tree, svc);
+    if flagged {
+        write_flags(w, fc, idempotent);
+    }
+    let mut per_request: Vec<(&str, &str)> = Vec::new();
+    if idempotent {
+        per_request.push(("idempotency", "idempotencyOf(REQ, endpoints)"));
+    }
+    if flagged {
+        per_request.push(("flags", "flagsOf(REQ)"));
+    }
     write_loaders(w, fc, svc, &name);
     let answer = write_audited(w, fc);
     let handler = fc.rt("VeldHandler");
@@ -339,11 +395,13 @@ fn write_handler(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service) {
     } else {
         ", loaders"
     };
-    let omitted = if idempotent {
-        "'facts' | 'clock' | 'auth' | 'middleware' | 'idempotency'"
-    } else {
-        "'facts' | 'clock' | 'auth' | 'middleware'"
-    };
+    let mut omitted = String::from("'facts' | 'clock' | 'auth' | 'middleware'");
+    if idempotent {
+        omitted.push_str(" | 'idempotency'");
+    }
+    if flagged {
+        omitted.push_str(" | 'flags'");
+    }
     // The output mode of the rules is a setting of the runtime config, which the test handler
     // does not take: its hooks keep the member, so a test can choose the mode.
     let (output, note) = if fc.tree.uses_rules() {
@@ -397,7 +455,7 @@ export function create{name}TestHandler(impl: {name}Service, hooks: {name}TestHo
   return Object.assign(handler, {{ ws: inner.ws }});
 }}",
         builder = builder_name(svc),
-        inner = inner_handler(fc, &create, &std, idempotent),
+        inner = inner_handler(fc, &create, &std, &per_request),
         key = ts_str(&svc.name),
         subscribes = subscribes_member(fc.tree, svc),
         event_branch = event_branch(svc),

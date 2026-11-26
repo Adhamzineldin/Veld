@@ -228,7 +228,8 @@ fn write_interface(
     doc_comment(w, svc.docs.as_deref(), None);
     w.open(format!("export interface {name}Service<Ctx = {ctx}>"));
     for ep in &svc.endpoints {
-        doc_comment(w, ep.docs.as_deref(), ep.deprecated.as_deref());
+        let docs = deadline_docs(ep);
+        doc_comment(w, docs.as_deref(), ep.deprecated.as_deref());
         // What the handler returns: a derived field is optional, the runtime computes it.
         let ret = match &ep.success.ty {
             Some(t) => derived::shaped_type(fc, t, derived::Shape::Output),
@@ -268,6 +269,21 @@ fn ws_types(fc: &mut FileCtx<'_, '_>, ep: &Endpoint) -> (String, String) {
         None => "never".to_string(),
     };
     (incoming, outgoing)
+}
+
+/// The documentation of an endpoint, with the warning about its deadline when it has one: a
+/// handler cannot be stopped, so one that writes must notice the deadline itself.
+fn deadline_docs(ep: &Endpoint) -> Option<String> {
+    let Some(ms) = &ep.timeout_ms else {
+        return ep.docs.clone();
+    };
+    let note = format!(
+        "Deadline: {ms} ms. When the pipeline has no answer in time the server answers `504 DeadlineExceeded` and drops what this handler answers later. The handler is not stopped: one that writes must watch `ctx.signal` or `ctx.deadline` itself."
+    );
+    Some(match &ep.docs {
+        Some(docs) => format!("{docs}\n\n{note}"),
+        None => note,
+    })
 }
 
 /// The auth hook of a kind. `who` is what the hook resolves to: `unknown`, or the generated
@@ -352,6 +368,11 @@ fn write_hooks(
     if rules::service_has_rules(svc) {
         w.line("/** The server's clock, read once per request before the facts load. Default: the system clock. */");
         w.line(format!("clock?: (ctx: {ctx}) => Date;"));
+    }
+    if rules::service_uses_flags(fc.tree, svc) {
+        let provider = fc.rt("FlagProvider");
+        w.line("/** Asks whether a flag is on, once per request and flag (`spec/platform.md` section 11). `MemoryFlagProvider` is one for tests. */");
+        w.line(format!("flags: {provider};"));
     }
     if !timed_endpoints(fc.tree.ir, svc).is_empty() {
         w.line("/** The principal the application gives its own timer, for `run<Service>DueMoves`. Required there when a timed endpoint has auth. */");
@@ -447,6 +468,11 @@ fn write_endpoint(
     write_spec_fields(w, fc, ep);
     let list: Vec<String> = ep.middleware.iter().map(|m| ts_str(m)).collect();
     w.line(format!("middleware: [{}],", list.join(", ")));
+    let flags = rules::endpoint_flags(fc.tree, ep);
+    if fc.tree.uses_flags() && !flags.is_empty() {
+        let list: Vec<String> = flags.iter().map(|f| ts_str(f)).collect();
+        w.line(format!("flags: [{}],", list.join(", ")));
+    }
     if fc.tree.uses_slo() {
         let package = &fc.tree.ir.package(svc.package).name;
         w.line(format!(
@@ -565,6 +591,7 @@ fn write_factory(
         && middleware.is_empty()
         && svc.facts.is_empty()
         && !rules::service_is_idempotent(svc)
+        && !rules::service_uses_flags(fc.tree, svc)
         && !runtime_required
     {
         " = {}"
@@ -733,7 +760,8 @@ pub fn models(tree: &Tree<'_>) -> Vec<ServiceModel> {
                 hooks_required: !auth.is_empty()
                     || !middleware.is_empty()
                     || !svc.facts.is_empty()
-                    || rules::service_is_idempotent(svc),
+                    || rules::service_is_idempotent(svc)
+                    || rules::service_uses_flags(tree, svc),
                 endpoints: endpoints.into_iter().map(|(_, e)| e).collect(),
             }
         })

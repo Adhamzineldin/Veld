@@ -209,8 +209,33 @@ fn transition_step(
         w.line(format!("found: (result: {result}) => String({state}),"));
     }
     write_due(w, fc, printer, sig, mv);
+    write_flagged_edges(w, mv);
     w.line(format!("otherwise: {{ sig: {class}.sig }},"));
     w.close_with("},");
+}
+
+/// `flagged: { 'pending': 'flag' }`: the flag of each edge from a source to the target that has one
+/// (`spec/platform.md` section 11), by wire value of the source.
+fn write_flagged_edges(w: &mut CodeWriter, mv: &Move<'_>) {
+    let t = mv.transition;
+    let items: Vec<String> = t
+        .from
+        .iter()
+        .zip(&mv.sources)
+        .filter_map(|(name, wire)| {
+            let flag = mv
+                .machine
+                .flows
+                .iter()
+                .find(|f| f.from == *name && f.to == t.to)?
+                .flag
+                .as_deref()?;
+            Some(format!("{}: {}", prop_key(wire), ts_str(flag)))
+        })
+        .collect();
+    if !items.is_empty() {
+        w.line(format!("flagged: {{ {} }},", items.join(", ")));
+    }
 }
 
 /// `due: { afterMs, since }` of a timed transition (`spec/platform.md` section 10): the wait of

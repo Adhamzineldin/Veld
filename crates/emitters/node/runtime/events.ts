@@ -13,6 +13,11 @@ import { deriveValue } from './veld';
 // #if rollout
 import { beginAudit, endAudit } from './rollout';
 // #endif
+// #if flags
+import { withReadings } from './flags';
+import type { FlagReading } from './flags';
+import type { FlagProvider } from './veld';
+// #endif
 
 export type { Issue } from './veld';
 
@@ -231,6 +236,10 @@ export interface EventDef {
   readonly schema: Schema;
   /** The rules digest (`veldrules`), or `null` when the event reaches no enforced invariant. */
   readonly digest: string | null;
+  // #if flags
+  /** The flags of the invariants an event may reach: read once per message, before its invariants run. */
+  readonly flags?: readonly string[];
+  // #endif
 }
 
 /** One channel as the generated code describes it to the publisher. */
@@ -386,6 +395,29 @@ function canonScalars(s: Schema, v: unknown): unknown {
 function violationIssues(violations: readonly EventViolation[]): Issue[] {
   return violations.map((v) => ({ path: v.path, code: v.error === undefined ? 'rule' : 'rule_error', message: v.message }));
 }
+// #if flags
+
+/** The flags of an event, read once for one message: a failing provider reads as failed. Without a provider every flag is off. */
+async function readEventFlags(
+  def: EventDef,
+  options: { flags?: FlagProvider; onFlagError?: (err: unknown) => void },
+): Promise<(name: string) => FlagReading> {
+  const held: Record<string, FlagReading> = {};
+  for (const name of def.flags ?? []) {
+    if (options.flags === undefined) {
+      held[name] = 'off';
+      continue;
+    }
+    try {
+      held[name] = (await options.flags.isOn(name, { operation: def.sig })) ? 'on' : 'off';
+    } catch (err) {
+      held[name] = 'failed';
+      hook(options.onFlagError, err);
+    }
+  }
+  return (name) => held[name] ?? 'off';
+}
+// #endif
 // #if rules
 
 function nowMicros(): number {
@@ -411,12 +443,34 @@ function report(
  * The invariants of an event in wire form, in full mode: the enforced violations are returned, and
  * both kinds are reported to the hook. An audited rule never changes what happens.
  */
+// #endif
+// #if flags_rules
+function runRules(
+  def: EventDef,
+  wire: unknown,
+  fn: ((event: EventRuleViolation) => void) | undefined,
+  position: 'input' | 'output',
+  readings: (name: string) => FlagReading,
+): EventViolation[] {
+  return withReadings(readings, () => runRulesIn(def, wire, fn, position));
+}
+
+function runRulesIn(
+  def: EventDef,
+  wire: unknown,
+  fn: ((event: EventRuleViolation) => void) | undefined,
+  position: 'input' | 'output',
+): EventViolation[] {
+// #endif
+// #if not_flags_rules
 function runRules(
   def: EventDef,
   wire: unknown,
   fn: ((event: EventRuleViolation) => void) | undefined,
   position: 'input' | 'output',
 ): EventViolation[] {
+// #endif
+// #if rules
   const started = nowMicros();
   // #endif
   // #if derived
@@ -455,6 +509,12 @@ export interface PublisherOptions {
   clock?: () => Date;
   /** Hears the violations of invariants: the enforced ones of an event that is not sent, and the audited ones. */
   onRuleViolation?: (event: EventRuleViolation) => void;
+  // #if flags
+  /** The flag provider of the flagged invariants of an event (asked with no principal). Without one they are off. */
+  flags?: FlagProvider;
+  /** Hears a provider that failed: its flags count as failed. */
+  onFlagError?: (err: unknown) => void;
+  // #endif
 }
 
 /** What a generated publisher hands the pipeline. */
@@ -505,7 +565,11 @@ export async function publishEvent(
   // #endif
   const issues = validate(def.schema, wire, '$', { wire: true });
   if (issues.length > 0) throw ctx.validation(issues, []);
-  // #if rules
+  // #if flags_rules
+  const violations = runRules(def, wire, ctx.options.onRuleViolation, 'output', await readEventFlags(def, ctx.options));
+  if (violations.length > 0) throw ctx.validation(violationIssues(violations), violations);
+  // #endif
+  // #if not_flags_rules
   const violations = runRules(def, wire, ctx.options.onRuleViolation, 'output');
   if (violations.length > 0) throw ctx.validation(violationIssues(violations), violations);
   // #endif
@@ -623,6 +687,12 @@ export interface ConsumerOptions {
   onContractMismatch?: (event: ContractMismatch) => void;
   /** The violations of invariants of a message: the enforced ones that reject it and the audited ones. */
   onRuleViolation?: (event: EventRuleViolation) => void;
+  // #if flags
+  /** The flag provider of the flagged invariants of an event (asked with no principal). Without one they are off. */
+  flags?: FlagProvider;
+  /** Hears a provider that failed: its flags count as failed. */
+  onFlagError?: (err: unknown) => void;
+  // #endif
   /** A run of a handler that threw. */
   onHandlerError?: (event: HandlerFailure) => void;
   /** Step 5 of section 8: a message whose `source` and `id` were handled is acknowledged and skipped. */
@@ -821,15 +891,32 @@ function noteMismatch(c: Consumer, def: EventDef, env: Envelope): void {
 }
 
 /** Steps 3 and 4: the shape, then the invariants when the digests agree. `null`: the message goes on. */
+// #if flags
+function decode(
+  c: Consumer,
+  message: TransportMessage,
+  def: EventDef,
+  env: Envelope,
+  readings: (name: string) => FlagReading,
+): Promise<Outcome> | null {
+// #endif
+// #if not_flags
 function decode(c: Consumer, message: TransportMessage, def: EventDef, env: Envelope): Promise<Outcome> | null {
+// #endif
   const issues = validate(def.schema, env.data, '$', { wire: true });
   if (issues.length > 0) {
     const text = issues.map((i) => `${i.path} ${i.message}`).join('; ');
     return reject(c, message, 'shape', { message: text, event: def.name, issues });
   }
-  // #if rules
+  // #if flags_rules
+  if ((env.veldrules ?? null) === def.digest) {
+    const violations = runRules(def, env.data, c.options.onRuleViolation, 'input', readings);
+  // #endif
+  // #if not_flags_rules
   if ((env.veldrules ?? null) === def.digest) {
     const violations = runRules(def, env.data, c.options.onRuleViolation, 'input');
+  // #endif
+  // #if rules
     if (violations.length > 0) {
       const text = violations.map((v) => v.message).join('; ');
       return reject(c, message, 'rule', { message: text, event: def.name, issues: violationIssues(violations), violations });
@@ -917,7 +1004,12 @@ async function consume(c: Consumer, message: TransportMessage): Promise<Outcome>
   if (typeof env === 'string') return reject(c, message, 'malformed', { message: env });
   const binding = c.sub.on.find((b) => typeName(b.def.sig) === typeName(env.type));
   if (binding === undefined) return 'done';
+  // #if flags
+  const rejected = decode(c, message, binding.def, env, await readEventFlags(binding.def, c.options));
+  // #endif
+  // #if not_flags
   const rejected = decode(c, message, binding.def, env);
+  // #endif
   if (rejected !== null) return rejected;
   noteMismatch(c, binding.def, env);
   return handle(c, message, binding, env);

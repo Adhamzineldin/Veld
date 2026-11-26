@@ -71,6 +71,7 @@ fn load_groups() -> Vec<Group> {
         });
     }
     groups.push(pending_group("derived"));
+    groups.push(pending_group("flags"));
     groups
 }
 

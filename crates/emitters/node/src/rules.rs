@@ -10,13 +10,13 @@ use veld_codegen::{CodeWriter, GenDiagnostic};
 use veld_emit_typescript::expr::{EndpointPrinter, EndpointScope, Principal};
 use veld_emit_typescript::machine::Move;
 use veld_emit_typescript::policy::app_value;
-use veld_emit_typescript::tree::FileCtx;
+use veld_emit_typescript::tree::{FileCtx, Tree};
 use veld_emit_typescript::types::ts_type;
 use veld_emit_typescript::util::{method_key, prop_key, ts_str};
 use veld_emit_typescript::validate::schema_expr;
 use veld_ir::{
-    Constraints, Endpoint, EndpointEnsure, EndpointFact, EndpointRequire, ExprType, Scalar,
-    Service, Type,
+    Constraints, DeclKind, Endpoint, EndpointEnsure, EndpointFact, EndpointRequire, ExprType,
+    Scalar, Service, Type,
 };
 
 /// Whether an endpoint has any statement.
@@ -49,6 +49,64 @@ pub fn service_is_idempotent(svc: &Service) -> bool {
 #[must_use]
 pub fn service_has_builder(svc: &Service) -> bool {
     service_has_rules(svc) || service_is_idempotent(svc)
+}
+
+/// The flags an endpoint may touch (`spec/platform.md` section 11): those of its own `require` and
+/// `ensure`, of the clauses of the policies it names, of the edges its transition takes, and of
+/// every invariant of the declarations of the tree. The runtime reads them once, before step 5.
+#[must_use]
+pub fn endpoint_flags(tree: &Tree<'_>, ep: &Endpoint) -> Vec<String> {
+    let ir = tree.ir;
+    let mut out: BTreeSet<String> = BTreeSet::new();
+    let r = &ep.rules;
+    out.extend(r.requires.iter().filter_map(|x| x.flag.clone()));
+    out.extend(r.ensures.iter().filter_map(|x| x.flag.clone()));
+    for allow in &r.allows {
+        if let Some(policy) = ir.policies.get(allow.policy.index()) {
+            out.extend(policy.clauses.iter().filter_map(|c| c.flag.clone()));
+        }
+    }
+    if let Some(t) = &r.transition
+        && let DeclKind::Enum(machine) = &ir.decl(t.decl).kind
+    {
+        out.extend(
+            machine
+                .flows
+                .iter()
+                .filter(|f| f.to == t.to && t.from.contains(&f.from))
+                .filter_map(|f| f.flag.clone()),
+        );
+    }
+    out.extend(decl_flags(tree));
+    out.into_iter().collect()
+}
+
+/// The flags of the invariants of the declarations of the tree: what an event may touch.
+#[must_use]
+pub fn decl_flags(tree: &Tree<'_>) -> Vec<String> {
+    let flags: BTreeSet<String> = tree
+        .decls()
+        .iter()
+        .flat_map(|id| {
+            tree.ir
+                .decl(*id)
+                .rules()
+                .iter()
+                .filter_map(|x| x.flag.clone())
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    flags.into_iter().collect()
+}
+
+/// Whether a server of the tree needs a flag provider: some endpoint of the service may touch a flag.
+#[must_use]
+pub fn service_uses_flags(tree: &Tree<'_>, svc: &Service) -> bool {
+    tree.uses_flags()
+        && svc
+            .endpoints
+            .iter()
+            .any(|ep| !endpoint_flags(tree, ep).is_empty())
 }
 
 /// The type of the loaded facts of an endpoint: `CreateBookingFacts` for `CreateBookingRequest`.
@@ -306,6 +364,9 @@ fn write_require(
     if r.rollout.is_some() {
         w.line("audited: true,");
     }
+    if let Some(flag) = &r.flag {
+        w.line(format!("flag: {},", ts_str(flag)));
+    }
     let cond = printer.print(&r.expr);
     w.line(format!("holds: ({p}, {f}, now: bigint) => {cond},"));
     if let Some(e) = &r.else_error {
@@ -354,6 +415,9 @@ fn write_ensure(
     ));
     if e.rollout.is_some() {
         w.line("audited: true,");
+    }
+    if let Some(flag) = &e.flag {
+        w.line(format!("flag: {},", ts_str(flag)));
     }
     let o = old.map_or_else(String::new, |t| format!(", o: {t}"));
     w.line(format!(

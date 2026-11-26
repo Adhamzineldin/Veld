@@ -8,6 +8,10 @@ export type { EvalErrorKind, RuleMode, Violation } from './rules';
 // #if rollout
 import { beginAudit, endAudit, stashAudited, takeStashed } from './rollout';
 // #endif
+// #if flags
+import { withReadings } from './flags';
+import type { FlagReading } from './flags';
+// #endif
 
 // ---------------------------------------------------------------------------
 // Basic types
@@ -919,7 +923,18 @@ function rulesProblem(ep: EndpointSpec, violations: readonly Violation[], std: S
 }
 
 /** Step 5: the invariants of the bound body and query object. */
+// #endif
+// #if flags_rules
 function checkInputRules(ep: EndpointSpec, bound: Bound, std: StdSigs, hooks: HandlerHooks): VeldResponse | null {
+  return flagged(hooks, () => checkInputRulesIn(ep, bound, std, hooks));
+}
+
+function checkInputRulesIn(ep: EndpointSpec, bound: Bound, std: StdSigs, hooks: HandlerHooks): VeldResponse | null {
+// #endif
+// #if not_flags_rules
+function checkInputRules(ep: EndpointSpec, bound: Bound, std: StdSigs, hooks: HandlerHooks): VeldResponse | null {
+// #endif
+// #if rules
   if (hooks.validateRequests === false) return null;
   const started = nowMicros();
   const violations: Violation[] = [];
@@ -947,6 +962,8 @@ function checkInputRules(ep: EndpointSpec, bound: Bound, std: StdSigs, hooks: Ha
 }
 
 /** A message a client sends on a WebSocket is an input: the invariants of its decoded value. */
+// #endif
+// #if flags_rules
 function checkMessageRules(
   ep: EndpointSpec,
   schema: Schema,
@@ -954,6 +971,27 @@ function checkMessageRules(
   std: StdSigs,
   hooks: HandlerHooks,
 ): VeldResponse | null {
+  return flagged(hooks, () => checkMessageRulesIn(ep, schema, raw, std, hooks));
+}
+
+function checkMessageRulesIn(
+  ep: EndpointSpec,
+  schema: Schema,
+  raw: unknown,
+  std: StdSigs,
+  hooks: HandlerHooks,
+): VeldResponse | null {
+// #endif
+// #if not_flags_rules
+function checkMessageRules(
+  ep: EndpointSpec,
+  schema: Schema,
+  raw: unknown,
+  std: StdSigs,
+  hooks: HandlerHooks,
+): VeldResponse | null {
+// #endif
+// #if rules
   if (hooks.validateRequests === false || !reachesRules(schema)) return null;
   const started = nowMicros();
   // #endif
@@ -1026,7 +1064,18 @@ interface OutputScan {
  * output mode. The shape is validated first, so rules only see well-formed values. `null`: nothing
  * to report (mode `off`, no rules reached, nothing violated, or a bad shape in `audit`).
  */
+// #endif
+// #if flags_rules
 function scanOutput(schema: Schema, value: unknown, hooks: HandlerHooks): OutputScan | null {
+  return flagged(hooks, () => scanOutputIn(schema, value, hooks));
+}
+
+function scanOutputIn(schema: Schema, value: unknown, hooks: HandlerHooks): OutputScan | null {
+// #endif
+// #if not_flags_rules
+function scanOutput(schema: Schema, value: unknown, hooks: HandlerHooks): OutputScan | null {
+// #endif
+// #if rules
   const mode = hooks.rules?.output ?? 'strict';
   if (mode === 'off' || value === undefined || !reachesRules(schema)) return null;
   const issues = validate(schema, value);
@@ -1167,6 +1216,10 @@ interface StatementInfo {
   /** The parameters the expression reads. */
   fields: readonly string[];
   message: string;
+  // #endif
+  // #if flags_endpoint_rules
+  /** `when flag("name")`: the statement exists only while the flag is on (spec/platform.md section 11). */
+  flag?: string;
   // #endif
   // #if rollout_endpoint
   /** `@rollout(audit)`: evaluated and reported, never rejects (spec/rules.md section 17.1). */
@@ -1388,6 +1441,11 @@ async function prepare(
     return null;
   }
   for (const step of rules.requires) {
+    // #endif
+    // #if flags_endpoint_rules
+    if (step.flag !== undefined && !statementOn(hooks, step.flag, true)) continue;
+    // #endif
+    // #if endpoint_rules
     const verdict = verdictOf(() => step.holds(p as never, f as never, now));
     if (verdict === 'holds') continue;
     // #endif
@@ -1448,6 +1506,11 @@ function checkEnsures(
   // #endif
   // #if endpoint_rules
   for (const step of rules.ensures) {
+    // #endif
+    // #if flags_endpoint_rules
+    if (step.flag !== undefined && !statementOn(hooks, step.flag, true)) continue;
+    // #endif
+    // #if endpoint_rules
     const verdict = verdictOf(() => step.holds(params as never, full as never, prepared.now, prepared.old as never));
     // #endif
     // #if rollout_endpoint
@@ -1574,6 +1637,8 @@ export interface EndpointRuleSet {
  * `403 Forbidden`; its message is the one of the first `forbid` that was true, else `not permitted`.
  * An argument that cannot be evaluated denies. This runs even when request validation is off.
  */
+// #endif
+// #if flags_policies
 function checkAllows(
   ep: ServerEndpoint,
   rules: EndpointRuleSet,
@@ -1583,6 +1648,31 @@ function checkAllows(
   scope: { p: Record<string, unknown>; f: Record<string, unknown>; now: bigint },
   started: number,
 ): VeldResponse | null {
+  return flagged(hooks, () => checkAllowsIn(ep, rules, ctx, std, hooks, scope, started));
+}
+
+function checkAllowsIn(
+  ep: ServerEndpoint,
+  rules: EndpointRuleSet,
+  ctx: RequestContext,
+  std: StdSigs,
+  hooks: HandlerHooks,
+  scope: { p: Record<string, unknown>; f: Record<string, unknown>; now: bigint },
+  started: number,
+): VeldResponse | null {
+// #endif
+// #if not_flags_policies
+function checkAllows(
+  ep: ServerEndpoint,
+  rules: EndpointRuleSet,
+  ctx: RequestContext,
+  std: StdSigs,
+  hooks: HandlerHooks,
+  scope: { p: Record<string, unknown>; f: Record<string, unknown>; now: bigint },
+  started: number,
+): VeldResponse | null {
+// #endif
+// #if policies
   for (const step of rules.allows ?? []) {
     let verdict: PolicyVerdict;
     try {
@@ -1645,6 +1735,24 @@ export interface EndpointRuleSet {
   transition?: TransitionStep;
 }
 
+// #endif
+// #if flags_transitions
+export interface TransitionStep {
+  /** The flag of the edge from a source to the target, by wire value of the source: the edge exists only while it is on. */
+  flagged?: Readonly<Record<string, string>>;
+}
+
+/** The sources whose edge to the target exists for this request: an edge behind a flag that is off is gone. */
+function liveSources(step: TransitionStep, hooks: HandlerHooks): readonly string[] {
+  const held = step.flagged;
+  if (held === undefined) return step.sources;
+  return step.sources.filter((source) => {
+    const flag = held[source];
+    return flag === undefined || statementOn(hooks, flag, false);
+  });
+}
+// #endif
+// #if transitions
 /**
  * Step 6, after the policies and before the first `require`: `409 InvalidTransition` when the fact
  * is not in one of the source states. A legal move is handed to the handler as `transition`. This
@@ -1662,7 +1770,14 @@ function checkTransition(
   const step = rules.transition;
   if (step === undefined) return null;
   const from = step.current(scope.f as never);
+  // #endif
+  // #if flags_transitions
+  if (liveSources(step, hooks).includes(from)) {
+  // #endif
+  // #if not_flags_transitions
   if (step.sources.includes(from)) {
+  // #endif
+  // #if transitions
     scope.f['transition'] = { field: step.field, from, to: step.to };
     return null;
   }
@@ -2150,6 +2265,12 @@ export interface HandlerHooks {
   /** The server's clock, read once per request before the facts load. Default: the system clock. */
   clock?: (ctx: RequestContext) => Date;
   // #endif
+  // #if flags
+  /** Asks whether a flag is on, once per request and flag (spec/platform.md section 11). */
+  flags?: FlagProvider;
+  /** The readings of the request that is running: set by the router core, never by the application. */
+  flagState?: FlagState;
+  // #endif
   // #if slo
   /** Called once per request that matched an endpoint, with the answer ready (spec/platform.md section 13). A failing hook is ignored. */
   metrics?: (m: Metric) => void | Promise<void>;
@@ -2168,6 +2289,10 @@ export interface ServerEndpoint extends EndpointSpec {
   middleware: readonly string[];
   /** `session` is set for `ws` endpoints. SSE endpoints resolve to an `AsyncIterable`. */
   call(req: object, ctx: RequestContext, session?: WsSession): unknown;
+  // #if flags
+  /** The flags this endpoint may touch (its statements, its policies, its edges, the invariants of its types): read once, before step 5. */
+  flags?: readonly string[];
+  // #endif
   // #if slo
   /** `<package>/<Service>`: the `veld.service` attribute of the metric of a request. */
   service?: string;
@@ -2539,6 +2664,9 @@ async function guard(
   if (bound.issues.length > 0) {
     return problem(std.validation, 'ValidationError', 422, ep.sig, { issues: bound.issues });
   }
+  // #if flags
+  await readFlags(ep, ctx, hooks);
+  // #endif
   // #if headers
   const lead = headerIssues(ep, ctx.headers);
   if (lead.length > 0) return headerRefusal(ep, bound, lead, std, hooks);
@@ -2608,6 +2736,9 @@ async function runCore(
   // #if rollout
   hooks = withAuditLog(hooks, req);
   // #endif
+  // #if flags
+  hooks = withFlagState(hooks);
+  // #endif
   try {
     const bound = await guard(r, m, req, ctx, std, hooks, false);
     if (isResponse(bound)) return bound;
@@ -2651,6 +2782,90 @@ async function runCore(
   }
 }
 
+// #if flags
+
+// ---------------------------------------------------------------------------
+// Feature flags (spec/platform.md section 11)
+// ---------------------------------------------------------------------------
+
+/** What a flag provider is told about the request. */
+export interface FlagContext {
+  /** The caller: absent without one. */
+  principal?: unknown;
+  /** The caller's tenant text: absent without one. */
+  tenant?: string;
+  /** The whole operation signature of the endpoint. */
+  operation: string;
+}
+
+/** The application's flags. It is asked once per request and flag; a provider that throws counts as failed. */
+export interface FlagProvider {
+  isOn(name: string, context: FlagContext): boolean | Promise<boolean>;
+}
+
+/** A provider with a fixed set of flags that are on, for tests. */
+export class MemoryFlagProvider implements FlagProvider {
+  private readonly on: Set<string>;
+
+  constructor(on: Iterable<string> = []) {
+    this.on = new Set(on);
+  }
+
+  /** Turns a flag on (`true`) or off (`false`). */
+  set(name: string, on: boolean): void {
+    if (on) this.on.add(name);
+    else this.on.delete(name);
+  }
+
+  isOn(name: string): boolean {
+    return this.on.has(name);
+  }
+}
+
+/** The readings of one request. */
+export interface FlagState {
+  readings?: Record<string, FlagReading>;
+}
+
+function withFlagState(hooks: HandlerHooks): HandlerHooks {
+  return hooks.flags === undefined ? hooks : { ...hooks, flagState: {} };
+}
+
+/** Reads every flag of the endpoint once, before step 5. A provider that fails makes the flag `failed` and goes to `onError`. */
+async function readFlags(ep: ServerEndpoint, ctx: RequestContext, hooks: HandlerHooks): Promise<void> {
+  const state = hooks.flagState;
+  const provider = hooks.flags;
+  if (state === undefined || provider === undefined || ep.flags === undefined) return;
+  const readings: Record<string, FlagReading> = {};
+  const context: FlagContext = { operation: ep.sig };
+  if (ctx.principal !== undefined && ctx.principal !== null) context.principal = ctx.principal;
+  for (const name of ep.flags) {
+    try {
+      readings[name] = (await provider.isOn(name, context)) ? 'on' : 'off';
+    } catch (err) {
+      readings[name] = 'failed';
+      try {
+        hooks.onError?.(err, ctx);
+      } catch {
+        // A failing hook must not change the answer.
+      }
+    }
+  }
+  state.readings = readings;
+}
+
+/** Runs a synchronous rule check with the readings of the request in force. */
+function flagged<T>(hooks: HandlerHooks, body: () => T): T {
+  const readings = hooks.flagState?.readings;
+  return withReadings(readings === undefined ? null : (name) => readings[name] ?? 'off', body);
+}
+
+/** Whether a statement behind `name` is there: `whenFailed` is what a failing provider makes of it. */
+function statementOn(hooks: HandlerHooks, name: string, whenFailed: boolean): boolean {
+  const reading = hooks.flagState?.readings?.[name];
+  return reading === undefined ? false : reading === 'failed' ? whenFailed : reading === 'on';
+}
+// #endif
 // #if bounded
 type RunFn = (r: Route, m: RegExpExecArray, req: VeldRequest, std: StdSigs, hooks: HandlerHooks) => Promise<VeldResponse>;
 // #endif
@@ -3531,6 +3746,9 @@ async function runWs(
 ): Promise<void> {
   const ep = r.ep;
   const ctx = contextOf(ep, req, wsHeaders(ep, req));
+  // #if flags
+  hooks = withFlagState(hooks);
+  // #endif
   const incomingSchema = ep.params.find((p) => p.s === true)?.t;
   const inbox = new Queue<unknown>();
   const state: WsState = { closed: false };
@@ -3602,6 +3820,11 @@ function assertHooks(endpoints: readonly ServerEndpoint[], hooks: HandlerHooks):
     for (const name of ep.middleware) {
       if (!hooks.middleware?.[name]) throw new Error(`${ep.name}: hooks.middleware.${name} is required`);
     }
+    // #if flags
+    if (ep.flags !== undefined && ep.flags.length > 0 && hooks.flags === undefined) {
+      throw new Error(`${ep.name}: hooks.flags is required`);
+    }
+    // #endif
     // #if idempotency
     if (ep.idempotency !== undefined) {
       if (!hooks.idempotency?.store) throw new Error(`${ep.name}: hooks.idempotency.store is required`);

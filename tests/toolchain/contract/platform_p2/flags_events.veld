@@ -1,0 +1,25 @@
+// A flagged invariant of an event (spec/platform.md section 11): the publisher and the consumer
+// evaluate it with a context that has no principal, when the provider of their options says the
+// flag is on. Compiled as the package `bookings` by crates/emitters/node/tests/platform_flags.rs.
+
+event Booked {
+  id: uuid
+  guests: int
+  rule small: guests <= 6 when flag("smallGroups")
+}
+
+@topic("shop.bookings.v1")
+channel Bookings {
+  carries Booked
+  key id
+}
+
+service Desk {
+  publishes Bookings
+}
+
+service Floor {
+  subscribes Bookings as "floor" {
+    on Booked -> seat
+  }
+}

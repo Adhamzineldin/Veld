@@ -35,6 +35,7 @@ pub struct Tree<'a> {
     timed: bool,
     timeouts: bool,
     slo: bool,
+    flags: bool,
     events: bool,
     runtime_config: bool,
     decls: Vec<DeclId>,
@@ -89,6 +90,7 @@ impl<'a> Tree<'a> {
             endpoints().any(|ep| ep.rules.version.is_some() || ir.etag_field(ep).is_some());
         let idempotency = endpoints().any(|ep| ep.idempotency.is_some());
         let timeouts = endpoints().any(|ep| ep.timeout_ms.is_some());
+        let flags = uses_flags(ir, &set, &services);
         Self {
             ir,
             root: root.to_string(),
@@ -107,6 +109,7 @@ impl<'a> Tree<'a> {
             timed: false,
             timeouts,
             slo: false,
+            flags,
             events: false,
             runtime_config: false,
             decls: set.into_iter().collect(),
@@ -142,8 +145,16 @@ impl<'a> Tree<'a> {
             || set
                 .iter()
                 .any(|id| ir.decl(*id).rules().iter().any(veld_ir::Rule::is_audited));
+        self.flags = self.flags || uses_flags(ir, &set, &self.services);
         self.decls = set.into_iter().collect();
         self
+    }
+
+    /// Whether a declaration or an endpoint of the tree has a flagged statement (`spec/platform.md`
+    /// section 11): the `flags` regions of the runtime and `runtime/flags.ts`.
+    #[must_use]
+    pub fn uses_flags(&self) -> bool {
+        self.flags
     }
 
     /// Whether the tree emits events: some service of it publishes or subscribes. It adds
@@ -208,6 +219,7 @@ impl<'a> Tree<'a> {
             timed: self.timed,
             timeouts: self.timeouts,
             slo: self.slo,
+            flags: self.flags,
             runtime_config: self.runtime_config,
         }
     }
@@ -380,6 +392,23 @@ fn sibling(runtime_module: &str, name: &str) -> String {
     }
 }
 
+/// Whether a declaration of `decls`, or an endpoint of `services` (its `require`, its `ensure`, or
+/// a policy it names), has a flagged statement.
+fn uses_flags(ir: &Ir, decls: &BTreeSet<DeclId>, services: &[ServiceId]) -> bool {
+    let declared = decls.iter().any(|id| {
+        let d = ir.decl(*id);
+        d.rules().iter().any(|r| r.flag.is_some())
+            || matches!(&d.kind, veld_ir::DeclKind::Enum(e) if e.flows.iter().any(|f| f.flag.is_some()))
+    });
+    declared
+        || services.iter().any(|s| {
+            ir.service(*s)
+                .endpoints
+                .iter()
+                .any(|ep| ir.endpoint_uses_flags(ep))
+        })
+}
+
 /// Imports of one generated file.
 #[derive(Debug, Default)]
 pub struct Imports {
@@ -388,6 +417,7 @@ pub struct Imports {
     runtime: bool,
     rules: bool,
     rollout: bool,
+    flags: bool,
     events: bool,
 }
 
@@ -422,6 +452,13 @@ impl Imports {
             lines.push((
                 spec.clone(),
                 format!("import * as veldRollout from '{spec}';"),
+            ));
+        }
+        if self.flags {
+            let spec = util::rel_import(from_file, &sibling(runtime_module, "flags"));
+            lines.push((
+                spec.clone(),
+                format!("import * as veldFlags from '{spec}';"),
             ));
         }
         if self.events {
@@ -490,6 +527,12 @@ impl<'t, 'a> FileCtx<'t, 'a> {
     pub fn rules_ns(&mut self) -> String {
         self.imports.rules = true;
         "veldRules".to_string()
+    }
+
+    /// The namespace of `runtime/flags.ts` (`veldFlags`), recording the import.
+    pub fn flags_ns(&mut self) -> String {
+        self.imports.flags = true;
+        "veldFlags".to_string()
     }
 
     /// The namespace of `runtime/rollout.ts` (`veldRollout`), recording the import.

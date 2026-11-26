@@ -19,7 +19,24 @@ interface Case {
   request?: boolean;
   partial?: boolean;
   computed?: Record<string, unknown>;
+  /** The flags that are on (spec/platform.md section 11); `provider: "failed"` is a provider that failed. */
+  flags?: string[];
+  provider?: string;
 }
+
+/** `runtime/flags.ts`: there only when the contract has a flagged statement. */
+interface FlagsApi {
+  withReadings<T>(readings: (name: string) => 'on' | 'off' | 'failed', body: () => T): T;
+}
+
+function flagsApi(): FlagsApi | undefined {
+  try {
+    return require('./gen/runtime/flags') as FlagsApi;
+  } catch {
+    return undefined;
+  }
+}
+const flagging = flagsApi();
 
 interface Checked {
   schema: veld.Schema;
@@ -56,10 +73,20 @@ function run(c: Case): { violations: veld.Violation[]; computed: Record<string, 
   const failed: veld.Violation[] = [];
   // What the derived fields of the value are: the same walk the server runs (`Companion.compute`).
   const done = derive === undefined ? value : derive(decl.schema, value, '$', failed);
+  const full = (): veld.Violation[] => [
+    ...failed,
+    ...veld.checkValue(decl.schema, done, '$', c.request === true ? 'request' : 'full'),
+  ];
+  // The partial check of a client has no provider: it skips every flagged invariant. Any other check
+  // runs with the readings of the case, as a server's request would have them.
+  const reading = (name: string): 'on' | 'off' | 'failed' =>
+    c.provider === 'failed' ? 'failed' : (c.flags ?? []).includes(name) ? 'on' : 'off';
   const violations =
     c.partial === true
       ? decl.partial(value)
-      : [...failed, ...veld.checkValue(decl.schema, done, '$', c.request === true ? 'request' : 'full')];
+      : flagging === undefined
+        ? full()
+        : flagging.withReadings(reading, full);
   const wire = veld.toWire(decl.schema, done);
   const computed: Record<string, unknown> = {};
   for (const path of Object.keys(c.computed ?? {})) computed[path] = valueAt(wire, path);

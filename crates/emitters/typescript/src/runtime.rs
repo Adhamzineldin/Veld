@@ -24,6 +24,10 @@ pub const RULES_SOURCE: &str = include_str!("../runtime/rules.ts");
 /// contract with an audited rule (`@rollout(audit)`, `spec/rules.md` section 17.1).
 pub const ROLLOUT_SOURCE: &str = include_str!("../runtime/rollout.ts");
 
+/// The embedded `runtime/flags.ts`: the readings of the flags a request has, emitted only for a
+/// contract with a flagged statement (`spec/platform.md` section 11).
+pub const FLAGS_SOURCE: &str = include_str!("../runtime/flags.ts");
+
 /// Source of `runtime/veld.ts` for a contract without rules.
 pub static SOURCE: LazyLock<String> = LazyLock::new(|| source(false).unwrap_or_default());
 
@@ -75,6 +79,9 @@ pub struct Gates {
     /// An endpoint with an `@slo` in a server tree (`spec/platform.md` section 13): the `slo`
     /// regions and the `metrics` hook.
     pub slo: bool,
+    /// A flagged statement (`spec/platform.md` section 11): the `flags` regions and
+    /// `runtime/flags.ts`.
+    pub flags: bool,
     /// The target has a typed runtime config (`spec/runtime-config.md`): a client takes its
     /// `baseUrl` from the options alone (no environment variable, no compiled-in address).
     pub runtime_config: bool,
@@ -104,6 +111,7 @@ impl Gates {
             timed: self.timed || other.timed,
             timeouts: self.timeouts || other.timeouts,
             slo: self.slo || other.slo,
+            flags: self.flags || other.flags,
             policies: self.policies || other.policies,
             rollout: self.rollout || other.rollout,
             version: self.version || other.version,
@@ -156,6 +164,16 @@ pub fn source_gated(gates: Gates) -> Result<String, GateError> {
         "timeouts_only" => g.timeouts && !g.slo,
         "slo_only" => g.slo && !g.timeouts,
         "timeouts_slo" => g.timeouts && g.slo,
+        // Flags (`spec/platform.md` section 11), alone and inside the regions they work in.
+        "flags" => g.flags,
+        "not_flags" => !g.flags,
+        "flags_rules" => g.flags && g.rules,
+        "not_flags_rules" => g.rules && !g.flags,
+        "flags_policies" => g.flags && g.policies,
+        "not_flags_policies" => g.policies && !g.flags,
+        "flags_transitions" => g.flags && g.transitions,
+        "not_flags_transitions" => g.transitions && !g.flags,
+        "flags_endpoint_rules" => g.flags && g.endpoint_rules,
         "timed_plain" => g.timed && !(g.timeouts || g.slo),
         "timed_bounded" => g.timed && (g.timeouts || g.slo),
         "policies" => g.policies,
@@ -227,6 +245,9 @@ pub fn emit_gated(files: &mut FileSet, gates: Gates) -> Result<(), Vec<GenDiagno
     }
     if gates.rollout {
         add_file(files, "runtime/rollout.ts", ROLLOUT_SOURCE.to_string())?;
+    }
+    if gates.flags {
+        add_file(files, "runtime/flags.ts", FLAGS_SOURCE.to_string())?;
     }
     Ok(())
 }
@@ -394,7 +415,7 @@ mod tests {
 
     #[test]
     fn every_combination_with_derived_fields_pairs_up_and_keeps_no_marker() {
-        for bits in 0..4096u32 {
+        for bits in 0..8192u32 {
             let gates = Gates {
                 rules: bits & 1 != 0,
                 endpoint_rules: bits & 2 != 0,
@@ -408,6 +429,7 @@ mod tests {
                 timed: bits & 512 != 0,
                 timeouts: bits & 1024 != 0,
                 slo: bits & 2048 != 0,
+                flags: bits & 4096 != 0,
             };
             let text = source_gated(gates).unwrap();
             assert!(!text.contains("// #"), "{gates:?}");
@@ -493,6 +515,61 @@ mod tests {
         assert!(both.contains("withMetrics((r2, m2, q2, s2, h2) => withDeadline"));
         // The deadline settles the lease of an idempotent request.
         assert!(both.contains("lease.closed") && !timeouts.contains("lease.closed"));
+    }
+
+    #[test]
+    fn flags_add_their_regions_and_nothing_else_sees_them() {
+        let words = [
+            "FlagProvider",
+            "MemoryFlagProvider",
+            "readFlags",
+            "withFlagState",
+            "statementOn",
+            "liveSources",
+            "withReadings",
+        ];
+        let all = source_gated(Gates {
+            rules: true,
+            policies: true,
+            transitions: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        for word in words {
+            assert!(!all.contains(word), "`{word}` leaked into the runtime");
+        }
+        assert!(!all.contains("checkInputRulesIn") && !all.contains("checkAllowsIn"));
+        let flagged = source_gated(Gates {
+            flags: true,
+            rules: true,
+            policies: true,
+            transitions: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        for word in words {
+            assert!(flagged.contains(word), "`{word}` is missing");
+        }
+        // The windows: every sync walk of the rules runs with the readings of its request.
+        for word in [
+            "checkInputRulesIn",
+            "checkMessageRulesIn",
+            "scanOutputIn",
+            "checkAllowsIn",
+        ] {
+            assert!(flagged.contains(word), "`{word}` is missing");
+        }
+        // Without policies and transitions there is nothing of theirs.
+        let bare = source_gated(Gates {
+            flags: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        assert!(
+            bare.contains("readFlags")
+                && !bare.contains("liveSources")
+                && !bare.contains("checkAllowsIn")
+        );
     }
 
     #[test]

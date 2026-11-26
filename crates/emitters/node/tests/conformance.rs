@@ -147,11 +147,11 @@ fn node_and_typescript_generate_timed_moves() {
     veld_emit_conformance::check_timed_is_generated(&TypeScript).unwrap();
 }
 
-/// `rules_flags` is opt-in: Node and TypeScript refuse a flagged statement.
+/// `rules_flags` is opt-in and Node and TypeScript declare it: a flagged statement generates.
 #[test]
-fn node_and_typescript_refuse_flags() {
-    veld_emit_conformance::check_flags_are_refused(&Node).unwrap();
-    veld_emit_conformance::check_flags_are_refused(&TypeScript).unwrap();
+fn node_and_typescript_generate_flags() {
+    veld_emit_conformance::check_flags_are_generated(&Node).unwrap();
+    veld_emit_conformance::check_flags_are_generated(&TypeScript).unwrap();
 }
 
 /// `timeouts` and `slo` are opt-in and Node and TypeScript declare them: a deadline and a service

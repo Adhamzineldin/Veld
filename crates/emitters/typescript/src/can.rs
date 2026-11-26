@@ -15,7 +15,7 @@ use crate::machine::Move;
 use crate::policy::{LOCALS, Plan, Roots, idents, verdict_call};
 use crate::tree::FileCtx;
 use crate::types::ts_type;
-use crate::util::{doc_comment, method_key, prop_key};
+use crate::util::{doc_comment, method_key, prop_key, ts_str};
 
 /// Whether the client has a `can` method for the endpoint.
 #[must_use]
@@ -153,14 +153,24 @@ pub fn write_can(
     }
     match Move::of(fc.tree.ir, ep) {
         Ok(Some(mv)) => match mv.current(&printer) {
-            Some(current) => checks.push(format!("{}.includes({current})", mv.sources_array())),
+            Some(current) => {
+                let sources = live_sources(fc, &mv);
+                checks.push(format!("{sources}.includes({current})"));
+            }
             None => notes.push("a transition path it cannot read"),
         },
         Ok(None) => {}
         Err(why) => notes.push(why),
     }
     diags.extend(notes.iter().map(|n| unsupported("typescript", svc, ep, n)));
-    let signature = signature(fc, &given);
+    let flagged = takes_flags(fc.tree.ir, ep);
+    let mut signature = signature(fc, &given);
+    if flagged {
+        if !signature.is_empty() {
+            signature.push_str(", ");
+        }
+        signature.push_str("flags?: (name: string) => boolean");
+    }
     doc_comment(w, Some(&docs(ep, &given)), None);
     w.open(format!(
         "static {}({signature}): boolean",
@@ -175,8 +185,73 @@ pub fn write_can(
     } else {
         checks.join(" && ")
     };
-    w.line(format!("return {guarded}(() => {body});"));
+    if flagged {
+        let ns = fc.flags_ns();
+        w.line(format!(
+            "return {ns}.withAnswers(flags, () => {guarded}(() => {body}));"
+        ));
+    } else {
+        w.line(format!("return {guarded}(() => {body});"));
+    }
     w.close();
+}
+
+/// Whether `can<Endpoint>` takes the caller's answers about flags: a policy it asks has a flagged
+/// clause, or an edge its transition takes is flagged.
+fn takes_flags(ir: &veld_ir::Ir, ep: &Endpoint) -> bool {
+    let policies = ep.rules.allows.iter().any(|a| {
+        ir.policies
+            .get(a.policy.index())
+            .is_some_and(|p| p.clauses.iter().any(|c| c.flag.is_some()))
+    });
+    policies
+        || ep
+            .rules
+            .transition
+            .as_ref()
+            .is_some_and(|t| flagged_edge(ir, t))
+}
+
+fn flagged_edge(ir: &veld_ir::Ir, t: &veld_ir::EndpointTransition) -> bool {
+    let veld_ir::DeclKind::Enum(machine) = &ir.decl(t.decl).kind else {
+        return false;
+    };
+    machine
+        .flows
+        .iter()
+        .any(|f| f.to == t.to && t.from.contains(&f.from) && f.flag.is_some())
+}
+
+/// The source states of the transition, with the flagged edges there only while their flag is on
+/// (a reader with no provider counts a `flow` as off).
+fn live_sources(fc: &mut FileCtx<'_, '_>, mv: &Move<'_>) -> String {
+    if !flagged_edge(fc.tree.ir, mv.transition) {
+        return mv.sources_array();
+    }
+    let ns = fc.flags_ns();
+    let items: Vec<String> = mv
+        .transition
+        .from
+        .iter()
+        .zip(&mv.sources)
+        .map(|(name, wire)| {
+            let flag = mv
+                .machine
+                .flows
+                .iter()
+                .find(|f| f.from == *name && f.to == mv.transition.to)
+                .and_then(|f| f.flag.as_deref());
+            match flag {
+                Some(flag) => format!(
+                    "...({ns}.flagOn({}, false) ? [{}] : [])",
+                    ts_str(flag),
+                    ts_str(wire)
+                ),
+                None => ts_str(wire),
+            }
+        })
+        .collect();
+    format!("[{}]", items.join(", "))
 }
 
 fn signature(fc: &mut FileCtx<'_, '_>, given: &Inputs<'_>) -> String {

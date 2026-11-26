@@ -23,6 +23,9 @@ interface Case {
   partial?: boolean;
   output?: string;
   computed?: Record<string, unknown>;
+  /** The flags that are on (spec/platform.md section 11); `provider: "failed"` makes the provider throw. */
+  flags?: string[];
+  provider?: string;
 }
 
 interface Checked {
@@ -52,11 +55,22 @@ const impl = new Proxy(
   },
 ) as unknown as gen.VectorsService;
 
-const strict = gen.createVectorsHandler(impl, { onRuleViolation: (e) => events.push(e) });
-const off = gen.createVectorsHandler(impl, { onRuleViolation: (e) => events.push(e) }, { rules: { output: 'off' } });
+// The flag provider of a contract that uses flags (the hooks of one that does not have no such member).
+let readings: { on: string[]; failed: boolean } = { on: [], failed: false };
+const provider = {
+  isOn(name: string): boolean {
+    if (readings.failed) throw new Error('the flag provider failed');
+    return readings.on.includes(name);
+  },
+};
+const hooksOf = (extra: Record<string, unknown> = {}): gen.VectorsHooks =>
+  ({ onRuleViolation: (e: veld.RuleViolationEvent) => events.push(e), flags: provider, onError: () => undefined, ...extra }) as unknown as gen.VectorsHooks;
+
+const strict = gen.createVectorsHandler(impl, hooksOf());
+const off = gen.createVectorsHandler(impl, hooksOf(), { rules: { output: 'off' } });
 // Nothing is rejected here: the handler is reached by every case, and what it received (a request)
 // or what it answered (a result, output mode `off`) shows what the server computed.
-const lax = gen.createVectorsHandler(impl, { validateRequests: false } as unknown as gen.VectorsHooks, { rules: { output: 'off' } });
+const lax = gen.createVectorsHandler(impl, hooksOf({ validateRequests: false, onRuleViolation: undefined }), { rules: { output: 'off' } });
 
 /** The value at `$`, `$.name`, `$.items[1].line` of a wire value, `null` when there is none. */
 function valueAt(root: unknown, path: string): unknown {
@@ -104,6 +118,7 @@ function reported(outcome: 'rejected' | 'audited'): veld.Violation[] {
 
 async function run(c: Case): Promise<unknown> {
   events.length = 0;
+  readings = { on: c.flags ?? [], failed: c.provider === 'failed' };
   const decl = companionOf(c.type);
   const handler = c.output === 'off' ? off : strict;
   let res: veld.VeldResponse | null;

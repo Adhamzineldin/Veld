@@ -163,16 +163,29 @@ fn write_policy(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, policy: &Policy, n
         )),
         None,
     );
+    // A policy with a flagged clause takes the caller's answers as a last argument.
+    let flagged = policy.clauses.iter().any(|c| c.flag.is_some());
+    let mut own = params.clone();
+    if flagged {
+        own.push("flags?: (name: string) => boolean".to_string());
+    }
     w.open(format!(
         "export function {name}({}): boolean",
-        params.join(", ")
+        own.join(", ")
     ));
     let call = if names.is_empty() {
         "BigInt(Date.now())".to_string()
     } else {
         format!("{names}, BigInt(Date.now())")
     };
-    w.line(format!("return {name}Verdict({call}).permitted;"));
+    if flagged {
+        let ns = fc.flags_ns();
+        w.line(format!(
+            "return {ns}.withAnswers(flags, () => {name}Verdict({call}).permitted);"
+        ));
+    } else {
+        w.line(format!("return {name}Verdict({call}).permitted;"));
+    }
     w.close();
     w.blank();
     w.line(format!(
@@ -205,9 +218,23 @@ fn write_clauses(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, policy: &Policy, 
     let mut permit_code = Vec::new();
     for clause in &policy.clauses {
         let code = printer.print(&clause.expr);
+        // A flagged clause exists only while its flag is on; a failing provider keeps a `forbid`
+        // and drops a `permit`.
+        let flag = clause.flag.as_deref().map(|f| (fc.flags_ns(), ts_str(f)));
+        let on = |when_failed: bool| {
+            flag.as_ref()
+                .map(|(ns, name)| format!("{ns}.flagOn({name}, {when_failed})"))
+        };
         match clause.effect {
-            PolicyEffect::Permit => permit_code.push(format!("{permits}(() => {code})")),
+            PolicyEffect::Permit => permit_code.push(match on(false) {
+                Some(on) => format!("({on} && {permits}(() => {code}))"),
+                None => format!("{permits}(() => {code})"),
+            }),
             PolicyEffect::Forbid => {
+                let test = match on(true) {
+                    Some(on) => format!("{on} && {forbids}(() => {code})"),
+                    None => format!("{forbids}(() => {code})"),
+                };
                 let message = clause
                     .message
                     .as_deref()
@@ -215,7 +242,7 @@ fn write_clauses(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, policy: &Policy, 
                 // Every `forbid` is asked first, in source order: the first one that is true ends
                 // the verdict with its message.
                 w.line(format!(
-                    "if ({forbids}(() => {code})) return {{ permitted: false{message} }};"
+                    "if ({test}) return {{ permitted: false{message} }};"
                 ));
             }
         }

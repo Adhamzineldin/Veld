@@ -67,6 +67,12 @@ fn write_rule(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, rule: &Rul
     let cond = print(fc.tree.ir, &ns, &rule.expr);
     let (id, fields) = (ts_str(&rule.id), fields_literal(d, rule));
     let guarded = rule.reads_readonly;
+    // A flagged rule is there only while its flag is on (`spec/platform.md` section 11): a client
+    // with no provider skips it, a server asks the readings of the request.
+    if let Some(flag) = rule.flag.as_deref() {
+        let flags = fc.flags_ns();
+        w.open(format!("if ({flags}.invariantOn({}))", ts_str(flag)));
+    }
     if guarded {
         w.open("if (mode !== 'request')");
     }
@@ -108,6 +114,9 @@ fn write_rule(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, rule: &Rul
         w.close();
     }
     if guarded {
+        w.close();
+    }
+    if rule.flag.is_some() {
         w.close();
     }
 }
