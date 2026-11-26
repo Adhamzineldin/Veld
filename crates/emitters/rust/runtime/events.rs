@@ -18,7 +18,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
 
-use super::canonical::canonical_bytes;
+use super::canonical::{canonical, canonical_bytes};
 use super::error::{Error, Issue};
 use super::schema::{Rules, Scalar, Schema};
 
@@ -57,11 +57,34 @@ pub trait TransportSubscription: Send + Sync {
     fn close(&self) -> BoxFuture<'_, ()>;
 }
 
+/// The options of a channel that a transport gets with every call (`spec/events.md` section 10.6):
+/// `@ordered` and `@deadLetter`. Both are false for a channel without the annotation.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ChannelOptions {
+    pub ordered: bool,
+    pub dead_letter: bool,
+}
+
+impl ChannelOptions {
+    /// No annotation.
+    pub const NONE: ChannelOptions = ChannelOptions { ordered: false, dead_letter: false };
+}
+
 /// What the generated publishers and subscribers depend on (`spec/events.md` section 9). A broker
 /// adapter implements it; [`MemoryTransport`] is the one that ships with every target.
+///
+/// Both calls take the options of the channel last (section 10.6). Rust has no optional argument,
+/// so a transport written for phase E1 adds the parameter. A transport that cannot give `ordered`
+/// must fail the call instead of ignoring it.
 pub trait Transport: Send + Sync {
     /// Completes when the transport has accepted the message.
-    fn publish<'a>(&'a self, topic: &'a str, key: Option<&'a str>, bytes: &'a [u8]) -> BoxFuture<'a, Result<(), Error>>;
+    fn publish<'a>(
+        &'a self,
+        topic: &'a str,
+        key: Option<&'a str>,
+        bytes: &'a [u8],
+        options: ChannelOptions,
+    ) -> BoxFuture<'a, Result<(), Error>>;
 
     /// `deliver` answers `Done` or `Again`.
     fn subscribe<'a>(
@@ -69,6 +92,7 @@ pub trait Transport: Send + Sync {
         topic: &'a str,
         group: &'a str,
         deliver: Deliver,
+        options: ChannelOptions,
     ) -> BoxFuture<'a, Result<Box<dyn TransportSubscription>, Error>>;
 }
 
@@ -340,7 +364,13 @@ impl MemoryTransport {
 }
 
 impl Transport for MemoryTransport {
-    fn publish<'a>(&'a self, topic: &'a str, key: Option<&'a str>, bytes: &'a [u8]) -> BoxFuture<'a, Result<(), Error>> {
+    fn publish<'a>(
+        &'a self,
+        topic: &'a str,
+        key: Option<&'a str>,
+        bytes: &'a [u8],
+        _options: ChannelOptions,
+    ) -> BoxFuture<'a, Result<(), Error>> {
         self.enqueue(topic, key, bytes);
         Box::pin(std::future::ready(Ok(())))
     }
@@ -350,6 +380,7 @@ impl Transport for MemoryTransport {
         topic: &'a str,
         group: &'a str,
         deliver: Deliver,
+        _options: ChannelOptions,
     ) -> BoxFuture<'a, Result<Box<dyn TransportSubscription>, Error>> {
         let sub: Box<dyn TransportSubscription> = Box::new(self.join(topic, group, deliver));
         Box::pin(std::future::ready(Ok(sub)))
@@ -886,6 +917,20 @@ pub async fn publish_event<E: Serialize + Sync>(
     def: &EventDef,
     event: &E,
 ) -> Result<PublishedEvent, Error> {
+    publish_event_with(ctx, channel, ChannelOptions::NONE, def, event).await
+}
+
+/// [`publish_event`] for a channel with `@ordered` or `@deadLetter`: the transport gets `options`.
+///
+/// # Errors
+/// As [`publish_event`].
+pub async fn publish_event_with<E: Serialize + Sync>(
+    ctx: &PublisherContext,
+    channel: &ChannelDef,
+    options: ChannelOptions,
+    def: &EventDef,
+    event: &E,
+) -> Result<PublishedEvent, Error> {
     let (wire, subject) = prepare(ctx, channel, def, event)?;
     let id = ctx.options.new_id.as_ref().map_or_else(random_id, |f| f());
     if id.is_empty() {
@@ -908,7 +953,7 @@ pub async fn publish_event<E: Serialize + Sync>(
         envelope.insert("veldrules".into(), Value::from(digest));
     }
     let bytes = canonical_bytes(&Value::Object(envelope));
-    ctx.transport.publish(channel.topic, subject.as_deref(), &bytes).await?;
+    ctx.transport.publish(channel.topic, subject.as_deref(), &bytes, options).await?;
     Ok(PublishedEvent { id, source: ctx.source.to_string(), r#type: def.sig.to_string(), subject, time })
 }
 
@@ -974,6 +1019,12 @@ pub struct HandlerFailure {
     pub group: String,
     pub meta: EventMeta,
     pub error: Error,
+    /// The delivery attempt of this run: `meta.attempt`.
+    pub attempt: u32,
+    /// True when this consumer will not handle the message again (section 10.4): the last run of a
+    /// channel with `@retry`. Always false on a channel without `@retry`, where the transport
+    /// delivers the message again. (`final` in the spec; a keyword in Rust.)
+    pub is_final: bool,
 }
 
 /// The hooks of a consumer (`spec/events.md` section 8.1). All of them are optional, and a hook
@@ -983,6 +1034,10 @@ pub struct ConsumerOptions {
     on_event_rejected: Option<Hook<EventRejected>>,
     on_contract_mismatch: Option<Hook<ContractMismatch>>,
     on_handler_error: Option<Hook<HandlerFailure>>,
+    inbox: Option<Arc<dyn Inbox>>,
+    sleep: Option<SleepFn>,
+    retry_delay_ms: Option<u64>,
+    retry_max_delay_ms: Option<u64>,
     // #if rules
     on_rule_violation: Option<RuleHook>,
     // #endif
@@ -1010,10 +1065,41 @@ impl ConsumerOptions {
         self
     }
 
-    /// A handler that failed.
+    /// A run of a handler that failed.
     #[must_use]
     pub fn on_handler_error(mut self, f: impl Fn(&HandlerFailure) + Send + Sync + 'static) -> Self {
         self.on_handler_error = Some(Arc::new(f));
+        self
+    }
+
+    /// Step 5 of section 8: a message whose `source` and `id` were handled is acknowledged and
+    /// skipped.
+    #[must_use]
+    pub fn inbox(mut self, inbox: Arc<dyn Inbox>) -> Self {
+        self.inbox = Some(inbox);
+        self
+    }
+
+    /// How the consumer waits before a run of `@retry` (section 10.4): a function from
+    /// milliseconds to a future. The default is a timer thread, which needs no async runtime; a
+    /// test passes one that does not wait.
+    #[must_use]
+    pub fn sleep(mut self, f: impl Fn(u64) -> BoxFuture<'static, ()> + Send + Sync + 'static) -> Self {
+        self.sleep = Some(Arc::new(f));
+        self
+    }
+
+    /// The wait before the second run (default 1000).
+    #[must_use]
+    pub fn retry_delay_ms(mut self, ms: u64) -> Self {
+        self.retry_delay_ms = Some(ms);
+        self
+    }
+
+    /// No wait is longer than this (default 60000).
+    #[must_use]
+    pub fn retry_max_delay_ms(mut self, ms: u64) -> Self {
+        self.retry_max_delay_ms = Some(ms);
         self
     }
     // #if rules
@@ -1026,6 +1112,194 @@ impl ConsumerOptions {
         self
     }
     // #endif
+}
+
+/// The function a consumer waits with: milliseconds to a future.
+pub type SleepFn = Arc<dyn Fn(u64) -> BoxFuture<'static, ()> + Send + Sync>;
+
+/// The application's record of the messages it has handled (`spec/events.md` section 10.3).
+/// `handle` runs `run` and records `(source, id)`, or does nothing when the pair is recorded, and
+/// answers whether it ran `run`. When `run` fails the pair MUST NOT be recorded and the failure is
+/// the result of `handle`. An implementation that records the pair in the transaction of the
+/// handler's own writes prevents a duplicated business effect; one that cannot narrows the window
+/// and does not close it.
+pub trait Inbox: Send + Sync {
+    fn handle<'a>(
+        &'a self,
+        source: &'a str,
+        id: &'a str,
+        run: BoxFuture<'a, Result<(), Error>>,
+    ) -> BoxFuture<'a, Result<bool, Error>>;
+}
+
+/// An inbox that lives in the process, for tests. It does not serialise two concurrent calls with
+/// one pair, because a group of the memory transport delivers one message at a time.
+#[derive(Debug, Default)]
+pub struct MemoryInbox {
+    seen: Mutex<BTreeSet<(String, String)>>,
+}
+
+impl MemoryInbox {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// True when the pair was handled.
+    #[must_use]
+    pub fn has(&self, source: &str, id: &str) -> bool {
+        lock(&self.seen).contains(&(source.to_string(), id.to_string()))
+    }
+
+    /// How many pairs are recorded.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        lock(&self.seen).len()
+    }
+
+    /// True when no pair is recorded.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
+impl Inbox for MemoryInbox {
+    fn handle<'a>(
+        &'a self,
+        source: &'a str,
+        id: &'a str,
+        run: BoxFuture<'a, Result<(), Error>>,
+    ) -> BoxFuture<'a, Result<bool, Error>> {
+        Box::pin(async move {
+            if self.has(source, id) {
+                return Ok(false);
+            }
+            run.await?;
+            lock(&self.seen).insert((source.to_string(), id.to_string()));
+            Ok(true)
+        })
+    }
+}
+
+/// `@retry(max: n, backoff: fixed | exponential)` of a channel (section 10.2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RetryPolicy {
+    pub max: u32,
+    pub backoff: Backoff,
+}
+
+/// The `backoff` of a [`RetryPolicy`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Backoff {
+    Fixed,
+    Exponential,
+}
+
+/// What a subscription gets from the annotations of its channel (`@retry`, `@deadLetter`,
+/// `@ordered`). A channel without any has [`Delivery::NONE`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Delivery {
+    /// The consumer runs the handler again by itself (section 10.4).
+    pub retry: Option<RetryPolicy>,
+    /// Rejected messages and used-up retries are copied to `<topic>.dlq` (section 10.5).
+    pub dead_letter: bool,
+    /// Passed to the transport (section 10.6).
+    pub ordered: bool,
+}
+
+impl Delivery {
+    /// No annotation.
+    pub const NONE: Delivery = Delivery { retry: None, dead_letter: false, ordered: false };
+}
+
+/// Why a message is copied to `<topic>.dlq`: the three rejections, or the used-up retries of a
+/// handler.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeadLetterReason {
+    Malformed,
+    Shape,
+    Rule,
+    Handler,
+}
+
+impl DeadLetterReason {
+    /// `malformed`, `shape`, `rule` or `handler`.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            DeadLetterReason::Malformed => "malformed",
+            DeadLetterReason::Shape => "shape",
+            DeadLetterReason::Rule => "rule",
+            DeadLetterReason::Handler => "handler",
+        }
+    }
+}
+
+impl From<Reason> for DeadLetterReason {
+    fn from(r: Reason) -> Self {
+        match r {
+            Reason::Malformed => DeadLetterReason::Malformed,
+            Reason::Shape => DeadLetterReason::Shape,
+            Reason::Rule => DeadLetterReason::Rule,
+        }
+    }
+}
+
+/// The members a copy adds. A member of the original with one of these names is replaced or
+/// removed.
+const COPY_MEMBERS: [&str; 5] = ["veldreason", "veldgroup", "veldattempts", "veldissues", "veldviolations"];
+
+/// The bytes of the dead-letter copy of `original` (section 10.5). When the original is a JSON
+/// object, the copy is that object with `veldreason`, `veldgroup`, `veldattempts` (the runs of the
+/// handler, 0 for a rejected message) and, when not empty, `veldissues` and `veldviolations`, each
+/// a string that holds the canonical JSON of its list, written as canonical JSON. Anything else
+/// is returned as it is. Nothing of a handler's error is in a copy.
+#[must_use]
+pub fn dead_letter_copy(
+    original: &[u8],
+    reason: DeadLetterReason,
+    group: &str,
+    attempts: u32,
+    issues: &[Issue],
+    violations: &[Violation],
+) -> Vec<u8> {
+    let Ok(text) = std::str::from_utf8(original) else {
+        return original.to_vec();
+    };
+    let Ok(Value::Object(mut copy)) = serde_json::from_str::<Value>(text) else {
+        return original.to_vec();
+    };
+    for name in COPY_MEMBERS {
+        copy.remove(name);
+    }
+    copy.insert("veldreason".into(), Value::from(reason.as_str()));
+    copy.insert("veldgroup".into(), Value::from(group));
+    copy.insert("veldattempts".into(), Value::from(attempts));
+    if !issues.is_empty() {
+        let list: Vec<Value> = issues
+            .iter()
+            .map(|i| serde_json::json!({ "path": i.path, "code": i.code, "message": i.message }))
+            .collect();
+        copy.insert("veldissues".into(), Value::from(canonical(&Value::Array(list))));
+    }
+    if !violations.is_empty() {
+        let list: Vec<Value> = violations.iter().map(violation_json).collect();
+        copy.insert("veldviolations".into(), Value::from(canonical(&Value::Array(list))));
+    }
+    canonical_bytes(&Value::Object(copy))
+}
+
+fn violation_json(v: &Violation) -> Value {
+    let mut m = Map::new();
+    m.insert("rule".into(), Value::from(v.rule.as_str()));
+    m.insert("path".into(), Value::from(v.path.as_str()));
+    m.insert("fields".into(), Value::from(v.fields.clone()));
+    m.insert("message".into(), Value::from(v.message.as_str()));
+    if let Some(e) = &v.error {
+        m.insert("error".into(), Value::from(e.as_str()));
+    }
+    Value::Object(m)
 }
 
 /// What a handler did.
@@ -1148,7 +1422,9 @@ fn parse_envelope(bytes: &[u8]) -> Result<Envelope, String> {
 }
 
 struct Consumer {
+    transport: Arc<dyn Transport>,
     sub: SubscriptionDef,
+    delivery: Delivery,
     options: ConsumerOptions,
     seen: Arc<Mutex<BTreeSet<String>>>,
 }
@@ -1162,7 +1438,30 @@ struct Rejection {
     violations: Vec<Violation>,
 }
 
-fn reject(c: &Consumer, message: &TransportMessage, reason: Reason, detail: Rejection) -> Outcome {
+/// Publishes the copy of a message to `<topic>.dlq` when the channel has `@deadLetter`: `Again` when
+/// that fails (section 10.5).
+async fn copy_to_dead_letter(
+    c: &Consumer,
+    message: &TransportMessage,
+    reason: DeadLetterReason,
+    attempts: u32,
+    (issues, violations): (&[Issue], &[Violation]),
+) -> Outcome {
+    if !c.delivery.dead_letter {
+        return Outcome::Done;
+    }
+    let bytes = dead_letter_copy(&message.bytes, reason, c.sub.group, attempts, issues, violations);
+    let topic = format!("{}.dlq", c.sub.topic);
+    match c.transport.publish(&topic, message.key.as_deref(), &bytes, ChannelOptions::NONE).await {
+        Ok(()) => Outcome::Done,
+        Err(_) => Outcome::Again,
+    }
+}
+
+/// A rejected message (steps 1, 3 and 4) is copied when the channel has `@deadLetter`, then
+/// acknowledged and reported (the hook after the copy was decided, whether it succeeded or not).
+async fn reject(c: &Consumer, message: &TransportMessage, reason: Reason, detail: Rejection) -> Outcome {
+    let outcome = copy_to_dead_letter(c, message, reason.into(), 0, (&detail.issues, &detail.violations)).await;
     let rejected = EventRejected {
         reason,
         message: detail.message,
@@ -1174,7 +1473,7 @@ fn reject(c: &Consumer, message: &TransportMessage, reason: Reason, detail: Reje
         bytes: message.bytes.clone(),
     };
     call_hook(c.options.on_event_rejected.as_ref(), &rejected);
-    Outcome::Done
+    outcome
 }
 
 /// Tells the application once per distinct pair that the publisher is on another version.
@@ -1199,12 +1498,12 @@ fn note_mismatch(c: &Consumer, def: &EventDef, env: &Envelope) {
 
 /// Steps 3 and 4: the shape, then the invariants when the digests agree. `None`: the message goes
 /// on.
-fn decode(c: &Consumer, message: &TransportMessage, def: &EventDef, env: &Envelope) -> Option<Outcome> {
+async fn decode(c: &Consumer, message: &TransportMessage, def: &EventDef, env: &Envelope) -> Option<Outcome> {
     let issues = def.schema.validate(&env.data, "$", false);
     if !issues.is_empty() {
         let text: Vec<String> = issues.iter().map(|i| format!("{} {}", i.path, i.message)).collect();
         let detail = Rejection { message: text.join("; "), event: Some(def.name.to_string()), issues, ..Rejection::default() };
-        return Some(reject(c, message, Reason::Shape, detail));
+        return Some(reject(c, message, Reason::Shape, detail).await);
     }
     // #if rules
     if env.veldrules.as_deref() == def.digest {
@@ -1218,17 +1517,184 @@ fn decode(c: &Consumer, message: &TransportMessage, def: &EventDef, env: &Envelo
                 issues: violations.iter().map(Violation::issue).collect(),
                 violations: violations.clone(),
             };
-            return Some(reject(c, message, Reason::Rule, detail));
+            return Some(reject(c, message, Reason::Rule, detail).await);
         }
     }
     // #endif
     None
 }
 
+/// A timer without an async runtime: a thread sleeps and wakes the task.
+struct ThreadSleep {
+    ms: u64,
+    state: Option<Arc<Mutex<(bool, Option<Waker>)>>>,
+}
+
+impl Future for ThreadSleep {
+    type Output = ();
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
+        if let Some(state) = &self.state {
+            let mut st = lock(state);
+            if st.0 {
+                return Poll::Ready(());
+            }
+            st.1 = Some(cx.waker().clone());
+            return Poll::Pending;
+        }
+        let state = Arc::new(Mutex::new((false, Some(cx.waker().clone()))));
+        let theirs = Arc::clone(&state);
+        let ms = self.ms;
+        self.state = Some(state);
+        let spawned = std::thread::Builder::new().spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(ms));
+            let waker = {
+                let mut st = lock(&theirs);
+                st.0 = true;
+                st.1.take()
+            };
+            if let Some(w) = waker {
+                w.wake();
+            }
+        });
+        if spawned.is_err() {
+            return Poll::Ready(());
+        }
+        Poll::Pending
+    }
+}
+
+async fn wait(c: &Consumer, ms: u64) {
+    match &c.options.sleep {
+        Some(f) => f(ms).await,
+        None => ThreadSleep { ms, state: None }.await,
+    }
+}
+
+/// The wait after run `k` failed (`k` from 1): the delay for `fixed`, doubled each time for
+/// `exponential`, never more than the maximum.
+fn retry_wait(c: &Consumer, retry: RetryPolicy, k: u32) -> u64 {
+    let delay = c.options.retry_delay_ms.unwrap_or(1000);
+    let max = c.options.retry_max_delay_ms.unwrap_or(60_000);
+    let wait = match retry.backoff {
+        Backoff::Fixed => delay,
+        Backoff::Exponential => delay.saturating_mul(1u64 << (k - 1).min(62)),
+    };
+    wait.min(max)
+}
+
+/// What one run of steps 5 and 6 came to.
+enum Step {
+    /// The handler returned, or the inbox skipped the message.
+    Done,
+    Failed(Error),
+    Undecodable(String),
+}
+
+/// A future whose panic is a failed run.
+struct GuardedRun(BoxFuture<'static, Run>);
+
+impl Future for GuardedRun {
+    type Output = Run;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Run> {
+        let inner = self.0.as_mut();
+        match catch_unwind(AssertUnwindSafe(|| inner.poll(cx))) {
+            Ok(poll) => poll,
+            Err(_) => Poll::Ready(Run::Failed(Error::other("veld events: the handler panicked"))),
+        }
+    }
+}
+
+/// Starts the handler; a panic while it builds its future is a failed run.
+fn start(binding: &EventBinding, typed: Value, meta: EventMeta) -> GuardedRun {
+    let run = Arc::clone(&binding.run);
+    match catch_unwind(AssertUnwindSafe(|| run(typed, meta))) {
+        Ok(future) => GuardedRun(future),
+        Err(_) => GuardedRun(Box::pin(std::future::ready(Run::Failed(Error::other("veld events: the handler panicked"))))),
+    }
+}
+
+/// Steps 5 and 6 of one run: the inbox, then the handler.
+async fn run_once(c: &Consumer, binding: &EventBinding, env: &Envelope, typed: Value, meta: EventMeta) -> Step {
+    let future = start(binding, typed, meta);
+    let Some(inbox) = c.options.inbox.as_ref() else {
+        return match future.await {
+            Run::Done => Step::Done,
+            Run::Failed(e) => Step::Failed(e),
+            Run::Undecodable(text) => Step::Undecodable(text),
+        };
+    };
+    let undecodable: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+    let slot = Arc::clone(&undecodable);
+    let run: BoxFuture<'_, Result<(), Error>> = Box::pin(async move {
+        match future.await {
+            Run::Done => Ok(()),
+            Run::Failed(e) => Err(e),
+            Run::Undecodable(text) => {
+                *lock(&slot) = Some(text.clone());
+                Err(Error::other(text))
+            }
+        }
+    });
+    match inbox.handle(&env.source, &env.id, run).await {
+        Ok(_) => Step::Done,
+        Err(e) => match lock(&undecodable).take() {
+            Some(text) => Step::Undecodable(text),
+            None => Step::Failed(e),
+        },
+    }
+}
+
+/// The handler runs until it returns or, with `@retry(max: n)`, up to `n + 1` times, waiting between
+/// the runs. A channel without `@retry` answers `Again` at the first failure; the last run of one
+/// with `@retry` is copied when the channel has `@deadLetter` and acknowledged.
+async fn handle(c: &Consumer, message: &TransportMessage, binding: &EventBinding, env: &Envelope, typed: &Value) -> Outcome {
+    let allowed = c.delivery.retry.map_or(1, |r| r.max.saturating_add(1));
+    let mut run = 1u32;
+    loop {
+        let meta = EventMeta {
+            id: env.id.clone(),
+            source: env.source.clone(),
+            r#type: env.r#type.clone(),
+            subject: env.subject.clone(),
+            time: env.time.clone(),
+            attempt: message.attempt.saturating_add(run - 1),
+        };
+        let error = match run_once(c, binding, env, typed.clone(), meta.clone()).await {
+            Step::Done => return Outcome::Done,
+            Step::Undecodable(text) => {
+                let detail = Rejection { message: text, event: Some(binding.def.name.to_string()), ..Rejection::default() };
+                return reject(c, message, Reason::Shape, detail).await;
+            }
+            Step::Failed(error) => error,
+        };
+        let is_final = c.delivery.retry.is_some() && run == allowed;
+        let failure = HandlerFailure {
+            event: binding.def.name.to_string(),
+            topic: c.sub.topic.to_string(),
+            group: c.sub.group.to_string(),
+            attempt: meta.attempt,
+            meta,
+            error,
+            is_final,
+        };
+        call_hook(c.options.on_handler_error.as_ref(), &failure);
+        let Some(retry) = c.delivery.retry else {
+            return Outcome::Again;
+        };
+        if is_final {
+            return copy_to_dead_letter(c, message, DeadLetterReason::Handler, run, (&[], &[])).await;
+        }
+        wait(c, retry_wait(c, retry, run)).await;
+        run += 1;
+    }
+}
+
 async fn consume(c: &Consumer, message: TransportMessage) -> Outcome {
     let env = match parse_envelope(&message.bytes) {
         Ok(env) => env,
-        Err(why) => return reject(c, &message, Reason::Malformed, Rejection { message: why, ..Rejection::default() }),
+        Err(why) => return reject(c, &message, Reason::Malformed, Rejection { message: why, ..Rejection::default() }).await,
     };
     let Some(binding) = c.sub.on.iter().find(|b| type_name(b.def.sig) == type_name(&env.r#type)) else {
         return Outcome::Done;
@@ -1237,18 +1703,10 @@ async fn consume(c: &Consumer, message: TransportMessage) -> Outcome {
     // A consumer does not believe a derived value in the message: it computes its own.
     let env = Envelope { data: binding.def.schema.without_derived(&env.data), ..env };
     // @end
-    if let Some(outcome) = decode(c, &message, binding.def, &env) {
+    if let Some(outcome) = decode(c, &message, binding.def, &env).await {
         return outcome;
     }
     note_mismatch(c, binding.def, &env);
-    let meta = EventMeta {
-        id: env.id.clone(),
-        source: env.source.clone(),
-        r#type: env.r#type.clone(),
-        subject: env.subject.clone(),
-        time: env.time.clone(),
-        attempt: message.attempt,
-    };
     // @if !derived
     let typed = binding.def.schema.from_wire(&env.data, false);
     // @end
@@ -1256,30 +1714,13 @@ async fn consume(c: &Consumer, message: TransportMessage) -> Outcome {
     let mut typed = binding.def.schema.from_wire(&env.data, false);
     super::rules::derive_walk(binding.def.schema, &mut typed, "$", super::rules::Mode::Full, &mut Vec::new());
     // @end
-    match (binding.run)(typed, meta.clone()).await {
-        Run::Done => Outcome::Done,
-        Run::Failed(error) => {
-            let failure = HandlerFailure {
-                event: binding.def.name.to_string(),
-                topic: c.sub.topic.to_string(),
-                group: c.sub.group.to_string(),
-                meta,
-                error,
-            };
-            call_hook(c.options.on_handler_error.as_ref(), &failure);
-            Outcome::Again
-        }
-        Run::Undecodable(text) => {
-            let detail = Rejection { message: text, event: Some(binding.def.name.to_string()), ..Rejection::default() };
-            reject(c, &message, Reason::Shape, detail)
-        }
-    }
+    handle(c, &message, binding, &env, &typed).await
 }
 
 /// Connects the handlers of a service to a transport, one subscription per `subscribes` line, each
 /// under its group (section 8). A message the subscription has no `on` line for is acknowledged and
 /// ignored; a rejected one is acknowledged and reported to `on_event_rejected`; a handler that
-/// fails leaves it unacknowledged.
+/// fails leaves it unacknowledged. For channels without `@retry`, `@deadLetter` and `@ordered`.
 ///
 /// # Errors
 /// The transport's own error; the subscriptions made so far are closed.
@@ -1288,16 +1729,35 @@ pub async fn subscribe_events(
     subs: Vec<SubscriptionDef>,
     options: ConsumerOptions,
 ) -> Result<SubscriptionHandle, Error> {
+    subscribe_events_with(transport, subs.into_iter().map(|s| (s, Delivery::NONE)).collect(), options).await
+}
+
+/// [`subscribe_events`] with the annotations of each subscription's channel (section 10).
+///
+/// # Errors
+/// The transport's own error; the subscriptions made so far are closed.
+pub async fn subscribe_events_with(
+    transport: Arc<dyn Transport>,
+    subs: Vec<(SubscriptionDef, Delivery)>,
+    options: ConsumerOptions,
+) -> Result<SubscriptionHandle, Error> {
     let seen = Arc::new(Mutex::new(BTreeSet::new()));
     let mut handle = SubscriptionHandle { opened: Vec::new() };
-    for sub in subs {
+    for (sub, delivery) in subs {
         let (topic, group) = (sub.topic, sub.group);
-        let consumer = Arc::new(Consumer { sub, options: options.clone(), seen: Arc::clone(&seen) });
+        let channel = ChannelOptions { ordered: delivery.ordered, dead_letter: delivery.dead_letter };
+        let consumer = Arc::new(Consumer {
+            transport: Arc::clone(&transport),
+            sub,
+            delivery,
+            options: options.clone(),
+            seen: Arc::clone(&seen),
+        });
         let deliver: Deliver = Arc::new(move |message| {
             let consumer = Arc::clone(&consumer);
             Box::pin(async move { consume(&consumer, message).await })
         });
-        match transport.subscribe(topic, group, deliver).await {
+        match transport.subscribe(topic, group, deliver, channel).await {
             Ok(opened) => handle.opened.push(opened),
             Err(e) => {
                 handle.close_all().await;

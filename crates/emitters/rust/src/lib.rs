@@ -6,6 +6,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 
 pub mod block;
+pub mod brokers;
 pub mod client;
 pub mod conditional;
 pub mod config;
@@ -57,6 +58,10 @@ pub struct Options {
     /// endpoint rules: a second entry point, in a file of its own, for `veld test --live`. Server
     /// role only. Never mount it in production.
     pub testing: Option<bool>,
+    /// The broker adapters of events phase E2 (`spec/events.md` section 10.7): `"kafka"`,
+    /// `"rabbitmq"` or a list of both. Server role only; a target none of whose services
+    /// publishes or subscribes cannot have it.
+    pub messaging: Option<brokers::Messaging>,
 }
 
 /// The Rust generator (roles `server` and `client`).
@@ -94,6 +99,7 @@ fn all_capabilities() -> Capabilities {
         .with(Feature::RulesVersion)
         .with(Feature::Idempotency)
         .with(Feature::RulesDerived)
+        .with(Feature::EventsDelivery)
 }
 
 fn precheck(req: &GenRequest<'_>, caps: &Capabilities) -> Result<(), Vec<GenDiagnostic>> {
@@ -264,6 +270,7 @@ impl Generator for Rust {
             )]);
         }
         let testing = opts.testing == Some(true);
+        let chosen = brokers::choose(opts.messaging.as_ref(), req.role, &main_tree(req))?;
         let idempotency = server && conditional::any_idempotent(req.ir, &served_http(req));
         // The test handler of a service that is only idempotent runs the steps of the pipeline
         // too: it needs the endpoint rules runtime.
@@ -329,6 +336,8 @@ impl Generator for Rust {
             ureq: tr.ureq,
             config: model.is_some(),
             derived,
+            kafka: chosen.contains(&brokers::Broker::Kafka),
+            rabbitmq: chosen.contains(&brokers::Broker::RabbitMq),
         };
         let mut files = FileSet::new();
         runtime::emit(&mut files, &f)?;

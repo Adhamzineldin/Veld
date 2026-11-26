@@ -56,6 +56,11 @@ pub struct Features {
     /// The target has a runtime config (`spec/runtime-config.md`): `src/veld/config.rs` (the
     /// engine of its check) is emitted, next to `src/runtime_config.rs`.
     pub config: bool,
+    /// The target option `messaging` names Kafka (`spec/events.md` section 10.7):
+    /// `src/adapters/kafka.rs` and the `rdkafka` dependency.
+    pub kafka: bool,
+    /// The same for RabbitMQ: `src/adapters/rabbitmq.rs` and `lapin`.
+    pub rabbitmq: bool,
 }
 
 impl Features {
@@ -146,6 +151,8 @@ const TRANSPORT_REQWEST: &str = include_str!("../runtime/transport_reqwest.rs");
 const TRANSPORT_UREQ: &str = include_str!("../runtime/transport_ureq.rs");
 const UTIL: &str = include_str!("../runtime/util.rs");
 const ADAPTER_AXUM: &str = include_str!("../runtime/adapter_axum.rs");
+const KAFKA: &str = include_str!("../runtime/brokers/kafka.rs");
+const RABBITMQ: &str = include_str!("../runtime/brokers/rabbitmq.rs");
 
 /// The `src/veld/mod.rs` of a crate.
 #[must_use]
@@ -186,6 +193,21 @@ pub fn mod_rs(f: &Features) -> String {
     s
 }
 
+/// The `pub mod` lines of `src/adapters/mod.rs`, in name order.
+fn adapter_mods(f: &Features) -> String {
+    let mut out = String::new();
+    for (name, on) in [
+        ("axum", f.axum),
+        ("kafka", f.kafka),
+        ("rabbitmq", f.rabbitmq),
+    ] {
+        if on {
+            out.push_str(&format!("pub mod {name};\n"));
+        }
+    }
+    out
+}
+
 /// Emits `src/veld/*` and the adapter files the features ask for.
 pub fn emit(files: &mut FileSet, f: &Features) -> Result<(), Vec<GenDiagnostic>> {
     let mut put = |path: &str, src: &str, on: bool| -> Result<(), Vec<GenDiagnostic>> {
@@ -222,8 +244,21 @@ pub fn emit(files: &mut FileSet, f: &Features) -> Result<(), Vec<GenDiagnostic>>
     put("src/veld/transport_ureq.rs", TRANSPORT_UREQ, f.ureq)?;
     put("src/veld/util.rs", UTIL, true)?;
     put("src/veld/mod.rs", &mod_rs(f), true)?;
+    put("src/adapters/kafka.rs", KAFKA, f.kafka)?;
+    put("src/adapters/rabbitmq.rs", RABBITMQ, f.rabbitmq)?;
     if f.axum {
         put("src/adapters/axum.rs", ADAPTER_AXUM, true)?;
+    }
+    if f.kafka || f.rabbitmq {
+        add_file(
+            files,
+            "src/adapters/mod.rs",
+            format!(
+                "{HEADER}\n\n//! Framework and broker adapters.\n\n{}",
+                adapter_mods(f)
+            ),
+        )?;
+    } else if f.axum {
         add_file(
             files,
             "src/adapters/mod.rs",
