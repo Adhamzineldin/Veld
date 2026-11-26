@@ -102,6 +102,8 @@ pub struct Features {
     pub audit_log: bool,
     /// A served endpoint has a `@limit` (`spec/platform.md` section 5). Implies `platform`.
     pub limits: bool,
+    /// An event of a served service has a `@tenant` field: its messages carry `veldtenant`.
+    pub tenant_events: bool,
     /// A client of the crate (its own or a consumed one) has an endpoint with a `@limit`: it
     /// waits and sends again.
     pub limits_client: bool,
@@ -171,6 +173,8 @@ impl Features {
             "limits" => self.limits,
             "limits_client" => self.limits_client,
             "pii" => self.pii,
+            "tenant_types" => self.server && (self.tenancy || self.limits),
+            "tenant_events" => self.events && self.tenant_events,
             "shapes" => self.server && (self.visibility || self.tenancy),
             "sleep" => self.sse || self.limits_client,
             "slo" => self.slo && self.server,

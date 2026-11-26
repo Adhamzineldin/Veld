@@ -152,3 +152,169 @@ fn show_record_node(m: &super::schema::ModelSchema, v: &Value, who: (Option<&Pri
     Value::Object(kept)
 }
 // @end
+
+// @if tenant_types
+// ---------------------------------------------------------------------------------------------
+// Tenants (`spec/platform.md` section 3)
+// ---------------------------------------------------------------------------------------------
+
+/// The type of a `@tenant` field.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TenantKind {
+    Uuid,
+    String,
+    Int,
+    Long,
+}
+
+/// The tenant of the caller: the value of the `@tenant` field of the principal, in wire form.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Tenant {
+    kind: TenantKind,
+    value: Value,
+}
+
+impl Tenant {
+    /// The tenant a principal's field holds; `None` when the field has no value (the caller has
+    /// no tenant). For generated code.
+    #[must_use]
+    pub fn of<T: serde::Serialize>(kind: TenantKind, field: &T) -> Option<Tenant> {
+        let value = serde_json::to_value(field).ok().filter(|v| !v.is_null())?;
+        Some(Tenant { kind, value })
+    }
+
+    /// The text of the tenant: a `string` as it is, a `uuid` in lower case, an `int` or a `long`
+    /// in decimal digits. It is what the key of a limit by tenant and the envelope attribute
+    /// `veldtenant` carry.
+    #[must_use]
+    pub fn text(&self) -> String {
+        tenant_text(self.kind, &self.value).unwrap_or_default()
+    }
+
+    /// Whether `have`, the tenant of a value, is this tenant, as values of the field's type.
+    fn is(&self, have: &Value) -> bool {
+        same_tenant(self.kind, have, &self.value)
+    }
+}
+
+/// The text of a tenant value of a field of type `kind` (wire form: a `long` is a string).
+#[must_use]
+pub fn tenant_text(kind: TenantKind, value: &Value) -> Option<String> {
+    match (kind, value) {
+        (TenantKind::String | TenantKind::Long, Value::String(s)) => Some(s.clone()),
+        (TenantKind::Uuid, Value::String(s)) => Some(s.to_ascii_lowercase()),
+        (TenantKind::Int | TenantKind::Long, Value::Number(n)) => Some(n.to_string()),
+        _ => None,
+    }
+}
+
+fn number_of(value: &Value) -> Option<i64> {
+    match value {
+        Value::Number(n) => n.as_i64(),
+        Value::String(s) => s.parse().ok(),
+        _ => None,
+    }
+}
+
+fn same_tenant(kind: TenantKind, a: &Value, b: &Value) -> bool {
+    match kind {
+        TenantKind::String => matches!((a, b), (Value::String(x), Value::String(y)) if x == y),
+        TenantKind::Uuid => matches!((a, b), (Value::String(x), Value::String(y)) if x.eq_ignore_ascii_case(y)),
+        TenantKind::Int | TenantKind::Long => matches!((number_of(a), number_of(b)), (Some(x), Some(y)) if x == y),
+    }
+}
+// @end
+// @if tenancy
+
+/// The `@tenant` field of a declaration: a value of it belongs to a caller whose tenant is
+/// the value of the field.
+#[derive(Debug, Clone, Copy)]
+pub struct TenantMark {
+    /// The wire name of the field.
+    pub wire: &'static str,
+    /// The id of the rule that a value of another tenant violates (`Field.tenant_id`).
+    pub id: &'static str,
+    pub kind: TenantKind,
+}
+
+/// Every tenant-scoped value of `wire`, a wire value of `schema`, that is not the caller's, at any
+/// depth (nested models, lists, maps, the `items` of a page, the arm of a union), in the order of
+/// the walk: one violation of the tenant rule of the model, with the path of the value from
+/// `root` (`result[1]`, `result.items[0].guest`). A caller without a tenant owns nothing; a value
+/// with none belongs to nobody.
+#[must_use]
+pub fn foreign_values(schema: &Schema, wire: &Value, caller: Option<&Tenant>, root: &str) -> Vec<super::rules::Violation> {
+    let mut out = Vec::new();
+    foreign_node(schema, wire, caller, root, &mut out);
+    out
+}
+
+fn foreign_node(schema: &Schema, v: &Value, caller: Option<&Tenant>, path: &str, out: &mut Vec<super::rules::Violation>) {
+    if v.is_null() {
+        return;
+    }
+    match schema {
+        Schema::Scalar(..) | Schema::Enum(_) => {}
+        Schema::List(of, _) => foreign_items(of, v, caller, path, out),
+        Schema::Map(of, _) => {
+            for (k, e) in v.as_object().into_iter().flatten() {
+                foreign_node(of, e, caller, &format!("{path}.{k}"), out);
+            }
+        }
+        Schema::Page(of) => {
+            if let Some(items) = v.get("items") {
+                foreign_items(of, items, caller, &format!("{path}.items"), out);
+            }
+        }
+        Schema::Model(m) => {
+            let Some(obj) = v.as_object() else {
+                return;
+            };
+            if let Some(mark) = &m.tenant {
+                let mine = match (obj.get(mark.wire).filter(|t| !t.is_null()), caller) {
+                    (Some(have), Some(caller)) => caller.is(have),
+                    (_, _) => false,
+                };
+                if !mine {
+                    out.push(super::rules::Violation {
+                        rule: mark.id.to_string(),
+                        path: path.to_string(),
+                        fields: vec![mark.wire.to_string()],
+                        message: "violates rule tenant".to_string(),
+                        error: None,
+                    });
+                }
+            }
+            for f in m.fields {
+                if let Some(child) = obj.get(f.wire) {
+                    foreign_node(f.schema, child, caller, &format!("{path}.{}", f.wire), out);
+                }
+            }
+        }
+        Schema::Union(u) => {
+            let label = v.get(u.discriminator).and_then(Value::as_str);
+            if let Some((_, arm)) = label.and_then(|l| u.arms.iter().find(|(name, _)| *name == l)) {
+                foreign_node(arm, v, caller, path, out);
+            }
+        }
+    }
+}
+
+fn foreign_items(of: &Schema, v: &Value, caller: Option<&Tenant>, path: &str, out: &mut Vec<super::rules::Violation>) {
+    for (i, e) in v.as_array().into_iter().flatten().enumerate() {
+        foreign_node(of, e, caller, &format!("{path}[{i}]"), out);
+    }
+}
+
+/// Whether a loaded fact holds a tenant-scoped value that is not the caller's anywhere: such a
+/// fact is **not found** for the caller. For generated code.
+#[must_use]
+pub fn foreign<T: serde::Serialize>(schema: &Schema, fact: &T, ctx: &super::server::RequestContext) -> bool {
+    let Ok(typed) = serde_json::to_value(fact) else {
+        return true;
+    };
+    let wire = schema.to_wire(&typed, false, false);
+    !foreign_values(schema, &wire, ctx.tenant(), "$").is_empty()
+}
+// @end
+

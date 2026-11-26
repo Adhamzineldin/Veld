@@ -197,6 +197,10 @@ pub struct RequestContext {
     #[doc(hidden)]
     pub platform: Arc<super::platform::State>,
     // @end
+    // @if tenant_types
+    /// The tenant of the caller (`spec/platform.md` section 3); `None` when the caller has none.
+    tenant: Option<super::platform::Tenant>,
+    // @end
 }
 // #if rollout
 
@@ -328,6 +332,15 @@ impl RequestContext {
 // @if platform
 
 impl RequestContext {
+    // @if tenant_types
+    /// The tenant of the caller, when the principal has one. For generated code.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn tenant(&self) -> Option<&super::platform::Tenant> {
+        self.tenant.as_ref()
+    }
+
+    // @end
     /// The clock reading of the request in milliseconds since the epoch. For generated code.
     #[doc(hidden)]
     #[must_use]
@@ -481,6 +494,14 @@ pub trait Endpoints: Send + Sync + 'static {
         Vec::new()
     }
     // #endif
+    // @if tenant_types
+
+    /// The tenant of the caller, read from the principal once authentication has answered
+    /// (`spec/platform.md` section 3). The default is none.
+    fn caller_tenant(&self, _ctx: &RequestContext) -> Option<super::platform::Tenant> {
+        None
+    }
+    // @end
     // @if platform
 
     /// The clock of the request (`now` of the rules and of `@visible`, `time` of an audit event):
@@ -1682,6 +1703,9 @@ impl<E: Endpoints> Handler<E> {
             now: std::time::SystemTime::now(),
             platform: Arc::new(super::platform::State::default()),
             // @end
+            // @if tenant_types
+            tenant: None,
+            // @end
         }
     }
 
@@ -1896,6 +1920,9 @@ impl<E: Endpoints> Handler<E> {
             if ctx.principal.is_none() {
                 return Err(error_response(std.unauthorized, "Unauthorized", 401, ep.sig, serde_json::json!({})));
             }
+            // @if tenant_types
+            ctx.tenant = e.caller_tenant(ctx);
+            // @end
         }
         for name in ep.middleware {
             if let Err(err) = e.middleware(name, ctx).await {
@@ -1915,6 +1942,9 @@ impl<E: Endpoints> Handler<E> {
                 return Err(self.failure(&err, ep, ctx));
             }
         }
+        // @end
+        // @if tenant_types
+        ctx.tenant = e.caller_tenant(ctx);
         // @end
         // #if flags
         if let Some(index) = e.endpoints().iter().position(|x| std::ptr::eq(x, ep)) {
@@ -2050,6 +2080,12 @@ impl<E: Endpoints> Handler<E> {
                 return self.failure(&err, ep, ctx);
             }
         }
+        // @if tenancy
+        // A value of another tenant is never sent.
+        if self.tenant_refused(ep, schema, &wire, "result", ctx) {
+            return self.failure(&Error::other(format!("{}: the result holds a value of another tenant", ep.name)), ep, ctx);
+        }
+        // @end
         // @if visibility
         // What the caller may see is sent; the rules above judged the whole value.
         let wire = self.shown(ep, schema, &wire, ctx);
@@ -2347,6 +2383,12 @@ impl<E: Endpoints> Handler<E> {
                         e.on_error(&Error::other(why), ctx);
                         return problem(std.internal, "Internal", 500, serde_json::json!({}));
                     }
+                    // @if tenancy
+                    if self.tenant_refused(ep, d.schema, &p.data, "error", ctx) {
+                        e.on_error(&Error::other(format!("{}: a declared error holds a value of another tenant", ep.name)), ctx);
+                        return problem(std.internal, "Internal", 500, serde_json::json!({}));
+                    }
+                    // @end
                     // @if visibility
                     let p = &Problem { data: self.shown(ep, d.schema, &p.data, ctx), ..p.clone() };
                     // @end
@@ -2502,15 +2544,26 @@ impl<E: Endpoints> Handler<E> {
         ctx.now = own.unwrap_or_else(|| self.inner.endpoints.request_clock(ctx));
     }
 
-    // @if shapes
+    // @if tenancy
 
-    /// The caller as far as the platform features are concerned: the principal of an endpoint
-    /// that has authentication. A request with no caller has none.
-    fn caller<'a>(ep: &EndpointSpec, ctx: &'a RequestContext) -> Option<&'a Principal> {
-        if ep.auth.is_some() { ctx.principal.as_ref() } else { None }
+    /// Whether `wire`, a value that is about to be sent for `ep`, holds a tenant-scoped value that
+    /// is not the caller's; each such value is reported to the hook (position `output`, outcome
+    /// `rejected`, `spec/platform.md` section 3). No output mode turns it off.
+    fn tenant_refused(&self, ep: &EndpointSpec, schema: &Schema, wire: &Value, root: &str, ctx: &RequestContext) -> bool {
+        let found = super::platform::foreign_values(schema, wire, ctx.tenant(), root);
+        for v in &found {
+            self.inner.report(ep, v, super::rules::Position::Output, super::rules::Outcome::Rejected, 0);
+        }
+        !found.is_empty()
     }
     // @end
     // @if visibility
+
+    /// The caller as far as visibility is concerned: the principal of an endpoint that has
+    /// authentication. A request with no caller has none.
+    fn caller<'a>(ep: &EndpointSpec, ctx: &'a RequestContext) -> Option<&'a Principal> {
+        if ep.auth.is_some() { ctx.principal.as_ref() } else { None }
+    }
 
     /// `wire`, a value of `schema` that is about to be sent for `ep`, without the `@visible`
     /// fields its caller may not see (`spec/platform.md` section 2). What was dropped is noted.
@@ -2526,6 +2579,11 @@ impl<E: Endpoints> Handler<E> {
     /// The canonical text of a stream item as it is sent.
     fn item_text(&self, ep: &EndpointSpec, schema: &Schema, typed: &Value, ctx: &RequestContext) -> Result<String, Error> {
         let wire = schema.to_wire(typed, false, true);
+        // @if tenancy
+        if self.tenant_refused(ep, schema, &wire, "item", ctx) {
+            return Err(Error::other(format!("{}: a stream item holds a value of another tenant", ep.name)));
+        }
+        // @end
         // @if visibility
         let wire = self.shown(ep, schema, &wire, ctx);
         // @end

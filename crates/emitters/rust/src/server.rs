@@ -383,6 +383,9 @@ fn dispatch(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service, n: &Needs, typed
         rules_forwards(w, tree, svc);
     }
     let platform = crate::platform::svc_uses(tree.ir, svc);
+    if let Some(ty) = typed.filter(|_| platform && (tree.p1.tenancy || tree.p1.limits)) {
+        crate::platform::emit_caller_tenant(w, tree, svc, ty);
+    }
     if platform {
         w.open(
             "fn request_clock(&self, ctx: &veld::server::RequestContext) -> std::time::SystemTime",

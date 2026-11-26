@@ -464,6 +464,11 @@ pub struct EventDef {
     /// The flags of the invariants of the event, sorted: read once per message.
     pub flags: &'static [&'static str],
     // @end
+    // @if tenant_events
+    /// The wire name of the `@tenant` field of the event (`spec/platform.md` section 3): its text
+    /// is the `veldtenant` attribute of every message of the event.
+    pub tenant: Option<&'static str>,
+    // @end
 }
 
 /// One channel as the generated code describes it to the publisher.
@@ -503,6 +508,12 @@ pub struct EventMeta {
     pub time: Option<String>,
     /// The delivery attempt, 1 for the first.
     pub attempt: u32,
+    // @if tenant_events
+    /// The tenant of the event, as the publisher wrote it in `veldtenant`: a `string` as it is, a
+    /// `uuid` in lower case, an `int` or a `long` in decimal digits. A consumer does not check it
+    /// (`spec/platform.md` section 3).
+    pub veldtenant: Option<String>,
+    // @end
 }
 
 /// What a publisher call returns: the message it sent, without the data.
@@ -1028,6 +1039,13 @@ async fn build_message<E: Serialize + Sync>(
     if id.is_empty() {
         return Err(Error::other("veld events: the id source returned an empty id"));
     }
+    // @if tenant_events
+    let tenant = def.tenant.and_then(|name| match wire.get(name) {
+        Some(Value::String(s)) => Some(s.clone()),
+        Some(Value::Number(n)) => Some(n.to_string()),
+        _ => None,
+    });
+    // @end
     let now = ctx.options.clock.as_ref().map_or_else(SystemTime::now, |f| f());
     let time = format_millis(epoch_millis(now));
     let mut envelope = Map::new();
@@ -1044,6 +1062,11 @@ async fn build_message<E: Serialize + Sync>(
     if let Some(digest) = def.digest {
         envelope.insert("veldrules".into(), Value::from(digest));
     }
+    // @if tenant_events
+    if let Some(text) = tenant {
+        envelope.insert("veldtenant".into(), Value::from(text));
+    }
+    // @end
     let bytes = canonical_bytes(&Value::Object(envelope));
     // @if outbox
     Ok((PublishedEvent { id, source: ctx.source.to_string(), r#type: def.sig.to_string(), subject, time }, bytes))
@@ -1788,6 +1811,9 @@ struct Envelope {
     subject: Option<String>,
     time: Option<String>,
     veldrules: Option<String>,
+    // @if tenant_events
+    veldtenant: Option<String>,
+    // @end
     data: Value,
 }
 
@@ -1826,8 +1852,16 @@ fn parse_envelope(bytes: &[u8]) -> Result<Envelope, String> {
     if m.contains_key("data_base64") {
         return Err("`data_base64` is not allowed".to_string());
     }
+    // @if tenant_events
+    let veldtenant = optional_text(&m, "veldtenant")?;
+    // @end
     match m.get("data") {
+        // @if !tenant_events
         Some(data @ Value::Object(_)) => Ok(Envelope { id, source, r#type, subject, time, veldrules, data: data.clone() }),
+        // @end
+        // @if tenant_events
+        Some(data @ Value::Object(_)) => Ok(Envelope { id, source, r#type, subject, time, veldrules, veldtenant, data: data.clone() }),
+        // @end
         _ => Err("`data` is not an object".to_string()),
     }
 }
@@ -2088,6 +2122,9 @@ async fn handle(c: &Consumer, message: &TransportMessage, binding: &EventBinding
             subject: env.subject.clone(),
             time: env.time.clone(),
             attempt: message.attempt.saturating_add(run - 1),
+            // @if tenant_events
+            veldtenant: env.veldtenant.clone(),
+            // @end
         };
         let error = match run_once(c, binding, env, typed.clone(), meta.clone()).await {
             Step::Done => return Outcome::Done,

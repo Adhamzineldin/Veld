@@ -664,6 +664,24 @@ fn load_fact(
             load.ident
         ));
     }
+    if ctx.tree.p1.tenancy && ctx.tree.ir.type_reaches_tenant(&f.ty) {
+        // A fact of another tenant is not found (`spec/platform.md` section 3): `404` for a required
+        // fact, absent for an optional one. It is checked once the defaults and the derived fields
+        // are in and before any policy runs.
+        let schema = schema_ref(ctx, &f.ty, &veld_ir::Constraints::default());
+        let id = &load.ident;
+        if f.optional {
+            w.line(format!(
+                "let loaded_{id} = loaded_{id}.filter(|v| !veld::platform::foreign({schema}, v, ctx));"
+            ));
+        } else {
+            w.open(format!(
+                "if veld::platform::foreign({schema}, &loaded_{id}, ctx)"
+            ));
+            w.line(format!("return Err(Halt::Error({}));", load.not_found));
+            w.close();
+        }
+    }
     w.line(format!("let fact_{} = &loaded_{};", load.ident, load.ident));
     Ok(())
 }

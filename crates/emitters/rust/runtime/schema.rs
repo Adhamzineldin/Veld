@@ -109,6 +109,11 @@ pub struct Field {
     /// The field is derived (`spec/rules.md` section 17.2): the server computes it, nobody supplies it.
     pub derived: bool,
     // #endif
+    // #if tenant_fields
+    /// The field is the tenant of its declaration (`spec/platform.md` section 3): the server sets it
+    /// from the caller, so a request may lack it (a member it carries is kept as received).
+    pub tenant: bool,
+    // #endif
 }
 
 /// A model or an error.
@@ -124,6 +129,10 @@ pub struct ModelSchema {
     // #if derived
     /// Computes the derived fields of one object of this declaration (typed JSON form), if it has any.
     pub derive: Option<fn(&mut Value, super::rules::Mode, &str, &mut Vec<super::rules::Violation>)>,
+    // #endif
+    // #if tenancy
+    /// The `@tenant` field of the declaration, own or inherited (`spec/platform.md` section 3).
+    pub tenant: Option<super::platform::TenantMark>,
     // #endif
     // #if visibility
     /// The wire names of the `@visible` fields of one wire record of this declaration that the
@@ -438,6 +447,21 @@ fn map_model(m: &ModelSchema, v: &Value, o: Opts) -> Value {
             }
             continue;
         }
+        // @if tenant_fields
+        if o.request && f.tenant {
+            // The server sets the tenant from the caller: what a client sends and the fingerprint
+            // leave it out; a member that a request carries is kept as received, and the typed
+            // struct gets a placeholder when it has none.
+            if o.dir == Dir::To {
+                continue;
+            }
+            if !obj.contains_key(f.wire) && !f.optional && f.default.is_none() {
+                let wire = placeholder(f.schema, 0);
+                out.insert(f.wire.to_string(), f.schema.map(&wire, Opts { request: false, ..o }));
+                continue;
+            }
+        }
+        // @end
         // @if derived
         if f.derived {
             // Nobody supplies a derived value: a request leaves it out of what is sent (the
@@ -551,6 +575,11 @@ fn check_model(m: &ModelSchema, v: &Value, path: &str, request: bool, out: &mut 
         let at = format!("{path}.{}", f.wire);
         match obj.get(f.wire) {
             None => {
+                // @if tenant_fields
+                if request && f.tenant {
+                    continue;
+                }
+                // @end
                 // @if !derived
                 if !f.optional && f.default.is_none() && !(request && f.readonly) {
                 // @end

@@ -326,6 +326,9 @@ fn model_schema(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, d: &Decl, m: &Model) {
         if ctx.tree.derived {
             w.line(format!("derived: {},", f.derived.is_some()));
         }
+        if ctx.tree.p1.tenant_fields {
+            w.line(format!("tenant: {},", f.tenant));
+        }
         w.close_with("},");
     }
     w.close_with("],");
@@ -344,6 +347,9 @@ fn model_schema(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, d: &Decl, m: &Model) {
             "None".to_string()
         };
         w.line(format!("derive: {derive},"));
+    }
+    if ctx.tree.p1.tenancy {
+        w.line(format!("tenant: {},", crate::platform::tenant_mark(m)));
     }
     if ctx.tree.p1.visibility {
         let show = if crate::platform::has_visible(m) {

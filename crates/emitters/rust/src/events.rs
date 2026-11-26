@@ -153,6 +153,15 @@ fn write_event_def(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, id: DeclId) {
             .collect();
         w.line(format!("flags: &[{}],", names.join(", ")));
     }
+    if ctx.tree.p1.tenant_events {
+        let tenant = ctx
+            .tree
+            .ir
+            .decl(id)
+            .tenant_field()
+            .map_or("None".to_string(), |f| format!("Some({})", lit(&f.wire)));
+        w.line(format!("tenant: {tenant},"));
+    }
     w.close_with("};");
     w.blank();
 }

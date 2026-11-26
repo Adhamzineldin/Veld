@@ -20,6 +20,8 @@ pub struct Flags {
     pub tenancy: bool,
     /// A declaration of the crate has a `@tenant` field (either role).
     pub tenant_fields: bool,
+    /// An event of a served service has a `@tenant` field: its messages carry `veldtenant`.
+    pub tenant_events: bool,
     /// A served endpoint is `@audited`.
     pub audit: bool,
     /// A served endpoint has a `@limit`.
@@ -121,6 +123,11 @@ pub fn uses(req: &GenRequest<'_>) -> Flags {
         visibility: served_endpoints(ir, &served).any(|e| ep_visibility(ir, e)),
         tenancy: served_endpoints(ir, &served).any(|e| ep_tenancy(ir, e)),
         tenant_fields: crate_has_field(req, |f| f.tenant),
+        tenant_events: server
+            && ir
+                .events_of(&req.services)
+                .iter()
+                .any(|id| ir.decl(*id).tenant_field().is_some()),
         audit,
         limits: served_endpoints(ir, &served).any(|e| e.limit.is_some()),
         limits_client: served_endpoints(ir, clients).any(|e| e.limit.is_some()),
@@ -285,4 +292,51 @@ pub fn refusals(req: &GenRequest<'_>) -> Result<(), Vec<GenDiagnostic>> {
         }
     }
     Ok(())
+}
+
+// ---------------------------------------------------------------------------------------------
+// Tenancy
+// ---------------------------------------------------------------------------------------------
+
+/// The `TenantKind` of a field's type.
+fn tenant_kind(f: &veld_ir::Field) -> &'static str {
+    match &f.ty {
+        Type::Scalar(veld_ir::Scalar::Int) => "Int",
+        Type::Scalar(veld_ir::Scalar::Long) => "Long",
+        Type::Scalar(veld_ir::Scalar::String) => "String",
+        Type::Scalar(_) | Type::List(_) | Type::Map(_) | Type::Page(_) | Type::Decl(_) => "Uuid",
+    }
+}
+
+/// The `tenant` member of a schema: the `@tenant` field of the model, if it has one.
+#[must_use]
+pub fn tenant_mark(m: &Model) -> String {
+    match m.fields.iter().find(|f| f.tenant) {
+        Some(f) => format!(
+            "Some(veld::platform::TenantMark {{ wire: {}, id: {}, kind: veld::platform::TenantKind::{} }})",
+            lit(&f.wire),
+            lit(f.tenant_id.as_deref().unwrap_or_default()),
+            tenant_kind(f)
+        ),
+        None => "None".to_string(),
+    }
+}
+
+/// `caller_tenant` of a dispatch whose service has a principal with a `@tenant` field: the tenant
+/// of the caller, read from the typed principal (`ty` is its Rust type).
+pub fn emit_caller_tenant(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service, ty: &str) {
+    let Some(p) = &svc.principal else {
+        return;
+    };
+    let Some(field) = tree.ir.decl(p.decl).tenant_field() else {
+        return;
+    };
+    w.open("fn caller_tenant(&self, ctx: &veld::server::RequestContext) -> Option<veld::platform::Tenant>");
+    w.line(format!("let principal = ctx.principal::<{ty}>()?;"));
+    w.line(format!(
+        "veld::platform::Tenant::of(veld::platform::TenantKind::{}, &principal.{})",
+        tenant_kind(field),
+        crate::util::snake(&field.name)
+    ));
+    w.close().blank();
 }

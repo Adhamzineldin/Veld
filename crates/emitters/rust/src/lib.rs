@@ -110,6 +110,7 @@ fn all_capabilities() -> Capabilities {
         .with(Feature::Slo)
         .with(Feature::EventsOutbox)
         .with(Feature::Visibility)
+        .with(Feature::Tenancy)
 }
 
 fn precheck(req: &GenRequest<'_>, caps: &Capabilities) -> Result<(), Vec<GenDiagnostic>> {
@@ -399,6 +400,7 @@ impl Generator for Rust {
             visibility: serving && p1.visibility,
             tenancy: serving && p1.tenancy,
             tenant_fields: p1.tenant_fields,
+            tenant_events: p1.tenant_events,
             audit_log: serving && p1.audit,
             limits: serving && p1.limits,
             limits_client: p1.limits_client,

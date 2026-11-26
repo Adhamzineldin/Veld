@@ -390,6 +390,11 @@ fn fill_readonly(schema: &Schema, v: &Value, depth: usize) -> Value {
                     Some(x) => {
                         out.insert(f.wire.to_string(), fill_readonly(f.schema, x, depth));
                     }
+                    // @if tenant_fields
+                    None if f.tenant && !f.optional && f.default.is_none() => {
+                        out.insert(f.wire.to_string(), placeholder(f.schema, depth));
+                    }
+                    // @end
                     None if f.readonly && !f.optional && f.default.is_none() => {
                         out.insert(f.wire.to_string(), placeholder(f.schema, depth));
                     }
