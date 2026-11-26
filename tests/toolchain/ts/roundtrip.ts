@@ -24,7 +24,7 @@ const BANNED_ID = '22222222-2222-4222-8222-222222222222';
 // ---------------------------------------------------------------------------
 
 /** The settings of the server: it consumes the Iam service, so it needs its address. */
-export const runtime: srv.ApiRuntime = { services: { iam: { url: 'http://iam.test' } } };
+export const runtime = { services: { iam: { url: 'http://iam.test' } } };
 
 const store = new Map<string, srv.Order>();
 const thrown: unknown[] = [];

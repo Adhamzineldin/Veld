@@ -49,7 +49,7 @@ async function main(): Promise<void> {
   assert.equal(left.message, 'invalid runtime config: services.iam.url is missing');
 
   // 4. The check runs first: a runtime config and hooks that are both wrong report the runtime config.
-  const both = failure(() => srv.createOrdersHandler(impl, {} as srv.OrdersHooks, {} as srv.ApiRuntime));
+  const both = failure(() => srv.createOrdersHandler(impl, {} as srv.OrdersHooks, {} as never));
   assert.equal(both.message, 'invalid runtime config: services.iam.url is missing');
   assert.throws(() => srv.createOrdersHandler(impl, {} as srv.OrdersHooks, runtime), /hooks\.auth\.bearer is required/);
 

@@ -62,7 +62,7 @@ const hooks: srv.OrdersHooks = {
   middleware: { RateLimit: async () => {} },
 };
 
-const runtime: srv.ApiRuntime = { services: { iam: { url: 'http://iam.test' } } };
+const runtime = { services: { iam: { url: 'http://iam.test' } } };
 
 const server = http.createServer(srv.toNodeHttp(srv.createOrdersHandler(impl, hooks, runtime)));
 server.listen(0, '127.0.0.1', () => {

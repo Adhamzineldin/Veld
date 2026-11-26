@@ -114,7 +114,7 @@ void (async () => {
     urls.push(url);
     throw new Error('offline');
   }) as unknown as A.veld.FetchLike;
-  const runtime: A.WebRuntime = { services: { iam: { url: 'http://iam.test' }, orders: { url: 'http://orders.test/' } } };
+  const runtime = { services: { iam: { url: 'http://iam.test' }, orders: { url: 'http://orders.test/' } } };
   const api = A.createClients(runtime, { fetch: spy });
   assert.deepEqual(Object.keys(api).sort(), ['iam', 'orders']);
   assert.ok(api.orders instanceof OrdersClient && api.iam instanceof IamClient);

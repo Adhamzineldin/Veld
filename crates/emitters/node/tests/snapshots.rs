@@ -85,10 +85,14 @@ fn runtime_is_byte_identical_in_both_roles() {
     let client = gen_client(&ir);
     let server = gen_server(&ir, "Orders", &["Iam"]);
     assert_eq!(client.get("runtime/veld.ts"), server.get("runtime/veld.ts"));
-    assert_eq!(
-        client.get("runtime/veld.ts"),
-        Some(runtime::SOURCE.as_bytes())
-    );
+    // The runtime of a target with settings: the plain runtime with the client code that takes
+    // its address from `baseUrl` alone (`spec/runtime-config.md` section 5).
+    let expected = runtime::source_gated(runtime::Gates {
+        runtime_config: true,
+        ..runtime::Gates::default()
+    })
+    .unwrap();
+    assert_eq!(client.get("runtime/veld.ts"), Some(expected.as_bytes()));
 }
 
 /// Model files are the same in both roles; only the relative import specifiers depend on the layout depth.

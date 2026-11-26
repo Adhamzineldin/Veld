@@ -1,6 +1,6 @@
 # Targets: `node` (server) and `typescript` (client)
 
-Status: normative for the built-in TypeScript generators. Both share one implementation of models, runtime and validation, so the same contract produces byte-identical `runtime/` and `models/` files in both roles. The one exception is events (section 5f): a server that publishes or subscribes also gets `events/`, `runtime/events.ts` and the files of its services, and when only its events have invariants its `runtime/veld.ts` has the `rules` regions that the client's has not.
+Status: normative for the built-in TypeScript generators. Both share one implementation of models, runtime and validation, so the same contract produces byte-identical `runtime/` and `models/` files in both roles. The exceptions are the runtime config (section 5h: a server without settings keeps the client code of `runtime/veld.ts` that a client target no longer has) and events (section 5f): a server that publishes or subscribes also gets `events/`, `runtime/events.ts` and the files of its services, and when only its events have invariants its `runtime/veld.ts` has the `rules` regions that the client's has not.
 
 ## 0. Hard rules
 - **Zero runtime dependencies.** No generated file imports a package, with one exception: the file of the framework the user chose (`nest`, `react`, `vue`, §1a). The WebSocket adapter `server/ws.ts` (§4b) is written against the `ws` package, a declared exception: it is typed structurally and imports nothing, and the server's `package.json` lists `ws` as a peer dependency, but only when the contract has `ws` endpoints. The plain adapters (`express`, `fastify`, `hono`, `node-http`) use *structural* types: a `RouterLike` shape, not `import express`.
@@ -42,7 +42,7 @@ Client target (`role = "client"`, `emitter = "typescript"`; `framework` is `reac
   README.md                      how to import and regenerate (section 1c)
   index.ts                       barrel; also `createClients` (section 5h)
   runtime.ts                     `<Target>Runtime`, `checkRuntime`, `fromEnv`, `createClients` (section 5h)
-  runtime/veld.ts                identical bytes to the server's runtime/veld.ts
+  runtime/veld.ts                identical bytes to the server's runtime/veld.ts (section 5h for a server without settings)
   prelude.ts
   <package>/models/<module path>.ts
   <package>/errors/<module path>.ts
