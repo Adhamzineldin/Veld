@@ -9,6 +9,7 @@ import gen.b.align.align.Seen;
 import gen.b.align.server.DepotHandler;
 import gen.b.align.server.DepotHooks;
 import gen.b.align.server.DepotService;
+import gen.b.align.server.GuardedRequest;
 import gen.b.align.server.SeenRequest;
 import gen.b.align.server.ShipRequest;
 import gen.b.runtime.Json;
@@ -28,9 +29,10 @@ import java.util.concurrent.atomic.AtomicReference;
 /**
  * Derived fields that have no value (spec/rules.md section 17.2, "Where the three generators
  * differed"): a derived field that reaches a {@code @readonly} field through a nested value or a
- * lambda is absent in a request, with no invented value and no violation; an {@code allow}, a
- * {@code require}, an {@code old(...)} and their audited forms that read it are skipped (no
- * {@code NullPointerException}); and the principal is completed once, after authentication, for
+ * lambda is absent in a request, with no invented value and no violation; a {@code require}, an
+ * {@code old(...)} and their audited forms that read it are skipped (no
+ * {@code NullPointerException}), while an {@code allow} that reads it denies ({@code 403}: a
+ * skipped {@code allow} would permit); and the principal is completed once, after authentication, for
  * every endpoint, including one without a rule block, and a principal that cannot be completed is
  * {@code 500 Internal} with the violation reported to the rule hook. Prints {@code OK}.
  */
@@ -50,6 +52,13 @@ public final class DerivedAlign {
     public Crate ship(ShipRequest request, RequestContext ctx) {
       CALLS.incrementAndGet();
       SHIPPED.set(request);
+      Part one = new Part(ID, 3, "one");
+      return new Crate(List.of(one), one, null, null, null);
+    }
+
+    @Override
+    public Crate guarded(GuardedRequest request, RequestContext ctx) {
+      CALLS.incrementAndGet();
       Part one = new Part(ID, 3, "one");
       return new Crate(List.of(one), one, null, null, null);
     }
@@ -97,6 +106,7 @@ public final class DerivedAlign {
     try {
       aDerivedFieldThatReachesAReadonlyFieldIsAbsentInARequest(server);
       statementsThatReadAnAbsentDerivedFieldAreSkipped(server);
+      anAllowThatReadsAnAbsentDerivedFieldDenies(server);
       thePrincipalIsCompletedForEveryEndpoint(server);
       aPrincipalThatCannotBeCompletedIsA500(server);
     } finally {
@@ -118,15 +128,30 @@ public final class DerivedAlign {
   }
 
   /**
-   * `allow CanShip(user, body)` (the policy reads `crate.leadWeight`), `require not body.heavy` and
-   * `ensure result.count == old(body.leadWeight)`, enforced and audited: every one is skipped, so the
-   * answer is the handler's, and nothing is reported.
+   * `require not body.heavy` and `ensure result.count == old(body.leadWeight)`, enforced and audited:
+   * every one is skipped, so the answer is the handler's, and nothing is reported.
    */
   private static void statementsThatReadAnAbsentDerivedFieldAreSkipped(HttpServer server) throws Exception {
     EVENTS.clear();
     Answer fine = send(server, "POST", "/depot/ship", 5, CRATE);
     check(fine.status() == 200, "no statement fails on an absent derived field: " + fine.status() + fine.text());
     check(EVENTS.isEmpty(), "and none is reported: " + EVENTS);
+  }
+
+  /**
+   * `allow CanShip(user, body)` reads `crate.leadWeight`, which is absent: the argument cannot be
+   * evaluated, so the `allow` fails closed with `403 Forbidden` (a skip would permit), the handler is
+   * not called and the denial is reported as an input violation.
+   */
+  private static void anAllowThatReadsAnAbsentDerivedFieldDenies(HttpServer server) throws Exception {
+    EVENTS.clear();
+    int before = CALLS.get();
+    Answer denied = send(server, "POST", "/depot/guarded", 5, CRATE);
+    check(denied.status() == 403, "an allow that reads an absent derived field denies: " + denied.status() + denied.text());
+    check(denied.body().get("data").asObject().get("message").asString().equals("not permitted"), "with the plain message: " + denied.text());
+    check(CALLS.get() == before, "the handler is not called");
+    check(EVENTS.size() == 1, "the denial is reported once: " + EVENTS);
+    check(EVENTS.get(0).position() == RuleWalk.Position.INPUT && EVENTS.get(0).outcome() == RuleWalk.Outcome.REJECTED, "as a rejected input: " + EVENTS);
   }
 
   /** The handler of an endpoint with no rule block sees the caller with its computed cap, not the hook's 12345. */

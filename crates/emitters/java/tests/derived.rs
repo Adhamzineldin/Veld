@@ -21,6 +21,9 @@ use veld_emit_java::util::type_name;
 use veld_ir::{DeclKind, Ir, PackageKind};
 use veld_rules::vectors::{Produced, compare_produced, load_cases, run_case, value_at};
 
+/// The contract the Node driver `derived_http.ts` runs (a `@readonly` member read by a derived
+/// field, `level` and a derived `share` on the principal); compiled as the package `dshop`.
+const SHARED_SHOP: &str = "tests/toolchain/contract/derived/shop.veld";
 const CORE_CONTRACT: &str = "tests/rules/core/derived.veld.pending";
 const CORE_CASES: &str = "tests/rules/core/derived.json.pending";
 const ENDPOINTS: &str = "tests/rules/endpoints/derived.veld.pending";
@@ -94,13 +97,16 @@ policy CanShip(who: Caller, crate: Crate) {
 @auth(bearer)
 service Depot at "/depot" {
   post "/ship" ship(body: Crate) -> 200 Crate {
+    require not body.heavy
+    ensure result.count == old(body.leadWeight)
+    @rollout(audit)
+    require not body.heavy
+    @rollout(audit)
+    ensure result.count == old(body.leadWeight)
+  }
+
+  post "/guarded" guarded(body: Crate) -> 200 Crate {
     allow CanShip(user, body)
-    require not body.heavy
-    ensure result.count == old(body.leadWeight)
-    @rollout(audit)
-    require not body.heavy
-    @rollout(audit)
-    ensure result.count == old(body.leadWeight)
   }
 
   get "/seen" seen(@query n: int) -> Seen
@@ -466,6 +472,25 @@ fn the_production_handler_computes_derived_fields_over_http() {
         &files,
         &["DerivedShopHttp.java"],
         "veldtest.DerivedShopHttp",
+        &[],
+    );
+    assert!(out.contains("OK"), "{out}");
+}
+
+/// The shared contract of the Node driver: `saveDraft` (a derived field that reads a `@readonly`
+/// member is absent in a request, its rule is skipped) and a principal whose derived `share` cannot
+/// be computed (`500`, reported, the handler not called).
+#[test]
+fn the_shared_shop_contract_saves_a_draft_and_rejects_a_principal_that_cannot_be_completed() {
+    if !require_javac("the_shared_shop_contract") {
+        return;
+    }
+    let ir = compile_path(SHARED_SHOP, "dshop");
+    let files = generate(&ir, Role::Server, None, false, "gen.b");
+    let out = compile_and_run(
+        &files,
+        &["DerivedContractHttp.java"],
+        "veldtest.DerivedContractHttp",
         &[],
     );
     assert!(out.contains("OK"), "{out}");

@@ -352,11 +352,11 @@ pub fn write_allows(
         let error = prelude_error(printer.file(), site, ("Forbidden", 403), &data);
         let fields = list_of(printer.file(), &a.reads);
         // An argument that has no value (a derived field of a request that reads a `@readonly`
-        // field) skips the `allow` (`spec/rules.md` 17.2).
+        // field) denies the `allow`: a skipped `allow` would permit (`spec/rules.md` 17.2).
         let call = if a.args.iter().any(|x| arg_reaches_derived(tree.ir, x)) {
             let derive = printer.file().rt("Derive");
             let permitted = printer.file().rt("Policy");
-            format!("{derive}.orSkip(() -> {call}, {permitted}.Verdict.PERMITTED)")
+            format!("{derive}.orSkip(() -> {call}, {permitted}.Verdict.of(false))")
         } else {
             call
         };
