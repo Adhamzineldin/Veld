@@ -854,8 +854,9 @@ pub fn derive_walk(schema: &Schema, v: &mut Value, path: &str, mode: Mode, out: 
 }
 
 /// A stand-in of its shape for every derived member that is absent, at every depth: a value that
-/// had a derived field fail is still read by serde as the struct that has the field.
-fn fill_derived(schema: &Schema, v: &mut Value) {
+/// had a derived field fail, or that reads a field a request does not have, is still read by serde
+/// as the struct that has the field.
+pub fn fill_derived(schema: &Schema, v: &mut Value) {
     match schema {
         Schema::Scalar(..) | Schema::Enum(_) => {}
         Schema::List(of, _) => v.as_array_mut().into_iter().flatten().for_each(|x| fill_derived(of, x)),
@@ -888,7 +889,7 @@ fn fill_derived(schema: &Schema, v: &mut Value) {
 }
 
 /// `Order::derive`: computes the derived fields of a value and of everything inside it, and
-/// returns the violations of the ones that could not be computed (they keep the value they had).
+/// returns the violations of the ones that could not be computed (they hold a stand-in).
 pub fn derive_value<T: serde::Serialize + DeserializeOwned + super::error::VeldDecl>(value: &mut T, mode: Mode) -> Vec<Violation> {
     let mut typed = serde_json::to_value(&*value).unwrap_or(Value::Null);
     let mut out = Vec::new();

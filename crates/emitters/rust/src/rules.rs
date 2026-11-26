@@ -1043,7 +1043,7 @@ pub fn emit_derived(
     w.line("/// Computes the derived fields of this value and of everything inside it, in dependency");
     w.line("/// order (`spec/rules.md` section 17.2): the code the server runs, so that a form can show");
     w.line("/// them while the user types. Returns one violation for each field that could not be");
-    w.line("/// computed; such a field keeps the value it had.");
+    w.line("/// computed; such a field holds a stand-in of its type.");
     w.open("pub fn derive(&mut self) -> Vec<veld::rules::Violation>");
     w.line("veld::rules::derive_value(self, veld::rules::Mode::Full)");
     w.close().blank();

@@ -12,7 +12,8 @@ mod common;
 use common::*;
 use serde_json::json;
 use veld_codegen::{FileSet, Role};
-use veld_ir::Ir;
+use veld_compiler::{CompileInput, PackageInput, SourceFile, compile};
+use veld_ir::{Ir, PackageKind};
 
 const IDEMPOTENCY: &str = "tests/rules/endpoints/idempotency.veld.pending";
 
@@ -170,4 +171,75 @@ fn an_idempotent_service_without_rules_has_a_test_handler() {
     );
     assert!(plain.get("src/plain/s_test_server.rs").is_none());
     assert!(plain.get("src/veld/rules/mod.rs").is_none());
+}
+
+/// The contract of the fingerprint goldens, compiled as the file `t.veld` of the package
+/// `bookings` (`tests/wire/idempotency/README.md`).
+fn fingerprints_ir() -> Ir {
+    let text = std::fs::read_to_string(repo_root().join("tests/wire/idempotency/fingerprints.veld")).unwrap();
+    let out = compile(&CompileInput {
+        packages: vec![PackageInput {
+            name: "bookings".into(),
+            kind: PackageKind::Service,
+            files: vec![SourceFile { path: "t.veld".into(), text }],
+            base_url: None,
+        }],
+        consumes: std::collections::BTreeMap::new(),
+    });
+    assert!(out.ir.is_some(), "{}", out.render());
+    out.ir.unwrap()
+}
+
+/// The 115 cases of `tests/wire/idempotency/fingerprints.json` through the generated production
+/// server (`tests/toolchain/rust/fingerprint-harness`): the fingerprint the server gives to
+/// `IdempotencyStore::begin` is the one the reference printed, a `rejected` case is answered with
+/// its status and never reaches the store, and every `same_as` and `differs_from` holds. The
+/// uuid, datetime and `json` cases (`*_uuid_upper`, `*_datetime_offset`, `*_datetime_millis_zero`,
+/// `body_datetime_millis_25`, `body_any_null`) are the ones that failed before the fingerprint was
+/// taken from the canonical form of the request; `holder_*` states that a computed derived value
+/// is hashed.
+#[test]
+fn the_fingerprint_goldens_pass_through_the_generated_server() {
+    if !cargo_or_skip() {
+        return;
+    }
+    let ir = fingerprints_ir();
+    let server = run(
+        &ir,
+        Role::Server,
+        vec![service_id(&ir, "Fingerprints")],
+        vec![],
+        None,
+        json!({ "crate-name": "bookings-server" }),
+    );
+    let ws = work_dir().join("fingerprints-ws");
+    let _ = std::fs::remove_dir_all(&ws);
+    write_files(&ws.join("server"), &server);
+    copy_dir(
+        &repo_root().join("tests/toolchain/rust/fingerprint-harness"),
+        &ws.join("fingerprint-harness"),
+    );
+    std::fs::write(
+        ws.join("Cargo.toml"),
+        "[workspace]\nresolver = \"2\"\nmembers = [\"server\", \"fingerprint-harness\"]\n",
+    )
+    .unwrap();
+    let lock = repo_root().join("tests/toolchain/rust/Cargo.lock");
+    if lock.exists() {
+        std::fs::copy(&lock, ws.join("Cargo.lock")).unwrap();
+    }
+    run_ok(&mut cargo(&ws, &["build", "--workspace", "--bins"]), "cargo build");
+    run_ok(
+        &mut cargo(&ws, &["clippy", "--all-targets", "-p", "bookings-server", "--", "-D", "warnings"]),
+        "cargo clippy",
+    );
+    let goldens = repo_root().join("tests/wire/idempotency/fingerprints.json");
+    let out = run_ok(
+        &mut cargo(
+            &ws,
+            &["run", "-q", "-p", "fingerprint-harness", "--", &goldens.to_string_lossy()],
+        ),
+        "the fingerprint harness",
+    );
+    assert!(out.contains("fingerprints ok 115"), "{out}");
 }

@@ -985,6 +985,9 @@ impl Bound {
         let mut typed = p.schema.from_wire(wire, true);
         let mut found = Vec::new();
         super::rules::derive_walk(p.schema, &mut typed, &p.location(), super::rules::Mode::Request, &mut found);
+        // A derived field that reads a field the request does not have is left without a value; the
+        // handler reads a stand-in for it.
+        super::rules::fill_derived(p.schema, &mut typed);
         if !self.check {
             self.violations.extend(found);
         }
@@ -2061,6 +2064,7 @@ impl<In: DeserializeOwned, Out: Serialize> WsSession<In, Out> {
         if !found.is_empty() {
             return Some(Err(Error::Problem(self.io.rules.reject_input(self.ep, found, 0))));
         }
+        super::rules::fill_derived(schema, &mut typed);
         Some(serde_json::from_value(typed).map_err(|e| invalid("type", &e.to_string())))
         // @end
     }

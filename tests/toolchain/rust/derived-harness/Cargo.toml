@@ -1,0 +1,20 @@
+[package]
+name = "derived-harness"
+version = "0.0.0"
+edition = "2021"
+publish = false
+default-run = "derived-harness"
+
+[[bin]]
+name = "derived-harness"
+path = "src/main.rs"
+
+[[bin]]
+name = "derived-serve"
+path = "src/bin/serve.rs"
+
+[dependencies]
+derived-server = { path = "../server" }
+axum = "0.8"
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time"] }

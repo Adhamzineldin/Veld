@@ -1,0 +1,105 @@
+// Derived fields at every place a server and a client meet a value (spec/rules.md section 17.2),
+// for the Rust harness `tests/toolchain/rust/derived-edges`: a request with a chain, a failing
+// expression and a read-only read, a fact, the principal, a declared error, a stream, an
+// idempotent endpoint and an event.
+
+model Line {
+  price: int
+  qty: int
+  total: int = price * qty
+}
+
+model Order {
+  id: uuid @readonly
+  serial: int @readonly
+  items: Line[]
+  discount: int = 0
+  subtotal: int = sum(items, i => i.total)
+  payable: int = subtotal - discount
+  share: int = 100 / len(items)
+  next: int = serial + 1
+  rule fits: payable >= 0
+  rule seen: next > 0
+}
+
+model Wallet {
+  id: uuid
+  balance: int
+  held: int
+  available: int = balance - held
+}
+
+model Gauge {
+  id: uuid
+  n: int
+  inverse: int = 100 / n
+}
+
+model Spend {
+  amount: int
+}
+
+model User {
+  id: uuid
+  base: int
+  limit: int = base * 2
+}
+
+principal User
+
+error TooMuch 422 {
+  needed: int
+  have: int
+  short: int = needed - have
+}
+
+model Tick {
+  n: int
+  twice: int = n * 2
+}
+
+@auth(bearer)
+service Shop at "/shop" {
+  post "/orders" place(body: Order) -> 201 Order
+
+  post "/spend/{id}" spend(id: uuid, body: Spend) -> 200 Wallet | TooMuch {
+    fact wallet: Wallet = id
+    require body.amount <= wallet.available else TooMuch { needed: body.amount, have: wallet.available }
+    require body.amount <= user.limit
+  }
+
+  post "/gauge/{id}" gauge(id: uuid) -> 204 {
+    fact gauge: Gauge = id
+  }
+
+  @idempotent
+  post "/lines" line(body: Line) -> 204
+}
+
+@auth(none)
+service Live at "/live" {
+  get "/feed" feed() -> stream Tick
+}
+
+event Paid {
+  order: uuid
+  amount: int
+  fee: int
+  net: int = amount - fee
+  percent: int = fee * 100 / amount
+  rule fine: net >= 0
+}
+
+channel Payments {
+  carries Paid
+}
+
+service Billing {
+  publishes Payments
+}
+
+service Receipts {
+  subscribes Payments as "receipts" {
+    on Paid -> record
+  }
+}
