@@ -193,6 +193,13 @@ fn java_refuses_audit_as_a_server() {
     veld_emit_conformance::check_audit_is_refused(&Java).unwrap();
 }
 
+/// `limits` is opt-in (`spec/platform.md` section 5): Java refuses an endpoint with `@limit`, as
+/// a server and as a client.
+#[test]
+fn java_refuses_limits() {
+    veld_emit_conformance::check_limits_are_refused(&Java).unwrap();
+}
+
 /// Message catalogs (`spec/platform.md` section 22): until Java implements them, it refuses a
 /// member that has catalogs with `E0801`, as a server and as a client.
 #[test]

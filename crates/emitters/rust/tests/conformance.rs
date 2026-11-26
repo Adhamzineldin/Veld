@@ -362,6 +362,13 @@ fn rust_refuses_audit_as_a_server() {
     veld_emit_conformance::check_audit_is_refused(&Rust).unwrap();
 }
 
+/// `limits` is opt-in (`spec/platform.md` section 5): Rust refuses an endpoint with `@limit`, as
+/// a server and as a client.
+#[test]
+fn rust_refuses_limits() {
+    veld_emit_conformance::check_limits_are_refused(&Rust).unwrap();
+}
+
 /// Message catalogs (`spec/platform.md` section 22): until the Rust generator implements them, it
 /// refuses a member that has catalogs with `E0801`, in every role.
 #[test]

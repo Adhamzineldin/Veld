@@ -137,6 +137,35 @@ service Chat at \"/chat\" {
 }
 ";
 
+/// `@limit` on an endpoint: the first use is the endpoint line.
+const LIMIT_SOURCE: &str = "model User {
+  id: uuid
+}
+
+principal User
+
+model Room {
+  id: uuid
+}
+
+@auth(bearer)
+service Rooms at \"/rooms\" {
+  @limit(10, per: minute, by: user)
+  get \"/{id}\" getRoom(id: uuid) -> Room
+}
+";
+
+/// `@limit` on a service only, by address: it reaches the endpoint, whose line is the first use.
+const LIMIT_SERVICE_SOURCE: &str = "model Room {
+  id: uuid
+}
+
+@limit(100, per: hour, by: ip)
+service Rooms at \"/rooms\" {
+  get \"/{id}\" getRoom(id: uuid) -> Room
+}
+";
+
 fn line_of(source: &str, needle: &str) -> u32 {
     source
         .lines()
@@ -251,6 +280,48 @@ pub fn check_audit_is_refused(generator: &dyn DynGenerator) -> Result<(), String
     refused_by_servers(generator, Feature::Audit, &compiled_audit_contracts())
 }
 
+/// The contracts that use `limits`, with the line of the first endpoint that has a limit.
+///
+/// # Panics
+/// When a contract of this crate does not compile.
+#[must_use]
+pub fn compiled_limit_contracts() -> Vec<(Ir, u32)> {
+    [
+        ("compiled_limit", LIMIT_SOURCE, "get \"/{id}\""),
+        (
+            "compiled_limit_service",
+            LIMIT_SERVICE_SOURCE,
+            "get \"/{id}\"",
+        ),
+    ]
+    .iter()
+    .map(|(name, source, needle)| (compile(name, source), line_of(source, needle)))
+    .collect()
+}
+
+/// The generator must not declare `limits` and must refuse a contract with a limit **in every
+/// role**: a client waits and sends the request again, so it is asked too. The gate reports
+/// exactly one `E0801` that names the feature, at the first use, and `generate` answers `E0801`
+/// only and makes no files.
+///
+/// # Errors
+/// A description of the first role and contract for which the generator does not behave so.
+pub fn check_limits_are_refused(generator: &dyn DynGenerator) -> Result<(), String> {
+    let name = format!("`{}`", Feature::Limits.name());
+    for (ir, line) in compiled_limit_contracts() {
+        for role in generator.roles() {
+            if generator.capabilities(*role).supports(Feature::Limits) {
+                return Err(format!("{}: declares {name}", role.name()));
+            }
+            let req = request(&ir, *role);
+            let gate = check_capabilities(&ir, &req, &generator.capabilities(*role));
+            refuses(generator, &req, &gate, &name, line)
+                .map_err(|e| format!("{} / line {line}: {e}", role.name()))?;
+        }
+    }
+    Ok(())
+}
+
 fn request(ir: &Ir, role: Role) -> GenRequest<'_> {
     GenRequest {
         ir,
@@ -332,6 +403,21 @@ mod tests {
                 gate.iter().any(|d| d.message.contains("`tenancy`")),
                 "{gate:?}"
             );
+        }
+    }
+
+    #[test]
+    fn each_limit_contract_uses_the_feature_in_both_roles() {
+        for (ir, _) in compiled_limit_contracts() {
+            for role in [Role::Server, Role::Client] {
+                let req = request(&ir, role);
+                let gate =
+                    check_capabilities(&ir, &req, &veld_codegen::Capabilities::all_except(&[]));
+                assert!(
+                    gate.iter().any(|d| d.message.contains("`limits`")),
+                    "{role:?}: {gate:?}"
+                );
+            }
         }
     }
 
