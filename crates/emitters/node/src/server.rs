@@ -8,6 +8,7 @@ use veld_emit_typescript::types::ts_type;
 use veld_emit_typescript::util::{add_file, doc_comment, method_key, prop_key, ts_str};
 use veld_ir::{AuthKind, Endpoint, Method, Service};
 
+use crate::events;
 use crate::frameworks::{EndpointModel, ServiceModel};
 use crate::guards;
 use crate::rules::{self, Site};
@@ -24,6 +25,11 @@ pub fn emit(files: &mut FileSet, tree: &Tree<'_>) -> Result<Vec<String>, Vec<Gen
     let mut diags = Vec::new();
     for sid in &tree.services {
         let svc = tree.ir.service(*sid);
+        // A service that only publishes or subscribes has no HTTP surface: its module is the
+        // events module (`events.rs`).
+        if !events::serves_http(svc) {
+            continue;
+        }
         let module = module_of(tree, svc);
         let mut fc = FileCtx::new(tree, &module);
         let mut w = CodeWriter::new();
@@ -448,6 +454,7 @@ fn nest_path(path: &str) -> String {
 pub fn models(tree: &Tree<'_>) -> Vec<ServiceModel> {
     tree.services
         .iter()
+        .filter(|sid| events::serves_http(tree.ir.service(**sid)))
         .map(|sid| {
             let svc = tree.ir.service(*sid);
             let (auth, middleware) = required_hooks(svc, "", "unknown");

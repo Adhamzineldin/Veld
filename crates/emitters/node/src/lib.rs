@@ -7,6 +7,7 @@
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 
+mod events;
 mod frameworks;
 mod guards;
 mod rules;
@@ -62,7 +63,7 @@ impl Generator for Node {
     }
 
     fn capabilities(&self, _role: Role) -> Capabilities {
-        Capabilities::all_except(&[veld_ir::Feature::Events]).with(veld_ir::Feature::RulesRollout)
+        Capabilities::all_except(&[]).with(veld_ir::Feature::RulesRollout)
     }
 
     fn warnings(&self, req: &GenRequest<'_>, opts: &Options) -> Vec<GenDiagnostic> {
@@ -85,7 +86,8 @@ impl Generator for Node {
             runtime::MODULE,
             req.services.clone(),
         )
-        .with_validate(opts.validate != Some(false));
+        .with_validate(opts.validate != Some(false))
+        .with_events();
         let model = ServerModel {
             adapters_path: "server/adapters.ts".to_string(),
             services: server::models(&tree),
@@ -94,6 +96,7 @@ impl Generator for Node {
         let mut modules = models::emit(&mut files, &tree)?;
         modules.extend(veld_emit_typescript::policy::emit(&mut files, &tree)?);
         modules.extend(server::emit(&mut files, &tree)?);
+        modules.extend(events::emit(&mut files, &tree)?);
         modules.push("server/adapters".to_string());
         let ws = req
             .ir
@@ -107,6 +110,10 @@ impl Generator for Node {
         runtime::emit_gated(&mut files, tree.gates().union(consumed))?;
         testing::emit(&mut files, &tree, opts.testing == Some(true))?;
         modules.sort();
+        let mut extra = extra;
+        if tree.uses_events() {
+            extra.push("export * as veldEvents from './runtime/events';".to_string());
+        }
         barrel::write(&mut files, "", &modules, &extra, true)?;
         // The `ws` package is a peer dependency of a server that hosts `ws` endpoints.
         let peers: &[(&str, &str)] = if ws { &[("ws", "^8.0.0")] } else { &[] };
@@ -119,6 +126,7 @@ impl Generator for Node {
         let handlers: Vec<(String, String)> = req
             .services
             .iter()
+            .filter(|s| events::serves_http(req.ir.service(**s)))
             .map(|s| {
                 let name = naming::pascal(&req.ir.service(*s).name);
                 (name.clone(), format!("create{name}Handler"))
