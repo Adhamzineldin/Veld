@@ -124,6 +124,8 @@ pub fn source_gated(gates: Gates) -> Result<String, GateError> {
         // The server's guard needs the endpoint machinery (a guard has a fact).
         "version_guard" => g.version && g.endpoint_rules,
         "idempotency" => g.idempotency,
+        // `EarlyResponse` for a contract with `@idempotent` and no endpoint rules: the test handler needs it.
+        "idempotency_only" => g.idempotency && !g.endpoint_rules,
         // The two header checks of step 5.
         "headers" => g.version || g.idempotency,
         // The part of `headerRefusal` that merges the issues of a rule.

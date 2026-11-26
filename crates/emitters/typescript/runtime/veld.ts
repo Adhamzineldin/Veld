@@ -2108,6 +2108,9 @@ async function runCore(
     // #if endpoint_rules
     if (result instanceof EarlyResponse) return result.response;
     // #endif
+    // #if idempotency_only
+    if (result instanceof EarlyResponse) return result.response;
+    // #endif
     if (ep.stream === true) return await startSse(ep, result as AsyncIterable<unknown>, ctx, std, hooks);
     // #if rules
     const refused = checkOutputRules(ep, result, std, hooks);
@@ -2220,6 +2223,20 @@ function checkVersion(
   const violation: Violation = { rule: step.id, path: 'request', fields: [], message: 'violates rule version' };
   const data = { expected: sent.digits, actual };
   return refusal(ep, ctx, std, hooks, { sig: step.otherwise.sig, data, violation, started: at.started });
+}
+// #endif
+// #if idempotency_only
+
+/**
+ * A response the endpoint's `call` may return in place of a result, sent as it is. Without endpoint
+ * rules it is the test handler's way to stop a dry run.
+ */
+export class EarlyResponse {
+  readonly response: VeldResponse;
+
+  constructor(response: VeldResponse) {
+    this.response = response;
+  }
 }
 // #endif
 // #if idempotency

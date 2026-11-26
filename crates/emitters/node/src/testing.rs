@@ -131,6 +131,17 @@ fn write_idempotency(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>) {
     let request = fc.rt("VeldRequest");
     let ctx = fc.rt("RequestContext");
     let hooks = fc.rt("IdempotencyHooks");
+    // The `ETag` of a stored success: only a contract with a version field has the member.
+    let etag = if fc.tree.uses_version() {
+        format!(
+            "  const value = ep.success === null ? undefined : ({from_wire}(ep.success, state.data) as Record<string, unknown>);
+  const held = ep.etag === undefined || value === undefined ? undefined : value[ep.etag];
+  if (typeof held === 'number' || typeof held === 'string') out.etag = `\"${{held}}\"`;
+"
+        )
+    } else {
+        String::new()
+    };
     w.line(format!(
         "function requestHeader(req: {request}, name: string): string | undefined {{
   for (const key of Object.keys(req.headers)) {{
@@ -163,10 +174,7 @@ function storedAnswer(ep: {endpoint} | undefined, state: StoreState): {answer} {
   }}
   if (state.data === null || state.data === undefined) return {{ status, body: null }};
   const out: {answer} = {{ status, body: JSON.stringify(state.data), contentType: 'application/json' }};
-  const value = ep.success === null ? undefined : ({from_wire}(ep.success, state.data) as Record<string, unknown>);
-  const held = ep.etag === undefined || value === undefined ? undefined : value[ep.etag];
-  if (typeof held === 'number' || typeof held === 'string') out.etag = `\"${{held}}\"`;
-  return out;
+{etag}  return out;
 }}
 
 /**
