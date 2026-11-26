@@ -385,7 +385,15 @@ fn example_node(x: &ast::Example) -> Node {
         kids.push(leaf(a.span.start, a.span.start, a.span.end));
     }
     match &x.body {
-        ast::ExampleBody::Call(c) => kids.push(leaf(c.span.start, c.span.start, c.span.end)),
+        ast::ExampleBody::Call(c) => {
+            if let Some(i) = &c.if_match {
+                kids.push(leaf(i.span.start, i.span.start, i.span.end));
+            }
+            if let Some(k) = &c.key {
+                kids.push(leaf(k.span.start, k.span.start, k.span.end));
+            }
+            kids.push(leaf(c.span.start, c.span.start, c.span.end));
+        }
         ast::ExampleBody::Event(e) => {
             let given_end = e
                 .channel

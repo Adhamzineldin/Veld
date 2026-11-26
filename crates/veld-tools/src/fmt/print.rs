@@ -509,6 +509,12 @@ impl Printer<'_> {
             }
             match &x.body {
                 ExampleBody::Call(c) => {
+                    if let Some(i) = &c.if_match {
+                        p.example_line(i.span.start, &stmt::if_match_line(i));
+                    }
+                    if let Some(k) = &c.key {
+                        p.example_line(k.span.start, &stmt::key_line(k));
+                    }
                     let key = c.span.start;
                     p.leading(key, 2);
                     p.out.push_str(&stmt::call_lines(c, 2).join("\n"));
