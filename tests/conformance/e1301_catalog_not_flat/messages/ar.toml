@@ -1,0 +1,4 @@
+"app/Stay.atLeastOne" = 1
+
+[nested]
+"app/Stays.book.notTooLong" = "x"

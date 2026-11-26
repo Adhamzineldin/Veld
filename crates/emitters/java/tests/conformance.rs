@@ -130,3 +130,10 @@ fn java_refuses_version_and_idempotency() {
     veld_emit_conformance::check_version_is_refused(&Java).unwrap();
     veld_emit_conformance::check_idempotency_is_refused(&Java).unwrap();
 }
+
+/// Message catalogs (`spec/platform.md` section 22): until Java implements them, it refuses a
+/// member that has catalogs with `E0801`, as a server and as a client.
+#[test]
+fn java_refuses_message_catalogs() {
+    veld_emit_conformance::check_messages_is_refused(&Java).unwrap();
+}

@@ -303,3 +303,10 @@ fn rust_refuses_version_and_idempotency() {
     veld_emit_conformance::check_version_is_refused(&Rust).unwrap();
     veld_emit_conformance::check_idempotency_is_refused(&Rust).unwrap();
 }
+
+/// Message catalogs (`spec/platform.md` section 22): until the Rust generator implements them, it
+/// refuses a member that has catalogs with `E0801`, in every role.
+#[test]
+fn rust_refuses_message_catalogs() {
+    veld_emit_conformance::check_messages_is_refused(&Rust).unwrap();
+}

@@ -1,0 +1,4 @@
+# A catalog may have fewer keys than the other: that is a warning, not an error, when it leaves
+# a message out; this one has them all.
+"app/Stay.atLeastOne" = "Uma estadia tem pelo menos uma noite"
+"app/Stays.book.notTooLong" = "Uma estadia tem no máximo trinta noites"

@@ -112,3 +112,12 @@ fn node_and_typescript_refuse_version_and_idempotency() {
     veld_emit_conformance::check_version_is_refused(&TypeScript).unwrap();
     veld_emit_conformance::check_idempotency_is_refused(&TypeScript).unwrap();
 }
+
+/// Message catalogs (`spec/platform.md` section 22): until a generator implements them, the Node
+/// server and the TypeScript client both refuse a member that has catalogs with `E0801`, at the
+/// first catalog file, and make no files.
+#[test]
+fn node_and_typescript_refuse_message_catalogs() {
+    veld_emit_conformance::check_messages_is_refused(&Node).unwrap();
+    veld_emit_conformance::check_messages_is_refused(&TypeScript).unwrap();
+}

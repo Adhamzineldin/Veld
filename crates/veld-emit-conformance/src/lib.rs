@@ -16,6 +16,7 @@
 mod event_rollout;
 mod events;
 mod fixtures;
+mod messages;
 mod rollout;
 mod version;
 
@@ -32,6 +33,10 @@ pub use events::{
     compiled_events_contract,
 };
 pub use fixtures::{FIXTURES, Fixture};
+pub use messages::{
+    CATALOG_FILE, check_messages_are_generated, check_messages_is_refused,
+    compiled_messages_contract,
+};
 pub use rollout::{
     check_rollout_is_generated, check_rollout_is_refused, compiled_rollout_contracts,
 };
