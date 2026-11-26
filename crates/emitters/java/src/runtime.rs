@@ -46,6 +46,10 @@ const PRECONDITION_FILES: &[&str] = &["IfMatch"];
 /// publishes or subscribes. They need the rule classes (`Flags::rules`).
 const EVENT_FILES: &[&str] = &["Events", "MemoryTransport", "Transport"];
 
+/// The canonical scalars (`Canon`), shared by the data of an event and the fingerprint of an
+/// idempotency key: emitted for a server with events or with `@idempotent`/`@version` endpoints.
+const CANON_FILES: &[&str] = &["Canon"];
+
 /// The runtime classes of the typed runtime config (`spec/targets/java.md` section 14): the check
 /// and its error. A target that has a runtime config only.
 const RUNTIME_CONFIG_FILES: &[&str] = &["RuntimeCheck", "VeldConfigException"];
@@ -62,6 +66,7 @@ macro_rules! runtime_files {
 
 runtime_files!(
     "Audit",
+    "Canon",
     "ClientCore",
     "ClientDefaults",
     "ClientOptions",
@@ -278,6 +283,7 @@ pub fn emit_with(
             && (flags.policies || !POLICY_FILES.contains(&name))
             && (flags.rollout || !ROLLOUT_FILES.contains(&name))
             && (flags.events || !EVENT_FILES.contains(&name))
+            && (flags.events || flags.conditional || !CANON_FILES.contains(&name))
             && (flags.derived || !DERIVED_FILES.contains(&name))
             && (flags.conditional || !CONDITIONAL_FILES.contains(&name))
             && (flags.preconditions || !PRECONDITION_FILES.contains(&name))
@@ -302,6 +308,8 @@ pub fn emit_with(
         "rules_no_derived" => flags.rules && !flags.derived,
         "preconditions" => flags.preconditions,
         "testing_conditional" => flags.testing && flags.conditional,
+        "testing_rules" => flags.testing && flags.rules,
+        "testing_rules_conditional" => flags.testing && flags.rules && flags.conditional,
         "testing_plain" => !(flags.testing && flags.conditional),
         "runtimecfg" => flags.runtime_config,
         "legacy" => !flags.runtime_config,

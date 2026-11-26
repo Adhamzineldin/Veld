@@ -9,7 +9,7 @@ use veld_ir::{Endpoint, Ir, Service};
 
 use crate::conditional;
 use crate::endpoint::{loaders_name, service_has_rules};
-use crate::server::{Entry, build_call, extra_args, needs_hooks, signature, std_sigs};
+use crate::server::{Entry, extra_args, needs_hooks, signature, std_sigs};
 use crate::spec::{RequestNames, is_sse, is_ws, method_name};
 use crate::tree::FileCtx;
 use crate::types::{codec_expr, java_type, schema_expr};
@@ -58,7 +58,13 @@ pub fn write_test_handler(
             "Builds the test handler. The auth hooks of `hooks` are never called and may be `null`.",
         ),
     };
-    entry.write_head(w, fc);
+    // The test handler takes no runtime config (`spec/runtime-config.md` section 4): the output mode
+    // of the rules is an argument of its own entry.
+    if fc.tree.rules {
+        write_mode_head(w, fc, &entry);
+    } else {
+        entry.write_plain(w);
+    }
     write_create_body(w, fc, svc, base, loaders.is_some());
     w.close();
     if let Some(l) = &loaders {
@@ -69,6 +75,34 @@ pub fn write_test_handler(
     write_stub(w, fc, names, svc, &service);
     w.close();
     Vec::new()
+}
+
+/// The entries of a test handler whose target has rules: the output mode is the last argument of
+/// the main one (`null` is `STRICT`), and the shorter ones leave it out.
+fn write_mode_head(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, entry: &Entry<'_>) {
+    let walk = fc.rt("RuleWalk");
+    let (handler, given, pass, hooks) = (entry.handler, entry.given, entry.pass, entry.hooks_class);
+    if !entry.needs_hooks {
+        w.line(format!("/** {} */", entry.docs.0));
+        w.open(format!("public static {handler} create({given})"));
+        w.line(format!("return create({pass}, new {hooks}());"));
+        w.close();
+        w.blank();
+    }
+    w.line(format!("/** {} */", entry.docs.1));
+    w.open(format!(
+        "public static {handler} create({given}, {hooks} hooks)"
+    ));
+    w.line(format!("return create({pass}, hooks, null);"));
+    w.close();
+    w.blank();
+    w.line(format!(
+        "/** {} `rulesOutput` is what happens when a rule is violated by this handler's own output: `STRICT` answers `500 Internal`, `AUDIT` sends the response and reports, `OFF` skips the check; `null` is `STRICT`. */",
+        entry.docs.1
+    ));
+    w.open(format!(
+        "public static {handler} create({given}, {hooks} hooks, {walk}.OutputMode rulesOutput)"
+    ));
 }
 
 /// The body of `create`: the production endpoints over the stub service and the header loaders,
@@ -84,7 +118,11 @@ fn write_create_body(
     let endpoint = fc.rt("ServerEndpoint");
     let (list, array_list) = (fc.name("java.util.List"), fc.name("java.util.ArrayList"));
     w.line(format!("{support}.notice({});", java_str(&svc.name)));
-    let built = build_call(fc);
+    let built = if fc.tree.rules {
+        "hooks.build().withRulesOutput(rulesOutput)"
+    } else {
+        "hooks.build()"
+    };
     w.line(format!("{} built = {built};", fc.rt("HandlerHooks")));
     let uses = conditional::service_uses(fc.tree.ir, svc);
     if conditional::hooks_needed(svc).0 {
