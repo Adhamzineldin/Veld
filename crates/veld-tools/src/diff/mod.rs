@@ -90,6 +90,7 @@ pub enum ChangeKind {
     FactChanged,
     FlowRemoved,
     FlowAdded,
+    FlowTimingChanged,
     TransitionChanged,
     EventAdded,
     EventRemoved,
@@ -315,3 +316,5 @@ mod rollout_tests;
 mod rule_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod timed_tests;

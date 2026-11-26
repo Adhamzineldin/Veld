@@ -363,6 +363,10 @@ fn wire_path(t: &EndpointTransition) -> Vec<&str> {
     t.steps.iter().map(|x| x.wire.as_str()).collect()
 }
 
+fn wire_since(t: &EndpointTransition) -> Vec<&str> {
+    t.since.iter().map(|x| x.wire.as_str()).collect()
+}
+
 fn transition_changed(
     ctx: &Ctx<'_>,
     s: &str,
@@ -391,6 +395,13 @@ fn transition_changed(
             kind,
             s,
             format!("the target state changed from `{}` to `{}`", a.to, b.to),
+        ));
+    }
+    if wire_since(a) != wire_since(b) && !a.since.is_empty() && !b.since.is_empty() {
+        out.push(Change::possibly_breaking(
+            kind,
+            s,
+            "the transition measures the time from another field: `since` changed",
         ));
     }
     for f in a.from.iter().filter(|f| !b.from.contains(f)) {

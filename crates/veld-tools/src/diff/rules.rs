@@ -198,18 +198,70 @@ fn diff_flows(q: &str, o: &Decl, n: &Decl, out: &mut Vec<Change>) {
     let (Some(a), Some(b)) = (enum_of(o), enum_of(n)) else {
         return;
     };
-    for f in a.flows.iter().filter(|f| !b.flows.contains(f)) {
+    let same_edge = |x: &veld_ir::Flow, y: &veld_ir::Flow| x.from == y.from && x.to == y.to;
+    for f in a
+        .flows
+        .iter()
+        .filter(|f| !b.flows.iter().any(|g| same_edge(f, g)))
+    {
         out.push(Change::breaking(
             ChangeKind::FlowRemoved,
             q,
             format!("flow `{} -> {}` was removed", f.from, f.to),
         ));
     }
-    for f in b.flows.iter().filter(|f| !a.flows.contains(f)) {
+    for f in b
+        .flows
+        .iter()
+        .filter(|f| !a.flows.iter().any(|g| same_edge(f, g)))
+    {
         out.push(Change::non_breaking(
             ChangeKind::FlowAdded,
             q,
             format!("flow `{} -> {}` was added", f.from, f.to),
         ));
+    }
+    for (old, new) in a
+        .flows
+        .iter()
+        .filter_map(|f| b.flows.iter().find(|g| same_edge(f, g)).map(|g| (f, g)))
+    {
+        diff_timing(q, old, new, out);
+    }
+}
+
+/// A timed edge (`spec/platform.md` section 10). What a caller built against the old contract
+/// sees is whether its call to the endpoint that takes the edge is still accepted: an edge that
+/// becomes timed, or whose duration grows, refuses calls that were accepted (breaking); one that
+/// stops being timed, or whose duration shrinks, only accepts more (compatible).
+fn diff_timing(q: &str, old: &veld_ir::Flow, new: &veld_ir::Flow, out: &mut Vec<Change>) {
+    let edge = format!("{} -> {}", old.from, old.to);
+    let kind = ChangeKind::FlowTimingChanged;
+    let ms = |f: &veld_ir::Flow| f.after_ms.as_deref().and_then(|t| t.parse::<i64>().ok());
+    match (ms(old), ms(new)) {
+        (None, Some(n)) => out.push(Change::breaking(
+            kind,
+            q,
+            format!(
+                "flow `{edge}` is now timed: a value moves only after {n} ms in `{}`",
+                old.from
+            ),
+        )),
+        (Some(_), None) => out.push(Change::non_breaking(
+            kind,
+            q,
+            format!("flow `{edge}` is no longer timed"),
+        )),
+        (Some(o), Some(n)) if n > o => out.push(Change::breaking(
+            kind,
+            q,
+            format!("flow `{edge}` now waits {n} ms instead of {o} ms"),
+        )),
+        (Some(o), Some(n)) if n < o => out.push(Change::non_breaking(
+            kind,
+            q,
+            format!("flow `{edge}` now waits {n} ms instead of {o} ms"),
+        )),
+        _ => {}
     }
 }
