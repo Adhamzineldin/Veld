@@ -498,3 +498,82 @@ fn the_caller_is_part_of_the_scope_only_when_the_endpoint_has_auth() {
     assert_eq!(Scope::of(ep("mine"), None).caller, None);
     assert_ne!(Scope::of(ep("make"), None).operation, authed.operation);
 }
+
+// --- the fingerprint ---------------------------------------------------------------------------------
+
+const FINGERPRINTED: &str = r#"
+model Body {
+  n: int
+  note: string = "none"
+  tag?: string
+}
+service F at "/f" {
+  @idempotent
+  put "/{id}" make(id: uuid, body: Body, @query dry?: bool) -> Body
+}
+"#;
+
+fn fingerprint_of(params: Json) -> Option<String> {
+    let ir = compile_text(FINGERPRINTED);
+    let mut req = Request::default();
+    for (k, v) in params.as_object().unwrap() {
+        req.params.insert(k.clone(), v.clone());
+    }
+    req.key = Some(IdempotencyKey {
+        value: "k".into(),
+        store: StoreState::Empty,
+    });
+    let p = pipeline(&ir, "F", "make");
+    p.run_reported(&req, OutputMode::Strict).unwrap().fingerprint
+}
+
+#[test]
+fn the_fingerprint_is_taken_after_the_defaults_and_leaves_out_an_optional_that_was_not_sent() {
+    // `note` has a default and is added; `tag` and `dry` were not sent and are not there.
+    let plain = fingerprint_of(json!({ "id": ID, "body": { "n": 1 } }));
+    assert_eq!(plain.as_deref(), Some("bc508ee59e0a79b7"));
+    // The same request with the default written out has the same fingerprint.
+    let written = fingerprint_of(json!({ "id": ID, "body": { "n": 1, "note": "none" } }));
+    assert_eq!(written, plain);
+    // An optional parameter that was sent counts, and so does an optional member.
+    let sent = fingerprint_of(json!({
+        "id": ID,
+        "dry": true,
+        "body": { "n": 1, "tag": "a" }
+    }));
+    assert_eq!(sent.as_deref(), Some("62c08a8b20a7323e"));
+}
+
+#[test]
+fn a_request_without_idempotency_has_no_fingerprint() {
+    let ir = compile_text(SOURCE);
+    let mut req = Request::default();
+    req.params.insert("id".into(), json!(ID));
+    req.facts.insert("plain".into(), Some(json!({ "id": ID })));
+    let out = pipeline(&ir, "Rooms", "plain")
+        .run_reported(&req, OutputMode::Strict)
+        .unwrap();
+    assert_eq!(out.fingerprint, None);
+}
+
+#[test]
+fn the_handler_gets_a_version_only_when_a_tag_was_compared() {
+    let ir = compile_text(SOURCE);
+    let p = pipeline(&ir, "Rooms", "touch");
+    let mut req = Request::default();
+    req.params.insert("id".into(), json!(ID));
+    req.if_match = Some("\"3\"".into());
+    // The optional fact is absent: nothing was compared, so nothing is handed over.
+    req.facts.insert("maybe".into(), None);
+    assert_eq!(
+        p.run_reported(&req, OutputMode::Strict).unwrap().checked_version,
+        None
+    );
+    // Present and equal: the version that was checked.
+    req.facts.insert(
+        "maybe".into(),
+        Some(json!({ "id": ID, "name": "x", "revision": "3" })),
+    );
+    let r = p.run_reported(&req, OutputMode::Strict).unwrap();
+    assert_eq!((r.outcome, r.checked_version), (Outcome::Passes, Some(3)));
+}

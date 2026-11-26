@@ -222,6 +222,7 @@ mod tests {
             checked_version: None,
             body: None,
             etag: etag.map(str::to_owned),
+            fingerprint: None,
         }
     }
 
