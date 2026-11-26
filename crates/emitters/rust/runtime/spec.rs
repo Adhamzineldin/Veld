@@ -93,6 +93,14 @@ pub struct EndpointSpec {
     pub success: Option<&'static Schema>,
     pub errors: &'static [ErrorSpec],
     pub kind: Kind,
+    // @if slo
+    /// `<package>/<Service>` of the endpoint, for the metrics hook.
+    pub service: &'static str,
+    // @end
+    // @if timeouts
+    /// The endpoint's `@timeout` in milliseconds (`spec/platform.md` section 12).
+    pub timeout_ms: Option<u64>,
+    // @end
 }
 
 /// The signatures of the prelude errors the runtime itself raises.
@@ -101,6 +109,9 @@ pub struct StdSigs {
     pub unauthorized: &'static str,
     pub validation: &'static str,
     pub internal: &'static str,
+    // @if timeouts
+    pub deadline: &'static str,
+    // @end
 }
 
 /// A path without its trailing slash (the root `/` stays): routing ignores a trailing slash.

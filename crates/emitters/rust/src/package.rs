@@ -106,6 +106,9 @@ pub fn emit_cargo(files: &mut FileSet, name: &str, f: &Features) -> Result<(), V
     if f.axum && f.ws_server || f.reqwest {
         tokio.push("\"time\"");
     }
+    if f.timeouts && f.server && !tokio.contains(&"\"time\"") {
+        tokio.push("\"time\"");
+    }
     if f.axum && f.idempotency {
         tokio.push("\"rt\"");
     }

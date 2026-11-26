@@ -63,6 +63,13 @@ pub struct Features {
     /// A served endpoint can reach a flag: `src/veld/flags.rs` (the provider) is emitted and the
     /// hooks name one.
     pub flags_server: bool,
+    /// A served endpoint has a service level (`@slo`, `spec/platform.md` section 13): the server
+    /// calls the metrics hook.
+    pub slo: bool,
+    /// An endpoint has a deadline (`@timeout`, `spec/platform.md` section 12): `EndpointSpec` has
+    /// `timeout_ms`, the server core wraps the pipeline in a timeout and answers `504`, the
+    /// client uses it as its default timeout.
+    pub timeouts: bool,
     /// A served endpoint takes a timed edge (`spec/platform.md` section 10): the due check of the
     /// guard and the due-moves runner. Implies `guards`.
     pub timed: bool,
@@ -113,6 +120,11 @@ impl Features {
             "conditional" => self.conditional,
             "derived" => self.derived,
             "timed" => self.timed,
+            "timeouts" => self.timeouts,
+            "slo" => self.slo && self.server,
+            "timeouts_server" => self.timeouts && self.server,
+            "refactor" => self.timed || (self.timeouts && self.server),
+            "split" => self.idempotency || (self.timeouts && self.server),
             "reqwest" => self.reqwest,
             "ureq" => self.ureq,
             _ => false,

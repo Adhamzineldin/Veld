@@ -163,6 +163,10 @@ pub struct ClientOptions {
     pub validate: Option<bool>,
     /// The timeout of one request (default 30 s).
     pub timeout: Duration,
+    // @if timeouts
+    /// Whether the caller set `timeout`: when not, an endpoint with a deadline uses it.
+    timeout_set: bool,
+    // @end
     // #if rules
     /// Check the invariants of a request body and of a `query` object before sending (default
     /// `true`). A violation is a local `ValidationError`; nothing is sent.
@@ -188,6 +192,9 @@ impl Default for ClientOptions {
             api_key: None,
             validate: None,
             timeout: Duration::from_secs(30),
+            // @if timeouts
+            timeout_set: false,
+            // @end
             // #if rules
             check_rules: true,
             on_contract_mismatch: None,
@@ -265,6 +272,9 @@ impl ClientOptions {
     #[must_use]
     pub fn timeout(mut self, d: Duration) -> Self {
         self.timeout = d;
+        // @if timeouts
+        self.timeout_set = true;
+        // @end
         self
     }
     // #if rules
@@ -581,8 +591,20 @@ impl<T: Transport> Core<T> {
         if body.is_some() {
             all.push(("content-type".into(), "application/json".into()));
         }
+        // @if timeouts
+        // A caller that set no timeout gets the deadline of the endpoint (`spec/platform.md` section 12).
+        let timeout = match ep.timeout_ms {
+            Some(ms) if !self.options.timeout_set => Duration::from_millis(ms),
+            Some(_) | None => self.options.timeout,
+        };
+        // @end
         Ok(Built {
+            // @if timeouts
+            request: HttpRequest { method: ep.method.to_string(), url, headers: all, body, timeout },
+            // @end
+            // @if !timeouts
             request: HttpRequest { method: ep.method.to_string(), url, headers: all, body, timeout: self.options.timeout },
+            // @end
         })
     }
 

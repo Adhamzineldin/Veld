@@ -40,6 +40,10 @@ pub struct Tree<'a> {
     /// True when a served endpoint takes a timed edge (`spec/platform.md` section 10): the
     /// generated step 6 reads the clock of the due-moves run.
     pub timed: bool,
+    /// True when an endpoint has a deadline (`spec/platform.md` section 12).
+    pub timeouts: bool,
+    /// True when a served endpoint has a service level (`@slo`).
+    pub slo: bool,
     /// True when the crate has a flagged statement (`spec/platform.md` section 11).
     pub flags: bool,
     /// The runtime config of the target (`spec/runtime-config.md`), when it has settings: the
@@ -83,6 +87,8 @@ impl<'a> Tree<'a> {
             derived: false,
             idempotency: false,
             timed: false,
+            timeouts: false,
+            slo: false,
             flags: false,
             runtime: None,
             events: false,
@@ -172,6 +178,18 @@ impl<'a> Tree<'a> {
     #[must_use]
     pub fn with_flags(mut self, flags: bool) -> Self {
         self.flags = flags;
+        self
+    }
+
+    #[must_use]
+    pub fn with_slo(mut self, slo: bool) -> Self {
+        self.slo = slo;
+        self
+    }
+
+    #[must_use]
+    pub fn with_timeouts(mut self, timeouts: bool) -> Self {
+        self.timeouts = timeouts;
         self
     }
 

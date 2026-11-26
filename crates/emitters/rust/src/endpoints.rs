@@ -139,13 +139,18 @@ fn write_statics(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service, client: b
         " [",
     );
     for ep in &svc.endpoints {
-        endpoint_spec(w, ctx, ep, client);
+        endpoint_spec(w, ctx, (svc, ep), client);
     }
     w.close_with("];");
     w.blank();
 }
 
-fn endpoint_spec(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, ep: &Endpoint, client: bool) {
+fn endpoint_spec(
+    w: &mut CodeWriter,
+    ctx: &Ctx<'_, '_>,
+    (svc, ep): (&Service, &Endpoint),
+    client: bool,
+) {
     w.open("sp::EndpointSpec");
     w.line(format!("name: {},", lit(&ep.name)));
     w.line(format!("method: {},", lit(ep.method.as_str())));
@@ -206,6 +211,21 @@ fn endpoint_spec(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, ep: &Endpoint, client: b
         Kind::Ws => "Ws",
     };
     w.line(format!("kind: sp::Kind::{kind},"));
+    if ctx.tree.slo {
+        let package = &ctx.tree.ir.package(svc.package).name;
+        w.line(format!(
+            "service: {},",
+            lit(&format!("{package}/{}", svc.name))
+        ));
+    }
+    if ctx.tree.timeouts {
+        let ms = ep
+            .timeout_ms
+            .as_deref()
+            .and_then(|m| m.parse::<u64>().ok())
+            .map_or("None".to_string(), |m| format!("Some({m})"));
+        w.line(format!("timeout_ms: {ms},"));
+    }
     w.close_with("},");
 }
 
@@ -220,6 +240,9 @@ pub fn std_sigs(w: &mut CodeWriter, tree: &Tree<'_>) {
     w.line(format!("unauthorized: {},", lit(&sig("Unauthorized"))));
     w.line(format!("validation: {},", lit(&sig("ValidationError"))));
     w.line(format!("internal: {},", lit(&sig("Internal"))));
+    if tree.timeouts {
+        w.line(format!("deadline: {},", lit(&sig("DeadlineExceeded"))));
+    }
     w.close_with("};");
     w.blank();
 }

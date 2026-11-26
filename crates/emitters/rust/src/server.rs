@@ -263,6 +263,13 @@ fn hooks_trait(
     if reads_flags {
         crate::flags::hooks(w);
     }
+    if svc.endpoints.iter().any(|e| e.slo.is_some()) {
+        w.blank();
+        w.line("/// Receives the metric of every request that matched an endpoint of this server, once its");
+        w.line("/// answer is ready (`spec/platform.md` section 13). It cannot change the response; a hook that");
+        w.line("/// panics is ignored. Optional.");
+        w.line("fn metrics(&self, _metric: &veld::server::Metric) {}");
+    }
     if ctx_timed && crate::timed::svc_timed(svc) {
         w.blank();
         w.line("/// The principal of the due-moves runner (`spec/platform.md` section 10.1): the caller of a");
@@ -364,6 +371,11 @@ fn dispatch(w: &mut CodeWriter, tree: &Tree<'_>, svc: &Service, n: &Needs, typed
     conditional_method(w, tree, svc);
     if crate::flags::svc_reads_flags(tree, svc) {
         crate::flags::forwards(w);
+    }
+    if svc.endpoints.iter().any(|e| e.slo.is_some()) {
+        w.open("fn metrics(&self, metric: &veld::server::Metric)");
+        w.line("self.hooks.metrics(metric);");
+        w.close().blank();
     }
     if tree.timed && crate::timed::svc_timed(svc) {
         timer_forwards(w, typed);

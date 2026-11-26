@@ -380,9 +380,9 @@ fn rust_generates_flags() {
 }
 
 #[test]
-fn rust_refuses_deadlines_and_service_levels() {
-    veld_emit_conformance::check_timeouts_are_refused(&Rust).unwrap();
-    veld_emit_conformance::check_slo_is_refused(&Rust).unwrap();
+fn rust_generates_deadlines_and_service_levels() {
+    veld_emit_conformance::check_timeouts_are_generated(&Rust).unwrap();
+    veld_emit_conformance::check_slo_is_generated(&Rust).unwrap();
 }
 
 /// `visibility` is opt-in (`spec/platform.md` section 2): the Rust server refuses a `@visible`

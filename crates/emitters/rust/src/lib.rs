@@ -104,6 +104,8 @@ fn all_capabilities() -> Capabilities {
         .with(Feature::EventsDelivery)
         .with(Feature::RulesTimed)
         .with(Feature::RulesFlags)
+        .with(Feature::Timeouts)
+        .with(Feature::Slo)
 }
 
 fn precheck(req: &GenRequest<'_>, caps: &Capabilities) -> Result<(), Vec<GenDiagnostic>> {
@@ -299,6 +301,15 @@ impl Generator for Rust {
                 .ir
                 .http_features_used(&req.consumes)
                 .contains(&Feature::RulesFlags);
+        let timeouts = used_features.contains(&Feature::Timeouts)
+            || req
+                .ir
+                .http_features_used(&req.consumes)
+                .contains(&Feature::Timeouts);
+        let slo = server
+            && served_http(req)
+                .iter()
+                .any(|s| req.ir.service(*s).endpoints.iter().any(|e| e.slo.is_some()));
         let timed = server
             && served_http(req).iter().any(|s| {
                 req.ir
@@ -344,6 +355,8 @@ impl Generator for Rust {
             endpoint_rules,
             guards,
             timed,
+            slo,
+            timeouts,
             flags,
             flags_server: server && flags_server,
             policies,
@@ -384,6 +397,8 @@ impl Generator for Rust {
             .with_derived(derived)
             .with_idempotency(idempotency)
             .with_timed(timed)
+            .with_timeouts(timeouts)
+            .with_slo(slo)
             .with_flags(flags)
             .with_runtime(runtime);
         if let Some(model) = &model {
@@ -422,7 +437,7 @@ impl Generator for Rust {
             client::emit(&mut files, &main, tr)?;
         }
         let packages = package::emit_modules(&mut files, &main, &mods)?;
-        let has_clients = emit_consumed(&mut files, req, tr, (validate, rules, derived))?;
+        let has_clients = emit_consumed(&mut files, req, tr, (validate, rules, derived, timeouts))?;
         package::emit_lib(&mut files, &packages, has_clients, &f, req.role)?;
         Ok(files)
     }
@@ -524,7 +539,7 @@ fn emit_consumed(
     files: &mut FileSet,
     req: &GenRequest<'_>,
     tr: Transports,
-    (validate, rules, derived): (bool, bool, bool),
+    (validate, rules, derived, timeouts): (bool, bool, bool, bool),
 ) -> Result<bool, Vec<GenDiagnostic>> {
     if req.consumes.is_empty() {
         return Ok(false);
@@ -538,7 +553,8 @@ fn emit_consumed(
         let tree = Tree::new(req.ir, &root, &dir, vec![*sid], false)
             .with_validate(validate)
             .with_rules(rules)
-            .with_derived(derived);
+            .with_derived(derived)
+            .with_timeouts(timeouts);
         models::emit(files, &tree)?;
         policies::emit(files, &tree)?;
         client::emit(files, &tree, tr)?;

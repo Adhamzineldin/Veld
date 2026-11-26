@@ -317,7 +317,7 @@ pub fn transition_holds(
         &place,
         &sources,
         &flagged_sources(machine_enum(ctx, t)?, t),
-        "vr::flag_on",
+        "veld::rules::flag_on",
     ))
 }
 

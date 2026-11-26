@@ -160,6 +160,13 @@ pub struct RequestContext {
     /// The audited rules this request reported (`@rollout(audit)`).
     audit: AuditLog,
     // #endif
+    // @if timeouts
+    /// The instant at which the request has no more time (arrival plus the endpoint's `@timeout`),
+    /// or `None` for an endpoint without a deadline. A handler that writes should watch it:
+    /// the future of the handler is dropped at the deadline, which cancels it at its next `.await`,
+    /// and what it already wrote stays written.
+    pub deadline: Option<std::time::SystemTime>,
+    // @end
     // #if flags
     /// What this request read of each flag it can reach, once, after authentication.
     #[doc(hidden)]
@@ -281,6 +288,16 @@ pub enum Halt {
 }
 // #endif
 
+// @if timeouts
+impl RequestContext {
+    /// Whether the deadline of the request has passed (always `false` for an endpoint without one).
+    #[must_use]
+    pub fn expired(&self) -> bool {
+        self.deadline.is_some_and(|d| std::time::SystemTime::now() >= d)
+    }
+}
+// @end
+
 impl RequestContext {
     /// The first header named `name` (case-insensitive).
     #[must_use]
@@ -386,6 +403,11 @@ pub trait Endpoints: Send + Sync + 'static {
         async { super::rules::FlagView::new() }
     }
     // #endif
+    // @if slo
+
+    /// Receives the metric of every request that matched an endpoint (`spec/platform.md` section 13).
+    fn metrics(&self, _metric: &Metric) {}
+    // @end
     // @if timed
 
     /// The principal of the due-moves runner (`hooks.timer_principal()`): `None` when the hooks
@@ -992,6 +1014,87 @@ fn coerce_many(s: &Schema, raw: &[String]) -> Value {
     }
 }
 
+// @if slo
+/// The value the metrics hook receives for a request that matched an endpoint, once its answer is
+/// ready (`spec/platform.md` section 13): the duration in seconds with the attributes of the
+/// OpenTelemetry HTTP semantic conventions.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Metric {
+    /// `http.server.request.duration`.
+    pub name: &'static str,
+    /// `s`.
+    pub unit: &'static str,
+    pub value: f64,
+    /// `http.request.method`.
+    pub http_request_method: String,
+    /// `http.route`: the full path template.
+    pub http_route: String,
+    /// `http.response.status_code`.
+    pub http_response_status_code: u16,
+    /// `error.type`: the status as text, only for a `5xx`.
+    pub error_type: Option<String>,
+    /// `veld.service`: `<package>/<Service>`.
+    pub veld_service: String,
+    /// `veld.endpoint`.
+    pub veld_endpoint: String,
+    /// `veld.operation`: the whole operation signature of the endpoint.
+    pub veld_operation: String,
+}
+
+impl Metric {
+    /// The value of `spec/platform.md` section 13 as JSON, with the attribute names of the
+    /// conventions.
+    #[must_use]
+    pub fn to_json(&self) -> Value {
+        let mut attributes = Map::new();
+        attributes.insert("http.request.method".into(), Value::from(self.http_request_method.clone()));
+        attributes.insert("http.route".into(), Value::from(self.http_route.clone()));
+        attributes.insert("http.response.status_code".into(), Value::from(self.http_response_status_code));
+        if let Some(t) = &self.error_type {
+            attributes.insert("error.type".into(), Value::from(t.clone()));
+        }
+        attributes.insert("veld.service".into(), Value::from(self.veld_service.clone()));
+        attributes.insert("veld.endpoint".into(), Value::from(self.veld_endpoint.clone()));
+        attributes.insert("veld.operation".into(), Value::from(self.veld_operation.clone()));
+        serde_json::json!({ "name": self.name, "unit": self.unit, "value": self.value, "attributes": attributes })
+    }
+}
+
+impl<E: Endpoints> Handler<E> {
+    /// `run`, and then the metrics hook with the answer that is ready to be written. A hook that
+    /// panics is ignored.
+    async fn measured(&self, index: usize, caps: Vec<(String, String)>, req: Request) -> Response {
+        let started = std::time::Instant::now();
+        let method = req.method.to_ascii_uppercase();
+        let resp = self.run(index, caps, req).await;
+        let ep = &self.inner.endpoints.endpoints()[index];
+        let metric = Metric {
+            name: "http.server.request.duration",
+            unit: "s",
+            value: started.elapsed().as_secs_f64(),
+            http_request_method: method,
+            http_route: ep.path.to_string(),
+            http_response_status_code: resp.status,
+            error_type: (resp.status >= 500).then(|| resp.status.to_string()),
+            veld_service: ep.service.to_string(),
+            veld_endpoint: ep.name.to_string(),
+            veld_operation: ep.sig.to_string(),
+        };
+        let endpoints = &self.inner.endpoints;
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| endpoints.metrics(&metric)));
+        resp
+    }
+}
+// @end
+// @if timeouts
+/// Runs `fut` until `at`: `None` when it has no answer by then (the future is dropped).
+async fn within<T>(at: Option<tokio::time::Instant>, fut: impl Future<Output = T>) -> Option<T> {
+    match at {
+        Some(at) => tokio::time::timeout_at(at, fut).await.ok(),
+        None => Some(fut.await),
+    }
+}
+// @end
 // @if timed
 /// The caller of a due move: the principal the application gives its timer and the clock reading
 /// of the run (`spec/platform.md` section 10.1).
@@ -1358,12 +1461,22 @@ impl<E: Endpoints> Handler<E> {
             .iter()
             .filter(|r| r.method == method)
             .find_map(|r| matches(r, &req.path).map(|c| (r, c)))?;
+        // @if !slo
         // #if !rules
         Some(self.run(route.index, caps, req).await)
         // #endif
         // #if rules
         Some(self.stamp(self.run(route.index, caps, req).await))
         // #endif
+        // @end
+        // @if slo
+        // #if !rules
+        Some(self.measured(route.index, caps, req).await)
+        // #endif
+        // #if rules
+        Some(self.stamp(self.measured(route.index, caps, req).await))
+        // #endif
+        // @end
     }
 
     /// Runs the endpoint named `name` through the same pipeline without choosing it from the
@@ -1372,12 +1485,22 @@ impl<E: Endpoints> Handler<E> {
     pub async fn invoke(&self, name: &str, req: Request) -> Option<Response> {
         let route = self.inner.routes.iter().find(|r| self.inner.endpoints.endpoints()[r.index].name == name)?;
         let caps = matches(route, &req.path)?;
+        // @if !slo
         // #if !rules
         Some(self.run(route.index, caps, req).await)
         // #endif
         // #if rules
         Some(self.stamp(self.run(route.index, caps, req).await))
         // #endif
+        // @end
+        // @if slo
+        // #if !rules
+        Some(self.measured(route.index, caps, req).await)
+        // #endif
+        // #if rules
+        Some(self.stamp(self.measured(route.index, caps, req).await))
+        // #endif
+        // @end
     }
     // #if rules
 
@@ -1488,6 +1611,9 @@ impl<E: Endpoints> Handler<E> {
             // #if rollout
             audit: AuditLog::default(),
             // #endif
+            // @if timeouts
+            deadline: None,
+            // @end
             // #if flags
             flags: super::rules::FlagView::new(),
             // #endif
@@ -1500,7 +1626,7 @@ impl<E: Endpoints> Handler<E> {
         }
     }
 
-    // @if !timed
+    // @if !refactor
     // #if !rollout
     async fn run(&self, index: usize, caps: Vec<(String, String)>, req: Request) -> Response {
     // #endif
@@ -1526,7 +1652,7 @@ impl<E: Endpoints> Handler<E> {
         ctx.conditional = e.conditional(index);
         // @end
     // @end
-    // @if timed
+    // @if refactor
     async fn run(&self, index: usize, caps: Vec<(String, String)>, req: Request) -> Response {
         // #if !rollout
         let ctx = self.context(&self.inner.endpoints.endpoints()[index], &req);
@@ -1561,10 +1687,27 @@ impl<E: Endpoints> Handler<E> {
         ctx.conditional = e.conditional(index);
         // @end
     // @end
+        // @if timeouts
+        // The deadline of the request: the pipeline is dropped, which cancels it, when it has no
+        // answer by then (`spec/platform.md` section 12).
+        let limit = ep.timeout_ms;
+        let at = limit.map(|ms| tokio::time::Instant::now() + std::time::Duration::from_millis(ms));
+        if let Some(ms) = limit {
+            ctx.deadline = Some(std::time::SystemTime::now() + std::time::Duration::from_millis(ms));
+        }
+        let args = match within(at, self.guard(ep, &caps, &req, &mut ctx, false)).await {
+            Some(Ok(args)) => args,
+            Some(Err(resp)) => return resp,
+            None => return self.deadline_exceeded(ep, limit.unwrap_or(0)),
+        };
+        // @end
+        // @if !timeouts
         let args = match self.guard(ep, &caps, &req, &mut ctx, false).await {
             Ok(args) => args,
             Err(resp) => return resp,
         };
+        // @end
+        // @if split
         // @if idempotency
         let started = match self.idem_start(index, ep, &args, &ctx).await {
             Ok(started) => started,
@@ -1572,9 +1715,33 @@ impl<E: Endpoints> Handler<E> {
         };
         // The hold gives the key back when this future is dropped or the handler panics.
         let hold = Hold { inner: Arc::clone(&self.inner), started, settle: Settle::Release };
+        // @end
+        // @if !timeouts
         let resp = self.run_after_guard(index, args, ctx.clone()).await;
+        // @end
+        // @if timeouts
+        // At the deadline the future of the handler is dropped; the answer is the `504`, a `5xx`,
+        // so the key is given back by `idem_finish`, once, here, and not by a late settle.
+        let resp = match within(at, self.run_after_guard(index, args, ctx.clone())).await {
+            Some(resp) => resp,
+            None => self.deadline_exceeded(ep, limit.unwrap_or(0)),
+        };
+        // @end
+        // @if idempotency
         self.idem_finish(hold, resp, &ctx).await
+        // @end
+        // @if !idempotency
+        resp
+        // @end
     }
+    // @if timeouts
+
+    /// The answer of a request that had no answer at its deadline: `504 DeadlineExceeded`.
+    fn deadline_exceeded(&self, ep: &EndpointSpec, timeout_ms: u64) -> Response {
+        let std = self.inner.endpoints.std_sigs();
+        error_response(std.deadline, "DeadlineExceeded", 504, ep.sig, serde_json::json!({ "timeoutMs": timeout_ms.to_string() }))
+    }
+    // @end
 
     /// Steps 6 to 9 and the answer: what runs once an idempotency key is held.
     #[allow(unused_mut)]
