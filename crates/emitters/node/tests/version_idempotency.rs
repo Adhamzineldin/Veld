@@ -211,7 +211,7 @@ fn refused_by(
         framework: None,
     };
     generator
-        .generate_dyn(&req, &serde_json::Value::Null)
+        .generate_dyn(&req, &common::named(role, &serde_json::Value::Null))
         .unwrap_err()
 }
 

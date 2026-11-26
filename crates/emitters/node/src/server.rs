@@ -1,6 +1,7 @@
 //! `server/<service>.ts`: request types, the `<Service>Service` interface, hooks and `create<Service>Handler`.
 
 use veld_codegen::naming;
+use veld_codegen::runtime_config::{RULES_OUTPUT, RuntimeModel};
 use veld_codegen::{CodeWriter, FileSet, GenDiagnostic};
 use veld_emit_typescript::client::{RequestNames, write_request_type, write_spec_fields};
 use veld_emit_typescript::tree::{FileCtx, Tree};
@@ -19,7 +20,11 @@ pub(crate) fn module_of(tree: &Tree<'_>, svc: &Service) -> String {
 }
 
 /// Emits one server module per service and returns their module paths.
-pub fn emit(files: &mut FileSet, tree: &Tree<'_>) -> Result<Vec<String>, Vec<GenDiagnostic>> {
+pub fn emit(
+    files: &mut FileSet,
+    tree: &Tree<'_>,
+    runtime: Option<&RuntimeModel>,
+) -> Result<Vec<String>, Vec<GenDiagnostic>> {
     let names = RequestNames::new(tree.ir, &tree.services);
     let mut modules = Vec::new();
     let mut diags = Vec::new();
@@ -33,7 +38,7 @@ pub fn emit(files: &mut FileSet, tree: &Tree<'_>) -> Result<Vec<String>, Vec<Gen
         let module = module_of(tree, svc);
         let mut fc = FileCtx::new(tree, &module);
         let mut w = CodeWriter::new();
-        write_service(&mut w, &mut fc, &names, svc, &mut diags);
+        write_service(&mut w, &mut fc, &names, (svc, runtime), &mut diags);
         add_file(files, &format!("{module}.ts"), fc.finish(&w.finish()))?;
         modules.push(module);
     }
@@ -48,7 +53,7 @@ fn write_service(
     w: &mut CodeWriter,
     fc: &mut FileCtx<'_, '_>,
     names: &RequestNames,
-    svc: &Service,
+    (svc, runtime): (&Service, Option<&RuntimeModel>),
     diags: &mut Vec<GenDiagnostic>,
 ) {
     for ep in &svc.endpoints {
@@ -66,9 +71,9 @@ fn write_service(
         rules::write_loaders(w, fc, svc, &naming::pascal(&svc.name));
         w.blank();
     }
-    write_hooks(w, fc, svc);
+    write_hooks(w, fc, svc, runtime);
     w.blank();
-    write_factory(w, fc, names, svc, diags);
+    write_factory(w, fc, names, (svc, runtime), diags);
 }
 
 /// The request type of an endpoint as the implementation receives it: with its loaded facts.
@@ -187,7 +192,18 @@ fn required_hooks(
     (auth, middleware)
 }
 
-fn write_hooks(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service) {
+/// Whether the output mode of the rules is a setting of the runtime config, and so no longer a
+/// member of the hooks (`spec/runtime-config.md` section 5).
+fn output_is_a_setting(runtime: Option<&RuntimeModel>) -> bool {
+    runtime.is_some_and(|m| m.setting(RULES_OUTPUT).is_some())
+}
+
+fn write_hooks(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    svc: &Service,
+    runtime: Option<&RuntimeModel>,
+) {
     let ctx = fc.rt("RequestContext");
     // A service with a principal resolves its auth hooks to the principal's model, when a
     // statement reads the caller (`spec/rules.md` section 11.1).
@@ -232,10 +248,12 @@ fn write_hooks(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service) {
     w.line(format!("onError?: (err: unknown, ctx: {ctx}) => void;"));
     w.line("validateResponses?: boolean;");
     if fc.tree.uses_rules() {
-        let mode = fc.rt("RuleOutputMode");
         let event = fc.rt("RuleViolationEvent");
-        w.line("/** How rules on this server's own output are enforced (default `strict`). */");
-        w.line(format!("rules?: {{ output?: {mode} }};"));
+        if !output_is_a_setting(runtime) {
+            let mode = fc.rt("RuleOutputMode");
+            w.line("/** How rules on this server's own output are enforced (default `strict`). */");
+            w.line(format!("rules?: {{ output?: {mode} }};"));
+        }
         w.line(format!("onRuleViolation?: (event: {event}) => void;"));
     }
     if !fc.tree.validate {
@@ -391,16 +409,19 @@ fn write_factory(
     w: &mut CodeWriter,
     fc: &mut FileCtx<'_, '_>,
     names: &RequestNames,
-    svc: &Service,
+    (svc, runtime): (&Service, Option<&RuntimeModel>),
     diags: &mut Vec<GenDiagnostic>,
 ) {
     let name = naming::pascal(&svc.name);
     let ctx = fc.rt("RequestContext");
     let (auth, middleware) = required_hooks(svc, &ctx, "unknown");
+    // The runtime config follows the hooks, so the hooks lose their default when it is required.
+    let runtime_required = runtime.is_some_and(RuntimeModel::has_required);
     let default = if auth.is_empty()
         && middleware.is_empty()
         && svc.facts.is_empty()
         && !rules::service_is_idempotent(svc)
+        && !runtime_required
     {
         " = {}"
     } else {
@@ -419,7 +440,24 @@ fn write_factory(
         )),
         None,
     );
-    w.open(format!("export function create{name}Handler(impl: {name}Service, hooks: {name}Hooks{default}): {handler}"));
+    let runtime_param = match runtime {
+        Some(m) => {
+            let ty = m.type_name();
+            fc.import("runtime", &ty, false);
+            let optional = if m.has_required() { "" } else { "?" };
+            format!(", runtime{optional}: {ty}")
+        }
+        None => String::new(),
+    };
+    w.open(format!("export function create{name}Handler(impl: {name}Service, hooks: {name}Hooks{default}{runtime_param}): {handler}"));
+    if runtime.is_some() {
+        fc.import("runtime", "checkRuntime", true);
+        if output_is_a_setting(runtime) {
+            w.line("const config = checkRuntime(runtime);");
+        } else {
+            w.line("checkRuntime(runtime);");
+        }
+    }
     if ruled {
         let loaders = if svc.facts.is_empty() {
             ""
@@ -446,13 +484,33 @@ fn write_factory(
     }
     let std = std_sigs(fc);
     let create = fc.rt("createHandler");
-    let hooks = if fc.tree.validate {
-        "hooks"
-    } else {
-        "{ validateRequests: false, ...hooks }"
-    };
+    let hooks = handler_hooks(fc.tree.validate, runtime);
     w.line(format!("return {create}(endpoints, {std}, {hooks});"));
     w.close();
+}
+
+/// The hooks `createHandler` receives: the hooks, with `validateRequests: false` when the target
+/// skips request validation and `rules.output` from the checked runtime config.
+fn handler_hooks(validate: bool, runtime: Option<&RuntimeModel>) -> String {
+    let mut parts = Vec::new();
+    if !validate {
+        parts.push("validateRequests: false".to_string());
+    }
+    parts.push("...hooks".to_string());
+    if let Some(output) = runtime.and_then(|m| m.setting(RULES_OUTPUT)) {
+        let default = output
+            .default
+            .as_deref()
+            .map(|d| format!(" ?? {}", ts_str(d)))
+            .unwrap_or_default();
+        parts.push(format!(
+            "rules: {{ output: config.rules?.output{default} }}"
+        ));
+    }
+    if parts.len() == 1 {
+        return "hooks".to_string();
+    }
+    format!("{{ {} }}", parts.join(", "))
 }
 
 pub(crate) fn std_sigs(fc: &mut FileCtx<'_, '_>) -> String {

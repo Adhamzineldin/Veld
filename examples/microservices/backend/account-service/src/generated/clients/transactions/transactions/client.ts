@@ -83,10 +83,8 @@ const transactionsTransferOp: veld.EndpointSpec = {
 export class TransactionsClient {
   readonly #core: veld.ClientCore;
 
-  constructor(opts: veld.ClientOptions = {}) {
+  constructor(opts: veld.ClientOptions) {
     this.#core = new veld.ClientCore(opts, {
-      envVar: 'VELD_TRANSACTIONS_URL',
-      baseUrl: 'http://transaction-service:3003',
       validation: (issues) => new ValidationError({ issues }),
     });
   }

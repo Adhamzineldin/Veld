@@ -553,3 +553,31 @@ fn validate_false_skips_runtime_validation(tsc_path: &Path, edition: &str, targe
 fn validate_false_skips_runtime_validation_per_version() {
     matrix(validate_false_skips_runtime_validation);
 }
+
+/// The typed runtime config (`spec/runtime-config.md`): the server entry of `Orders`, which consumes
+/// `Iam`, takes it as its last argument and checks it first, `createClients` builds the consumed
+/// clients from it, and a client without a URL is refused (no environment variable, no baked-in URL).
+fn runtime_config_of_the_server_and_its_clients(tsc_path: &Path, edition: &str, target: &str) {
+    let guard = work_dir("runtime-config-");
+    let work = guard.path();
+    framework_run(
+        work,
+        tsc_path,
+        &FrameworkRun {
+            edition,
+            target,
+            server_framework: None,
+            client_framework: None,
+            scripts: &["runtime_config.ts"],
+            behaviour: json!({}),
+            query_options: false,
+            no_validate: false,
+        },
+    );
+    node_script(work, "runtime_config");
+}
+
+#[test]
+fn runtime_config_of_the_server_and_its_clients_per_version() {
+    matrix(runtime_config_of_the_server_and_its_clients);
+}

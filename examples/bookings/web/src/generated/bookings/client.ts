@@ -215,10 +215,8 @@ const bookingsRefundBookingOp: veld.EndpointSpec = {
 export class BookingsClient {
   readonly #core: veld.ClientCore;
 
-  constructor(opts: veld.ClientOptions = {}) {
+  constructor(opts: veld.ClientOptions) {
     this.#core = new veld.ClientCore(opts, {
-      envVar: 'VELD_BOOKINGS_URL',
-      baseUrl: null,
       validation: (issues) => new ValidationError({ issues }),
       service: 'Bookings',
       digest: 'cad7f1bdf1d52964',

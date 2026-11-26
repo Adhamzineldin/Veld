@@ -30,10 +30,8 @@ const helloGreetOp: veld.EndpointSpec = {
 export class HelloClient {
   readonly #core: veld.ClientCore;
 
-  constructor(opts: veld.ClientOptions = {}) {
+  constructor(opts: veld.ClientOptions) {
     this.#core = new veld.ClientCore(opts, {
-      envVar: 'VELD_HELLO_URL',
-      baseUrl: null,
       validation: (issues) => new ValidationError({ issues }),
     });
   }

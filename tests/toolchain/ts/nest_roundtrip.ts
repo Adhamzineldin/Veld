@@ -9,7 +9,7 @@ import { NestFactory } from '@nestjs/core';
 import { OrdersClient } from './copy_a/orders/client';
 import { OrdersController, OrdersVeldModule, ORDERS_SERVICE } from './server/server/nest/orders';
 import type * as srv from './server/index';
-import { countRequests, hooks, impl, scenario } from './roundtrip';
+import { countRequests, hooks, impl, runtime, scenario } from './roundtrip';
 
 async function boot(imports: NonNullable<Parameters<typeof Module>[0]>['imports']): Promise<{ app: INestApplication; base: string }> {
   @Module({ imports })
@@ -33,7 +33,7 @@ async function main(): Promise<void> {
   assert.equal(Reflect.getMetadata('__httpCode__', proto['createOrder']!), 201);
 
   // 1. useValue: the full scenario, same assertions as the Express round trip.
-  const value = await boot([OrdersVeldModule.forRoot({ useValue: impl, hooks })]);
+  const value = await boot([OrdersVeldModule.forRoot({ useValue: impl, hooks, runtime })]);
   await scenario('nest', value.base);
   assert.equal(await fetch(`${value.base}/nothing`).then((r) => r.status), 404);
 
@@ -51,6 +51,7 @@ async function main(): Promise<void> {
         boom = impl.boom.bind(impl);
       },
       hooks,
+      runtime,
     }),
   ]);
   const clsClient = new OrdersClient({ baseUrl: cls.base, auth: { bearer: () => 'good' } });
@@ -65,6 +66,7 @@ async function main(): Promise<void> {
       useFactory: (injected: srv.OrdersService) => injected,
       inject: ['IMPL'],
       hooks,
+      runtime,
     }),
   ]);
   const facClient = new OrdersClient({ baseUrl: factory.base, auth: { bearer: () => 'good' } });
@@ -73,7 +75,7 @@ async function main(): Promise<void> {
 
   // A missing required hook fails at boot, not at the first request.
   await assert.rejects(
-    boot([OrdersVeldModule.forRoot({ useValue: impl, hooks: {} as srv.OrdersHooks })]),
+    boot([OrdersVeldModule.forRoot({ useValue: impl, hooks: {} as srv.OrdersHooks, runtime })]),
     /hooks\.auth\.bearer is required/,
   );
 

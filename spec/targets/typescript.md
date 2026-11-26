@@ -1,6 +1,6 @@
 # Targets: `node` (server) and `typescript` (client)
 
-Status: normative for the built-in TypeScript generators. Both share one implementation of models, runtime and validation, so the same contract produces byte-identical `runtime/` and `models/` files in both roles. The one exception is events (section 5f): a server that publishes or subscribes also gets `events/`, `runtime/events.ts` and the files of its services, and when only its events have invariants its `runtime/veld.ts` has the `rules` regions that the client's has not.
+Status: normative for the built-in TypeScript generators. Both share one implementation of models, runtime and validation, so the same contract produces byte-identical `runtime/` and `models/` files in both roles. The exceptions are the runtime config (section 5h: a server without settings keeps the client code of `runtime/veld.ts` that a client target no longer has) and events (section 5f): a server that publishes or subscribes also gets `events/`, `runtime/events.ts` and the files of its services, and when only its events have invariants its `runtime/veld.ts` has the `rules` regions that the client's has not.
 
 ## 0. Hard rules
 - **Zero runtime dependencies.** No generated file imports a package, with one exception: the file of the framework the user chose (`nest`, `react`, `vue`, §1a). The WebSocket adapter `server/ws.ts` (§4b) is written against the `ws` package, a declared exception: it is typed structurally and imports nothing, and the server's `package.json` lists `ws` as a peer dependency, but only when the contract has `ws` endpoints. The plain adapters (`express`, `fastify`, `hono`, `node-http`) use *structural* types: a `RouterLike` shape, not `import express`.
@@ -18,6 +18,7 @@ Server target (`role = "server"`, `emitter = "node"`). The server's own package 
   index.ts                       barrel: models, errors, service interfaces, handler, adapters, clients
   runtime/veld.ts                VeldError, VeldHttpError, VeldTransportError, canonical(), same(),
                                  problem+json encode/decode, validation primitives, router core
+  runtime.ts                     the typed runtime config (section 5h); only when the target has settings
   models/<module path>.ts        home package: one file per contract module: interfaces + companion objects
   errors/<module path>.ts        home package: error classes (only if the module declares errors)
   prelude.ts                     prelude errors used by this target (BadRequest, NotFound, ...)
@@ -39,9 +40,9 @@ Client target (`role = "client"`, `emitter = "typescript"`; `framework` is `reac
 <out>/
   package.json                   the package manifest (section 1b)
   README.md                      how to import and regenerate (section 1c)
-  index.ts                       barrel; also `createClients` (section 4)
-  clients.ts                     `createClients(opts)`: one client per service
-  runtime/veld.ts                identical bytes to the server's runtime/veld.ts
+  index.ts                       barrel; also `createClients` (section 5h)
+  runtime.ts                     `<Target>Runtime`, `checkRuntime`, `fromEnv`, `createClients` (section 5h)
+  runtime/veld.ts                identical bytes to the server's runtime/veld.ts (section 5h for a server without settings)
   prelude.ts
   <package>/models/<module path>.ts
   <package>/errors/<module path>.ts
@@ -160,9 +161,9 @@ export class OutOfStock extends VeldError<{ sku: string }> {
 ## 4. Client
 
 ```ts
-export interface ClientOptions { baseUrl?: string; fetch?: typeof fetch; headers?: Record<string,string> | (() => Record<string,string> | Promise<Record<string,string>>); auth?: { bearer?: () => string | Promise<string>; basic?: …; apiKey?: … }; }
+export interface ClientOptions { baseUrl: string; fetch?: typeof fetch; headers?: Record<string,string> | (() => Record<string,string> | Promise<Record<string,string>>); auth?: { bearer?: () => string | Promise<string>; basic?: …; apiKey?: … }; }
 export class OrdersClient {
-  constructor(opts: ClientOptions = {})          // baseUrl: opts > env VELD_ORDERS_URL (if process exists) > IR base_url > throw VeldTransportError at construction
+  constructor(opts: ClientOptions)               // `baseUrl` is required (section 5h): no environment variable, no address from the contract
   getOrder(req: GetOrderRequest, init?: { signal?: AbortSignal }): Promise<Order>
 }
 export interface GetOrderRequest { id: string }   // path params by name, `body`, `query`, single @query params, headers by param name
@@ -172,7 +173,7 @@ export interface GetOrderRequest { id: string }   // path params by name, `body`
 - Before sending, the client validates the request with the companion validators, and it throws a `VeldError` `ValidationError` locally with `op` set. The `validate` option is on by default.
 - Success: the client parses JSON according to the success type, and resolves to `void` for no-body responses.
 - SSE (`-> stream T` on get) returns `AsyncIterable<T>`, and `ws` endpoints return a `WsChannel` (§4b).
-- **`createClients(opts, overrides?)`** (`clients.ts`, re-exported by `index.ts`) builds one client per service from one `ClientOptions`: `createClients({ baseUrl }) -> { orders: OrdersClient, iam: IamClient }`. The keys are the camelCase service names (qualified by the package when two packages of one target declare the same service name). `overrides` is `{ [service]?: ClientOptions }`, merged over the shared options, for the usual case of one `baseUrl` per service. `Clients` and `ClientOverrides` are exported types.
+- **`createClients(runtime, options?)`** (`runtime.ts`, re-exported by `index.ts`) builds one client per service from the runtime config (section 5h): `createClients(runtime) -> { orders: OrdersClient, iam: IamClient }`. The keys are the camelCase service names (qualified by the package when two packages of one target declare the same service name). `Clients` is an exported type.
 
 ## 4a. React and Vue helpers (`framework = "react" | "vue"`)
 
@@ -193,7 +194,7 @@ With the target option `query-options = true`, the `typescript` client also writ
 Per service (`orders` for `Orders`):
 
 ```ts
-export function createOrdersQueries(defaultClient: () => OrdersClient = () => new OrdersClient()) {
+export function createOrdersQueries(defaultClient: () => OrdersClient = () => { throw new Error('Orders: no client. ...'); }) {
   const all = ['veld', 'orders'] as const;
   const keys = { all, getOrder: (req: GetOrderRequest) => [...all, 'getOrder', veld.canonical(req)] as const, /* ... */ };
   return {
@@ -214,7 +215,7 @@ export type OrdersGetOrderError = NotFound | Unauthorized | ... | veld.VeldHttpE
 
 - **Queries** are the GET endpoints that are not streams; every other endpoint that is not a stream is a mutation. Streams (`stream`, `ws`) have no query form (use the stream hooks of §4a or the client directly).
 - **Keys are stable and canonical**: `keys.all` (`['veld', '<service>']`) prefixes every query of a service, `keys.<endpoint>(req)` is `['veld', '<service>', '<endpoint>', canonical(req)]`. Equal requests share a key whatever the property order, because the key holds the canonical bytes of the request (`spec/ir.md` §5), never an object identity.
-- **The client** comes from the last argument or from the `defaultClient` factory of `create<Service>Queries` / `create<Service>Mutations` (default: `new <Service>Client()`, which reads `baseUrl` from the environment or the contract). There is no global instance: build your own set with `createOrdersQueries(() => myClient)`.
+- **The client** comes from the last argument or from the `defaultClient` factory of `create<Service>Queries` / `create<Service>Mutations`. A client needs its address, which only the application knows (section 5h), so the default factory throws a clear error: pass the client as the last argument, or build your own set with `createOrdersQueries(() => myClient)` (`myClient` from `new OrdersClient({ baseUrl })` or `createClients(runtime).orders`). There is no global instance.
 - **Cancellation**: `queryFn` hands the `signal` of TanStack (or of your own `AbortController`) to the client.
 - **Typed errors**: a failed call rejects with the generated error classes, so `NotFound.matches(e)` and `same()` keep their meaning. `<Service><Endpoint>Error` is the union a call can fail with (declared errors plus `VeldHttpError` and `VeldTransportError`): pass it as the error type, for example `useQuery<Order, OrdersGetOrderError>(ordersQueries.getOrder({ id }))`.
 - **Invalidation** is plain TanStack: `queryClient.invalidateQueries({ queryKey: ordersQueries.keys.all })` after a mutation.
@@ -260,7 +261,7 @@ export interface OrdersHooks {
   onError?: (err: unknown, ctx: RequestContext) => void;
   validateResponses?: boolean;  // default false; when true, a response that fails validation becomes a 500
 }
-export function createOrdersHandler(impl: OrdersService, hooks: OrdersHooks): VeldHandler;
+export function createOrdersHandler(impl: OrdersService, hooks: OrdersHooks, runtime: OrdersRuntime): VeldHandler;   // `runtime` only when the target has settings (section 5h)
 ```
 - `VeldHandler` is `(req: VeldRequest) => Promise<VeldResponse | null>`, where `null` means no route matched. Routing is done once in the runtime's router core, from the IR paths. Matching is exact on literal segments, with params extracted. HEAD is not implicit.
 - The pipeline for each request is:
@@ -358,7 +359,7 @@ Before sending, the client checks the invariants of a `body` and of a `query` ob
 ### Server
 - Step 4 is unchanged. **Step 5** (after bind and validate, only when requests are validated): the invariants of the bound `body` and `query` object, in request mode. A violation answers `422 ValidationError` whose problem document has both `data.issues` (one issue per violation, code `rule` or `rule_error`) and the top-level `violations` member (`spec/rules.md` §7).
 - **Step 8**: the invariants of the result, by output mode, default `strict`. When the mode is not `off` and the success type reaches a declaration with rules, the result's shape is validated first (a shape failure is the 500 of `validateResponses` in `strict`; in `audit` the rules are skipped). `strict` answers `500 Internal` with no rule detail; `audit` sends the response unchanged.
-- The hooks object of a server that has rules gains `rules?: { output?: 'strict' | 'audit' | 'off' }` and `onRuleViolation?(event)`. The event is `{ rule, operation, position: 'input' | 'output', outcome: 'rejected' | 'audited', violation, elapsedMicros }`; it is called once per violation, and an exception in the hook never changes the response. A mode other than `strict` is reported once, with `console.warn`, when `create<Service>Handler` runs.
+- The hooks object of a server that has rules gains `onRuleViolation?(event)`. The output mode is not a member of the hooks: it is `rules.output` of the runtime config (section 5h), default `strict`. The event is `{ rule, operation, position: 'input' | 'output', outcome: 'rejected' | 'audited', violation, elapsedMicros }`; it is called once per violation, and an exception in the hook never changes the response. A mode other than `strict` is reported once, with `console.warn`, when `create<Service>Handler` runs (the handler passes the checked `rules.output` to the runtime as `hooks.rules.output`, which is internal).
 - **Declared errors** are outputs (`spec/rules.md` §5.2). When the server encodes a declared error whose schema has rules or reaches a declaration with rules (a model in a field), it first validates the error's data (a shape failure in `strict` is `500 Internal`, in `audit` the rules are skipped), then checks the rules under the output mode. `strict`: the caller gets `500 Internal` with no rule detail and `onRuleViolation` gets the violation (position `output`, outcome `rejected`); `audit`: the error is sent unchanged and the hook gets it (`audited`); `off`: skipped. This holds wherever the error is sent: the HTTP response, the final `event: error` of an SSE stream and the error frame of a WebSocket. A client never checks an error it decodes: it keeps the data as sent and `violations` stays empty (the static `Overbooked.check(data)` is there when the caller wants it).
 - **Stream items** are outputs. Every item of an SSE stream and every message the server `send`s on a WebSocket is validated and checked under the output mode before it is written. In `strict` a violating item is not sent: the check throws inside the item step, so the stream ends the way it ends on any server failure (a first item that violates is a plain `500 Internal` response; a later one becomes the final `event: error` with `Internal`; on a WebSocket `send` throws into the implementation, which ends the socket with an `Internal` error frame and close code 1011 unless it catches the error). `audit` sends it and reports; `off` skips. The Nest adapter has no code of its own for this: it serves the same handler, so SSE items and errors are checked identically (`ws` endpoints are not Nest routes, §4b).
 - **Client messages on a WebSocket** are inputs. The client's `send(message)` checks the invariants of the message in request mode after the shape check, with the path root `message` (`message.items[0]`), the same option `rules: false` turns it off (and `validate: false` too), and a violation throws the typed `ValidationError` with `violations` and `local = true` before anything is written. The server rejects a violating message the way it rejects one of the wrong shape: a `ValidationError` problem frame (with `data.issues` and the top-level `violations`, path root `message`), close code 1008. The hook gets the violation (position `input`, outcome `rejected`). The checks are skipped when request validation is off.
@@ -491,6 +492,40 @@ Both generators declare `rules_version` and `idempotency`. This section is the r
 ### Tests
 
 `crates/emitters/node/tests/version_idempotency.rs` with `version_serve.ts` and `idempotency_serve.ts` (every example of `tests/rules/endpoints/version.veld.pending` and `idempotency.veld.pending` through `veld_testing::Live`; the version contract has two services, so the driver serves both test handlers on one port), `version_http.ts` and `idempotency_http.ts` (the production handler over HTTP: every case of §11.9 and §11.10, the order of the checks, the store and the hooks, the generated client), `idempotency_fingerprint.ts` (the goldens of the reference evaluator, through a store that records what `begin` is given), `idempotency_no_validate.ts` (`validate = false`), the Nest module compiled with the decorator flags, snapshots of `tests/toolchain/contract/version_idempotency/shelves.veld` (server, test handler, client), and the checks that a contract without the annotations has none of the code.
+
+## 5h. Runtime config (`spec/runtime-config.md`)
+
+The shared spec decides the settings, their order, the check and every message; this section says how the TypeScript generators write them. Everything comes from `veld_codegen::runtime_config`: the generators type no path and no message of their own.
+
+### Files and names
+
+- **`runtime.ts`** at the root of the package, for a target that has settings: a client target always has them (one `services.<service>.url` per service it covers), a server has them for the services in `consumes` and for `rules.output` when the contract has rules. A target without settings (a server without rules that consumes nothing) gets no `runtime.ts` and **keeps the bytes it had**. The barrel re-exports it (`export * from './runtime'`).
+- The name of the target reaches the generator as the reserved option `target-name`. The type is `<Target>Runtime` (`bookings` gives `BookingsRuntime`). A target with settings and no name is `E0802`.
+- `runtime.ts` exports: the interface `<Target>Runtime` (members sorted by key at every level, so `rules` comes before `services`; a nested object is optional exactly when it has no required path; a URL is `string`, `rules.output` is `'strict' | 'audit' | 'off'`), `<Target>RuntimeEnv`, `RuntimeProblem`, `VeldConfigError`, `checkRuntime`, `fromEnv` and, when the target has clients, `Clients` and `createClients`.
+- The checking code is the same text for every target (`crates/emitters/typescript/runtime/config.ts.in`) and reads a table of the target's settings (`path`, `segments`, `kind`, `required`, the list of values, the default and the two messages the module gives for the path). The three messages that take the path of whatever the caller wrote (`is not a setting`, `must be an object`, and `is missing (environment variable <NAME> is not set)`) are written by the generator as the shape the module's own functions give, so the text stays the module's.
+
+### The check
+
+- `checkRuntime(value: unknown): <Target>Runtime` checks a nested value and returns it with the defaults filled in and a trailing `/` of every URL dropped. `null` and `undefined` are an absent value, and so is a missing key. It collects every problem, sorts them by path in byte order (then by message) and throws one `VeldConfigError` whose `problems` is the list and whose `message` is `invalid runtime config: ` and the messages joined with `; `. The URL rule is written literally in TypeScript (`normalizeUrl`), without `URL`.
+- `fromEnv(names, env?)` reads the variables the application names. `env` defaults to `process.env` where it exists, else to `{}`. A variable that is not set or empty is not set; a required path then has the problem `... is missing (environment variable <NAME> is not set)`. What a variable holds is checked like any other value.
+- There is **no `fromMap`**: the TypeScript column of `spec/runtime-config.md` section 3 lists none, so the `from: "map"` cases of `tests/wire/runtime-config/cases.json` are counted and skipped by the TypeScript test program (they belong to the Java and Rust readers).
+
+### Clients
+
+- `ClientOptions.baseUrl` is **required**. A client constructor takes the options with no default (`constructor(opts: ClientOptions)`), and `ClientCore` no longer reads an environment variable or an address baked in from the contract. A JavaScript caller that leaves it out gets a `VeldTransportError` (`no base URL: pass baseUrl`) when the client is built.
+- `createClients(runtime: <Target>Runtime, options: Omit<ClientOptions, 'baseUrl'> = {}): Clients` checks `runtime` first, then builds each client with the same `options` and `baseUrl` from `services.<service>.url`. A `baseUrl` in `options` is ignored (the type forbids it): the URL is the setting. There is no per-service override (the old `overrides` argument and the `ClientOverrides` type are gone); build a client by hand when one service needs other options. A package with several `service` blocks has one URL, which every client of the package gets.
+- The query factories (section 4a.1) no longer make a client of their own.
+
+### The server
+
+- `create<Service>Handler(impl, hooks, runtime)` takes the runtime config as its last argument. It is **optional exactly when the target has no required path** (a server with only `rules.output`); when it is required the hooks lose their default `= {}`. The first statement of the function is the check, so a bad runtime config is reported before a missing hook. The server's `rules.output` (default `strict`) goes into the handler.
+- The adapters `toExpress`, `toFastify`, `toHono` and `toNodeHttp` take the handler, which is already built with its runtime config, so they have no argument for it. The **Nest** module takes it as `forRoot({ ..., hooks, runtime })` (`runtime` optional when the argument is), provides it under the token `<SERVICE>_RUNTIME` and passes it on to `create<Service>Handler`; an absent optional `runtime` is `{}`.
+- The test handler (`testing = true`) has no runtime config: its hooks type keeps `rules?: { output?: RuleOutputMode }` so that a test can choose the output mode.
+- `runtime/veld.ts` has two variants of the client code, chosen with the regions `runtime_config` and `not_runtime_config`: the target has settings, or not. A server that has settings and a client target therefore have the same bytes, as before; a server without settings keeps the old client code, which it never uses.
+
+### Tests
+
+`crates/emitters/node/tests/runtime_config.rs` with `runtime_golden.ts` (the goldens of `tests/wire/runtime-config/cases.json` through one generated target per model: `checkRuntime` and `fromEnv`, the URL list, the server entry of a target with an optional setting), the toolchain test `runtime_config_of_the_server_and_its_clients_per_version` with `runtime_config.ts` (the entry of a server that consumes `Iam`, the whole list at creation, the check before the hooks, `createClients`, `fromEnv` with `process.env`, a client without a URL), and snapshots of the runtime module of a consuming server with rules, of a server with one optional setting and of a client target. The older programs build their servers with the runtime config as the third argument (`roundtrip.ts` exports one) and set the output mode there (`rules_http.ts`, `endpoint_rules_http.ts`, `state_machines_http.ts`, `rules_streams.ts`, `rules_nest.ts`, `rollout_http.ts`, `rules_vectors_server.ts`).
 
 ## 6. Tests every change must keep green
 - `tests/toolchain/ts`: generate the conformance workspaces, then compile them with `tsc --strict --noEmit` once per edition (`typescript = "es2020"` with `--target es2020`, and `"es2022"` with `--target es2022`; the matrix is `TARGETS` in `crates/emitters/node/tests/common/mod.rs`). The run must produce zero errors.

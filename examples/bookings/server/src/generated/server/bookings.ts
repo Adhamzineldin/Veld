@@ -7,6 +7,8 @@ import { Booking, NewBooking, Payment, Room, User } from '../models/bookings';
 import { manageBookingVerdict, mayBookVerdict, staffOnlyVerdict } from '../policies/bookings';
 import type { ForbiddenData, InternalData, InvalidTransitionData, NotFoundData, UnauthorizedData, ValidationErrorData } from '../prelude';
 import { Forbidden, Internal, InvalidTransition, NotFound, Unauthorized, ValidationError } from '../prelude';
+import type { ApiRuntime } from '../runtime';
+import { checkRuntime } from '../runtime';
 import * as veldRules from '../runtime/rules';
 import * as veld from '../runtime/veld';
 
@@ -149,8 +151,6 @@ export interface BookingsHooks {
   };
   onError?: (err: unknown, ctx: veld.RequestContext) => void;
   validateResponses?: boolean;
-  /** How rules on this server's own output are enforced (default `strict`). */
-  rules?: { output?: veld.RuleOutputMode };
   onRuleViolation?: (event: veld.RuleViolationEvent) => void;
 }
 
@@ -616,7 +616,8 @@ export function bookingsEndpoints(impl: BookingsService, loaders: BookingsFactLo
 }
 
 /** Builds the HTTP handler for `Bookings`. Mount it with an adapter from `./adapters`. */
-export function createBookingsHandler(impl: BookingsService, hooks: BookingsHooks): veld.VeldHandler {
+export function createBookingsHandler(impl: BookingsService, hooks: BookingsHooks, runtime?: ApiRuntime): veld.VeldHandler {
+  const config = checkRuntime(runtime);
   const endpoints = bookingsEndpoints(impl, hooks.facts);
-  return veld.createHandler(endpoints, { unauthorized: Unauthorized.sig, validation: ValidationError.sig, internal: Internal.sig, notFound: NotFound.sig }, hooks);
+  return veld.createHandler(endpoints, { unauthorized: Unauthorized.sig, validation: ValidationError.sig, internal: Internal.sig, notFound: NotFound.sig }, { ...hooks, rules: { output: config.rules?.output ?? 'strict' } });
 }

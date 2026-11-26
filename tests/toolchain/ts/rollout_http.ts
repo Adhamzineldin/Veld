@@ -43,10 +43,10 @@ interface Running {
   close(): Promise<void>;
 }
 
-async function start(extra: Record<string, unknown> = {}): Promise<Running> {
+async function start(extra: Record<string, unknown> = {}, output?: 'strict' | 'audit' | 'off'): Promise<Running> {
   const events: RuleViolationEvent[] = [];
   const hooks = { facts: loaders, onRuleViolation: (e: RuleViolationEvent) => events.push(e), ...extra };
-  const handler = srv.createAuditHandler(impl, hooks);
+  const handler = srv.createAuditHandler(impl, hooks, output === undefined ? undefined : { rules: { output } });
   const server = http.createServer(srv.toNodeHttp(handler));
   const wss = new WebSocketServer({ server });
   attachWebSocket(wss, handler);
@@ -116,7 +116,7 @@ async function invariantAndRequire(): Promise<void> {
 
 async function modes(): Promise<void> {
   // Output mode `off` skips an audited output rule like every output rule; an audited input rule is evaluated.
-  const off = await start({ rules: { output: 'off' } });
+  const off = await start({}, 'off');
   capacity = 100;
   assert.equal((await book(off.url, 7)).status, 201);
   assert.deepEqual(heard(off.events), ['audited input Party.smallParty body']);
@@ -126,7 +126,7 @@ async function modes(): Promise<void> {
   await off.close();
 
   // `audit` evaluates and reports them too.
-  const audit = await start({ rules: { output: 'audit' } });
+  const audit = await start({}, 'audit');
   assert.equal((await book(audit.url, 5)).status, 201);
   assert.deepEqual(heard(audit.events), ['audited output Audit.book.ensure request']);
   await audit.close();

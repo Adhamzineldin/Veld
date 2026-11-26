@@ -2,7 +2,6 @@
 
 export * as veld from './runtime/veld';
 export { VeldError, VeldHttpError, VeldTransportError, canonical, canonicalError, matchesError, same } from './runtime/veld';
-export * from './clients';
 export * from './common/errors/errors';
 export * from './common/models/money';
 export * from './invoices/client';
@@ -10,3 +9,4 @@ export * from './invoices/models/invoices';
 export * from './orders/client';
 export * from './orders/models/orders';
 export * from './prelude';
+export * from './runtime';

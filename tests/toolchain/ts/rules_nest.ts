@@ -11,8 +11,9 @@ import { LiveVeldModule } from './server/server/nest/live';
 import { impl } from './rules_live_impl';
 
 async function boot(events: RuleViolationEvent[], output?: 'audit'): Promise<{ stop(): Promise<void>; base: string }> {
-  const hooks = { ...(output === undefined ? {} : { rules: { output } }), onRuleViolation: (e: RuleViolationEvent) => events.push(e) };
-  @Module({ imports: [LiveVeldModule.forRoot({ useValue: impl, hooks })] })
+  const hooks = { onRuleViolation: (e: RuleViolationEvent) => events.push(e) };
+  const runtime = output === undefined ? undefined : { rules: { output } };
+  @Module({ imports: [LiveVeldModule.forRoot({ useValue: impl, hooks, runtime })] })
   class AppModule {}
   const app = await NestFactory.create(AppModule, { logger: false, abortOnError: false });
   await app.listen(0, '127.0.0.1');

@@ -5,6 +5,7 @@ export { VeldError, VeldHttpError, VeldTransportError, canonical, canonicalError
 export * from './errors/cards';
 export * from './models/cards';
 export * from './prelude';
+export * from './runtime';
 export * from './server/adapters';
 export * from './server/cards';
 export * as accounts from './clients/accounts/index';

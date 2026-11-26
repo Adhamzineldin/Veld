@@ -59,7 +59,8 @@ fn assert_generates(generator: &dyn DynGenerator, contracts: &[Ir]) {
                 "{}: the gate reported {gate:?}",
                 role.name()
             );
-            if let Err(d) = generator.generate_dyn(&req, &serde_json::Value::Null) {
+            let options = veld_codegen::with_target_name(&serde_json::Value::Null, "conformance");
+            if let Err(d) = generator.generate_dyn(&req, &options) {
                 panic!("{}: generate failed: {d:?}", role.name());
             }
         }

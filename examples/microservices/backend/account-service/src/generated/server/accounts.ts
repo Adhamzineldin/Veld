@@ -5,6 +5,8 @@ import { AccountNotActive } from '../errors/accounts';
 import { Account, AccountSummary, CreateAccountInput, Statement } from '../models/accounts';
 import type { ForbiddenData, InternalData, NotFoundData, UnauthorizedData, ValidationErrorData } from '../prelude';
 import { Forbidden, Internal, NotFound, Unauthorized, ValidationError } from '../prelude';
+import type { AccountsApiRuntime } from '../runtime';
+import { checkRuntime } from '../runtime';
 import * as veld from '../runtime/veld';
 
 export type ListAccountsRequest = {};
@@ -64,7 +66,8 @@ export interface AccountsHooks {
 }
 
 /** Builds the HTTP handler for `Accounts`. Mount it with an adapter from `./adapters`. */
-export function createAccountsHandler(impl: AccountsService, hooks: AccountsHooks): veld.VeldHandler {
+export function createAccountsHandler(impl: AccountsService, hooks: AccountsHooks, runtime: AccountsApiRuntime): veld.VeldHandler {
+  checkRuntime(runtime);
   const endpoints: veld.ServerEndpoint[] = [
     {
       name: 'listAccounts',

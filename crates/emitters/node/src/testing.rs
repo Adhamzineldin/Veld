@@ -338,9 +338,20 @@ fn write_handler(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service) {
     } else {
         "'facts' | 'clock' | 'auth' | 'middleware'"
     };
+    // The output mode of the rules is a setting of the runtime config, which the test handler
+    // does not take: its hooks keep the member, so a test can choose the mode.
+    let (output, note) = if fc.tree.uses_rules() {
+        let mode = fc.rt("RuleOutputMode");
+        (
+            format!(" & {{ rules?: {{ output?: {mode} }} }}"),
+            ", and the output mode of the rules, which a test handler takes here because it has no runtime config",
+        )
+    } else {
+        (String::new(), "")
+    };
     w.line(format!(
-        "/** What the test handler of `{name}` takes from the hooks: the observers of the production hooks. */
-export type {name}TestHooks = Omit<{name}Hooks, {omitted}>;
+        "/** What the test handler of `{name}` takes from the hooks: the observers of the production hooks{note}. */
+export type {name}TestHooks = Omit<{name}Hooks, {omitted}>{output};
 
 /** Takes the endpoint apart from authentication and the application's handler. */
 function open(ep: {endpoint}): {endpoint} {{

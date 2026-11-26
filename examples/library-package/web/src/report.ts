@@ -1,12 +1,16 @@
 // A typed client script: places an order, then pays the big invoice, retrying on the shared
 // `Unavailable` error. `@veld/web` is the generated client package (see `veld setup`); the
 // errors from the `common` library are imported from it like every other generated type.
-import { InvoicesClient, OrdersClient, PlanLimitReached, Unavailable } from '@veld/web';
+import { PlanLimitReached, Unavailable, createClients, fromEnv } from '@veld/web';
 
 const auth = { bearer: () => process.env.API_TOKEN ?? 'demo-token' };
-// Base URLs come from VELD_ORDERS_URL and VELD_INVOICES_URL.
-const orders = new OrdersClient({ auth });
-const invoices = new InvoicesClient({ auth });
+// The address of each service is a setting of the deployment. This script reads it from the
+// variables VELD_ORDERS_URL and VELD_INVOICES_URL; the names are its own choice.
+const runtime = fromEnv({
+  'services.invoices.url': 'VELD_INVOICES_URL',
+  'services.orders.url': 'VELD_ORDERS_URL',
+});
+const { orders, invoices } = createClients(runtime, { auth });
 
 async function main(): Promise<void> {
   try {

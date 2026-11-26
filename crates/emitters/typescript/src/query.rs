@@ -99,6 +99,19 @@ fn write_service(
     w.blank();
 }
 
+/// The default of `defaultClient`: a client needs an address, which only the application knows
+/// (`spec/runtime-config.md` section 5), so there is none to make.
+fn no_client(svc: &Service) -> String {
+    format!(
+        "() => {{ throw new Error({}); }}",
+        ts_str(&format!(
+            "{}: no client. Pass one as the last argument, or build the set with `create{}Queries(() => client)`.",
+            svc.name,
+            naming::pascal(&svc.name)
+        ))
+    )
+}
+
 fn write_queries(
     w: &mut CodeWriter,
     fc: &mut FileCtx<'_, '_>,
@@ -110,11 +123,12 @@ fn write_queries(
     let canonical = fc.rt("canonical");
     let signal = fc.rt("AbortSignalLike");
     w.line(format!(
-        "/**\n * Query keys and query options of `{}`. `defaultClient` makes the client when a call does not pass one,\n * so there is no shared instance: pass `new {class}({{ baseUrl }})` as the last argument, or build your own set.\n */",
+        "/**\n * Query keys and query options of `{}`. `defaultClient` makes the client when a call does not pass one,\n * and there is none to make (a client needs its address): pass a client as the last argument, or build your own set with `() => new {class}({{ baseUrl }})` or `() => createClients(runtime).{key}`.\n */",
         svc.name
     ));
     w.open(format!(
-        "export function create{pascal}Queries(defaultClient: () => {class} = () => new {class}())"
+        "export function create{pascal}Queries(defaultClient: () => {class} = {})",
+        no_client(svc)
     ));
     w.line(format!("const all = ['veld', {}] as const;", ts_str(key)));
     w.open_with("const keys =", " {");
@@ -186,7 +200,8 @@ fn write_mutations(
         svc.name
     ));
     w.open(format!(
-        "export function create{pascal}Mutations(defaultClient: () => {class} = () => new {class}())"
+        "export function create{pascal}Mutations(defaultClient: () => {class} = {})",
+        no_client(svc)
     ));
     w.open_with("return", " {");
     for ep in endpoints.iter().filter(|e| !is_query(e)) {

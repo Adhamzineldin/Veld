@@ -246,21 +246,30 @@ fn write_constructor(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service
     let opts = fc.rt("ClientOptions");
     let core = fc.rt("ClientCore");
     let validation = validation_expr(fc);
-    w.open(format!("constructor(opts: {opts} = {{}})"));
+    let config = fc.tree.uses_runtime_config();
+    // With a runtime config the address is `baseUrl`, always given (`spec/runtime-config.md` 5).
+    let param = if config {
+        format!("opts: {opts}")
+    } else {
+        format!("opts: {opts} = {{}}")
+    };
+    w.open(format!("constructor({param})"));
     let passed = if fc.tree.validate {
         "opts"
     } else {
         "{ validate: false, ...opts }"
     };
     w.open_with(format!("this.#core = new {core}({passed},"), " {");
-    w.line(format!(
-        "envVar: {},",
-        ts_str(&format!("VELD_{}_URL", naming::screaming_snake(&svc.name)))
-    ));
-    match &svc.base_url {
-        Some(u) => w.line(format!("baseUrl: {},", ts_str(u))),
-        None => w.line("baseUrl: null,"),
-    };
+    if !config {
+        w.line(format!(
+            "envVar: {},",
+            ts_str(&format!("VELD_{}_URL", naming::screaming_snake(&svc.name)))
+        ));
+        match &svc.base_url {
+            Some(u) => w.line(format!("baseUrl: {},", ts_str(u))),
+            None => w.line("baseUrl: null,"),
+        };
+    }
     w.line(format!("validation: {validation},"));
     if let Some(digest) = svc.rules_digest.as_deref() {
         w.line(format!("service: {},", ts_str(&svc.name)));

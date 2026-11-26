@@ -93,9 +93,25 @@ fn run(
     let caps = generator.capabilities(role);
     let diags = check_capabilities(ir, &req, &caps);
     assert!(diags.is_empty(), "capability errors: {diags:?}");
+    // A target with settings must be named (`E0802`): the client target is `web`, the server `api`.
+    let options = named(role, options);
     generator
-        .generate_dyn(&req, options)
+        .generate_dyn(&req, &options)
         .unwrap_or_else(|d| panic!("generation failed: {d:?}"))
+}
+
+/// The name the tests give the target they generate: `WebRuntime` for a client, `ApiRuntime` for
+/// a server.
+pub fn target_name(role: Role) -> &'static str {
+    match role {
+        Role::Client => "web",
+        Role::Server => "api",
+    }
+}
+
+/// `options` with the target's name, for a test that calls a generator directly (`E0802` otherwise).
+pub fn named(role: Role, options: &serde_json::Value) -> serde_json::Value {
+    veld_codegen::with_target_name(options, target_name(role))
 }
 
 /// The language versions every toolchain test compiles for: the target option `typescript` and

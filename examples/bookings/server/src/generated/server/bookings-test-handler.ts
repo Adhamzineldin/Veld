@@ -59,8 +59,8 @@ const loaders: BookingsFactLoaders = {
   room: (_key, ctx: veld.RequestContext) => testFact<Room>(ctx, 'room', { k: 'ref', to: () => Room.schema }),
 };
 
-/** What the test handler of `Bookings` takes from the hooks: the observers of the production hooks. */
-export type BookingsTestHooks = Omit<BookingsHooks, 'facts' | 'clock' | 'auth' | 'middleware'>;
+/** What the test handler of `Bookings` takes from the hooks: the observers of the production hooks, and the output mode of the rules, which a test handler takes here because it has no runtime config. */
+export type BookingsTestHooks = Omit<BookingsHooks, 'facts' | 'clock' | 'auth' | 'middleware'> & { rules?: { output?: veld.RuleOutputMode } };
 
 /** Takes the endpoint apart from authentication and the application's handler. */
 function open(ep: veld.ServerEndpoint): veld.ServerEndpoint {

@@ -159,7 +159,7 @@ fn a_variant_called_like_a_helper_is_refused_with_e0801() {
     let err = veld_codegen::DynGenerator::generate_dyn(
         &veld_emit_typescript::TypeScript,
         &req,
-        &serde_json::Value::Null,
+        &veld_codegen::with_target_name(&serde_json::Value::Null, "web"),
     )
     .unwrap_err();
     assert!(err.iter().all(|d| d.code == "E0801"), "{err:?}");

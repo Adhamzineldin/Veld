@@ -22,11 +22,11 @@ interface Running {
 
 async function start(output?: 'strict' | 'audit' | 'off'): Promise<Running> {
   const events: RuleViolationEvent[] = [];
-  const handler = srv.createLiveHandler(impl, {
-    ...(output === undefined ? {} : { rules: { output } }),
-    onRuleViolation: (e) => events.push(e),
-    onError: (e) => errors.push(e),
-  });
+  const handler = srv.createLiveHandler(
+    impl,
+    { onRuleViolation: (e) => events.push(e), onError: (e) => errors.push(e) },
+    output === undefined ? undefined : { rules: { output } },
+  );
   const server = http.createServer(srv.toNodeHttp(handler));
   const wss = new WebSocketServer({ server });
   attachWebSocket(wss, handler);
