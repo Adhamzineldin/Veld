@@ -22,6 +22,7 @@ use veld_ir::{Ir, PackageKind};
 
 const BOOKINGS: &str = "tests/events/bookings.veld";
 const EDGES: &str = "tests/wire/events/edges.veld";
+const TENANT: &str = "tests/wire/events/tenant.veld";
 
 fn read(path: &str) -> String {
     std::fs::read_to_string(repo_root().join(path))
@@ -254,6 +255,11 @@ fn goldens() -> Vec<Golden> {
     for case in read_json("tests/wire/events/consume.json") {
         let i = golden_at(&mut out, case["contract"].as_str().unwrap());
         out[i].consume.push(case);
+    }
+    // `veldtenant` (`spec/platform.md` section 3): the envelopes of events with a `@tenant` field.
+    for case in read_json("tests/wire/events/tenant.json") {
+        let i = golden_at(&mut out, case["contract"].as_str().unwrap());
+        out[i].publish.push(case);
     }
     out
 }
@@ -903,4 +909,27 @@ fn the_rust_server_declares_events() {
             .supports(veld_ir::Feature::Events)
     );
     veld_emit_conformance::check_events_are_generated(&veld_emit_rust::Rust).unwrap();
+}
+
+/// `tests/wire/events/tenant.veld`: an event with a `@tenant` field of each of the four types
+/// carries `veldtenant` in its envelope, an event without one keeps the bytes it had: the six
+/// goldens through the generated publisher, and the same envelopes read back by the consumer.
+#[test]
+fn the_tenant_crate_carries_veldtenant_as_the_goldens_say() {
+    if !cargo_or_skip() {
+        return;
+    }
+    let all = goldens();
+    let g = golden_for(&all, TENANT);
+    let plan = plan(g, None);
+    let ws = events_workspace(
+        "events-tenant",
+        &server_crate(&plan.ir, &[]),
+        &[("wire", wire_driver(&plan))],
+        &[],
+    );
+    write_json(&ws.join("cases.json"), &plan.cases);
+    build_and_lint(&ws);
+    let out: Value = serde_json::from_str(&run_driver(&ws, "wire")).unwrap();
+    check_goldens(&plan, g, &out);
 }
