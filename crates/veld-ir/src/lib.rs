@@ -330,6 +330,12 @@ impl Ir {
                 if ep.idempotency.is_some() {
                     f.insert(Feature::Idempotency);
                 }
+                if ep.timeout_ms.is_some() {
+                    f.insert(Feature::Timeouts);
+                }
+                if ep.slo.is_some() {
+                    f.insert(Feature::Slo);
+                }
                 if ep.rules.transition.is_some() {
                     f.insert(Feature::RulesTransitions);
                 }
@@ -990,7 +996,48 @@ pub struct Endpoint {
     /// `@idempotent` (`spec/rules.md` section 11.8). Omitted from the JSON when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub idempotency: Option<Idempotency>,
+    /// `@timeout` (`spec/platform.md` section 12): the deadline of a request in milliseconds, a
+    /// decimal string so it stays exact. Omitted from the JSON when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeout_ms: Option<String>,
+    /// `@slo` (`spec/platform.md` section 13). Omitted from the JSON when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub slo: Option<Slo>,
     pub origin: Origin,
+}
+
+/// The service level an endpoint states with `@slo` (`spec/platform.md` section 13). Each
+/// latency is the milliseconds within which that share of requests answers, as a decimal string;
+/// `errors` is the most percent of requests that may end in a `5xx`, as written. A member that
+/// the annotation does not give is omitted from the JSON.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct Slo {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub p50_ms: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub p90_ms: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub p95_ms: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub p99_ms: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub errors: Option<String>,
+}
+
+impl Slo {
+    /// The stated latency objectives as `(name, milliseconds)`, fastest share first.
+    #[must_use]
+    pub fn latencies(&self) -> Vec<(&'static str, &str)> {
+        [
+            ("p50", &self.p50_ms),
+            ("p90", &self.p90_ms),
+            ("p95", &self.p95_ms),
+            ("p99", &self.p99_ms),
+        ]
+        .into_iter()
+        .filter_map(|(n, v)| v.as_deref().map(|v| (n, v)))
+        .collect()
+    }
 }
 
 /// `@idempotent` on an endpoint (`spec/rules.md` sections 11.8 and 11.9).
@@ -1177,6 +1224,10 @@ pub enum Feature {
     /// `when flag("name")` on a rule, a `require`, an `ensure`, a `permit` or `forbid` clause or
     /// a `flow` (`spec/platform.md` section 11).
     RulesFlags,
+    /// `@timeout` (`spec/platform.md` section 12).
+    Timeouts,
+    /// `@slo` (`spec/platform.md` section 13): the metrics hook.
+    Slo,
 }
 
 impl Feature {
@@ -1189,14 +1240,16 @@ impl Feature {
     ];
     /// Features no generator supports unless it says so: [`Feature::ALL`] minus these is what
     /// `all_except` hands out. A feature that changes what a rule means must be opted into.
-    pub const OPT_IN: [Feature; 5] = [
+    pub const OPT_IN: [Feature; 7] = [
         Feature::RulesRollout,
         Feature::RulesVersion,
         Feature::Idempotency,
         Feature::RulesTimed,
         Feature::RulesFlags,
+        Feature::Timeouts,
+        Feature::Slo,
     ];
-    pub const ALL: [Feature; 20] = [
+    pub const ALL: [Feature; 22] = [
         Feature::Unions,
         Feature::Constraints,
         Feature::Auth,
@@ -1217,6 +1270,8 @@ impl Feature {
         Feature::Events,
         Feature::RulesTimed,
         Feature::RulesFlags,
+        Feature::Timeouts,
+        Feature::Slo,
     ];
     #[must_use]
     pub fn name(self) -> &'static str {
@@ -1241,6 +1296,8 @@ impl Feature {
             Feature::Events => "events",
             Feature::RulesTimed => "rules_timed",
             Feature::RulesFlags => "rules_flags",
+            Feature::Timeouts => "timeouts",
+            Feature::Slo => "slo",
         }
     }
     #[must_use]

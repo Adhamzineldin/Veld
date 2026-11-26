@@ -308,6 +308,14 @@ export interface EndpointVersion {
   origin: Origin;
 }
 
+export interface Slo {
+  p50_ms?: string;
+  p90_ms?: string;
+  p95_ms?: string;
+  p99_ms?: string;
+  errors?: string;
+}
+
 export interface Idempotency {
   header: string;
   required: boolean;
@@ -576,6 +584,8 @@ export interface Endpoint {
   errors: ErrorResponse[];
   rules?: EndpointRules;
   idempotency?: Idempotency;
+  timeout_ms?: string;
+  slo?: Slo;
   origin: Origin;
 }
 
@@ -609,7 +619,7 @@ export interface Auth {
 
 export type AuthKind = "none" | "bearer" | "basic" | "api_key";
 
-export type Feature = "unions" | "constraints" | "auth" | "middleware" | "headers" | "streaming_sse" | "streaming_ws" | "page" | "consts" | "bytes" | "rules_invariants" | "rules_endpoint" | "rules_transitions" | "rules_policies" | "rules_rollout" | "rules_version" | "idempotency" | "events" | "rules_timed" | "rules_flags";
+export type Feature = "unions" | "constraints" | "auth" | "middleware" | "headers" | "streaming_sse" | "streaming_ws" | "page" | "consts" | "bytes" | "rules_invariants" | "rules_endpoint" | "rules_transitions" | "rules_policies" | "rules_rollout" | "rules_version" | "idempotency" | "events" | "rules_timed" | "rules_flags" | "timeouts" | "slo";
 
 export type Role = "server" | "client";
 

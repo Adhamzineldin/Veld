@@ -373,6 +373,8 @@ pub(crate) fn sample_policies() -> Vec<Policy> {
 
 fn endpoint_with(rules: EndpointRules) -> Endpoint {
     Endpoint {
+        slo: None,
+        timeout_ms: None,
         name: "book".into(),
         method: Method::Post,
         path: "/".into(),
@@ -783,6 +785,7 @@ fn the_exact_json_text_of_a_machine_and_a_transition() {
 }
 
 mod flags;
+mod p2;
 mod policies;
 mod rollout;
 mod timed;

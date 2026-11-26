@@ -161,6 +161,8 @@ const ENDPOINT: Fields = &[
     ("errors", T::List(&T::Ref("ErrorResponse"))),
     ("rules", T::Optional(&T::Ref("EndpointRules"))),
     ("idempotency", T::Optional(&T::Ref("Idempotency"))),
+    ("timeout_ms", T::Optional(&T::Str)),
+    ("slo", T::Optional(&T::Ref("Slo"))),
     ("origin", ORIGIN),
 ];
 
@@ -432,6 +434,16 @@ pub const DEFS: &[Def] = &[
             ("field", T::Str),
             ("wire", T::Str),
             ("origin", ORIGIN),
+        ],
+    ),
+    Def::Object(
+        "Slo",
+        &[
+            ("p50_ms", T::Optional(&T::Str)),
+            ("p90_ms", T::Optional(&T::Str)),
+            ("p95_ms", T::Optional(&T::Str)),
+            ("p99_ms", T::Optional(&T::Str)),
+            ("errors", T::Optional(&T::Str)),
         ],
     ),
     Def::Object(
@@ -757,6 +769,8 @@ pub const DEFS: &[Def] = &[
             "events",
             "rules_timed",
             "rules_flags",
+            "timeouts",
+            "slo",
         ],
     ),
     Def::Strings("Role", &["server", "client"]),
