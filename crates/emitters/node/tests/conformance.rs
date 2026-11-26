@@ -121,3 +121,12 @@ fn node_and_typescript_refuse_message_catalogs() {
     veld_emit_conformance::check_messages_is_refused(&Node).unwrap();
     veld_emit_conformance::check_messages_is_refused(&TypeScript).unwrap();
 }
+
+/// Retention (`spec/platform.md` section 23): until a generator implements it, the Node server
+/// refuses a contract with `@retain` models with `E0801`, and the TypeScript client, which has
+/// nothing to generate for it, is not affected.
+#[test]
+fn node_refuses_retention_and_typescript_ignores_it() {
+    veld_emit_conformance::check_retention_is_refused(&Node).unwrap();
+    veld_emit_conformance::check_retention_is_refused(&TypeScript).unwrap();
+}

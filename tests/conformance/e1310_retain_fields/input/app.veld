@@ -1,0 +1,17 @@
+// The field of `since` and the `@pii` fields of `anonymize` (spec/platform.md section 23).
+
+@retain(days(30), since: missing, then: delete)
+model NoSuchField {
+  at: datetime
+}
+
+@retain(days(30), since: count, then: delete)
+model NotADate {
+  count: int
+}
+
+@retain(days(30), since: at, then: anonymize)
+model NothingToAnonymize {
+  at: datetime
+  token: string @secret
+}

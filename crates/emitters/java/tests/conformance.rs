@@ -137,3 +137,10 @@ fn java_refuses_version_and_idempotency() {
 fn java_refuses_message_catalogs() {
     veld_emit_conformance::check_messages_is_refused(&Java).unwrap();
 }
+
+/// Retention (`spec/platform.md` section 23): until Java implements it, its server refuses a
+/// contract with `@retain` models with `E0801`; its client is not affected.
+#[test]
+fn java_refuses_retention_in_the_server_only() {
+    veld_emit_conformance::check_retention_is_refused(&Java).unwrap();
+}
