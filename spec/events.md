@@ -570,6 +570,19 @@ The new channel decides when two changes meet: `max` lowered while `@deadLetter`
 
 `veld export asyncapi` writes an AsyncAPI 3.0 document: channels, their messages with the event schemas, and the operations of each service (§16.1).
 
+### 16.1 `veld export asyncapi`
+
+`veld export asyncapi [-o FILE] [--service NAME]…` writes an AsyncAPI 3.0.0 document as JSON, like `veld export openapi` (to stdout, or to `FILE` with the same refusal of a different existing file unless `--force`). Without `--service` every service is exported. The document is deterministic: keys are written in a fixed order and channels, operations, messages and schemas are sorted by name. A workspace that declares no channel, and a selection of services that publish to and subscribe to none, is `E0803`.
+
+Written from the AsyncAPI 3.0.0 text as the reference knew it (the text itself could not be fetched while this was built, so the points marked * are the ones to check against it):
+
+- **Top level**, in this order: `asyncapi` (`"3.0.0"`), `info` (`title` the names of the exported services, `version` `"1.0.0"`), `defaultContentType` (the media type of §6.2), `channels`, `operations`, `components`, `x-veld-ir-version`.
+- **A channel** is keyed by its qualified name with every character outside `A-Z a-z 0-9 . - _` replaced by `_` (`app_app.BookingEvents`), so two channels of one name in two packages stay apart. `address` is the topic. `messages` has one message per carried event, keyed `<package>.<Event>`. `description` is the channel's docs.
+- **A message** has `name` (the event), `summary` (its docs), `contentType` (the media type of §6.2) and `payload`: a multi format schema object with `schemaFormat` `application/schema+json;version=draft-07`* and `schema` the CloudEvents envelope of §6.2 as an object: the required attributes (`subject` only on a channel with a key), `specversion` and `datacontenttype` as constants, and `data` a `$ref` to the event's schema in `components.schemas`. The schemas are those of the OpenAPI export (an event is built like a model); what an event reaches is in `components.schemas` too. Draft-07 is the dialect of AsyncAPI's own schema object*; `discriminator` on a union is an unknown keyword to a validator, which ignores it.
+- **An operation** is keyed `<package>.<Service>.publish.<channel key>` (`send`) for a `publishes` line and `<package>.<Service>.subscribe.<channel key>` (`receive`) for a subscription. `channel` is a `$ref` to the channel, and `messages` are `$ref`s **into the channel's own `messages`** (`#/channels/<key>/messages/<name>`)*, never into `components`: all the events of the channel for `send`, and the events of the `on` lines for `receive`.
+- **Extensions**, each omitted when absent: on a message `x-veld-signature` (the declaration signature, §6.1) and `x-veld-rules-digest`; on a channel `x-veld-key` (`name`, `wire`, `type` as a schema), `x-veld-retry` (`max`, `backoff`), `x-veld-dead-letter` (`topic`: `<topic>.dlq`), `x-veld-ordered` and `x-veld-deprecated`; on a `send` operation `x-veld-source` (the `source` of its messages, §6.2); on a `receive` operation `x-veld-group` and `x-veld-handlers` (event to handler name).
+- `servers` are not written: the broker is the application's (§10.7).
+
 ## 17. Diagnostics
 
 | Code | Meaning |
