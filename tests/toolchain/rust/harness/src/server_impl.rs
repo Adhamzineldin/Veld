@@ -10,6 +10,7 @@ use orders_server::orders::catalog::{Money, Status};
 use orders_server::orders::orders::{Order, OutOfStock, QuotaExceeded};
 use orders_server::orders::orders_server::*;
 use orders_server::prelude::NotFound;
+use orders_server::runtime_config::OrdersServerRuntime;
 use orders_server::veld::server::{Principal, RequestContext};
 use orders_server::veld::{DeclaredError, Error, Page};
 
@@ -142,7 +143,15 @@ impl OrdersHooks for Hooks {
 
 /// The generated router around this implementation, counting every request.
 pub fn app(state: &Arc<State>) -> axum::Router {
-    let handler = OrdersHandler::create(Impl(Arc::clone(state)), Hooks(Arc::clone(state)));
+    // The server consumes `iam`: its runtime config has the one required URL. The scenario never
+    // calls the identity service, so the address only has to be a valid URL.
+    let runtime = OrdersServerRuntime::from_map(&BTreeMap::from([(
+        "services.iam.url".to_string(),
+        "http://127.0.0.1:1".to_string(),
+    )]))
+    .unwrap_or_else(|e| panic!("{e}"));
+    let handler = OrdersHandler::create(Impl(Arc::clone(state)), Hooks(Arc::clone(state)), &runtime)
+        .unwrap_or_else(|e| panic!("{e}"));
     let counted = Arc::clone(state);
     orders_server::adapters::axum::router(handler).layer(axum::middleware::from_fn(
         move |req: axum::extract::Request, next: axum::middleware::Next| {
