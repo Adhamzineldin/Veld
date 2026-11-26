@@ -174,7 +174,7 @@ impl Generator for Java {
         let mut files = FileSet::new();
         let mut used = req.services.clone();
         used.extend(req.consumes.iter().copied());
-        let features = req.ir.features_used(&used);
+        let features = req.ir.http_features_used(&used);
         let streaming = runtime::Streaming::of(&features);
         let tree = Tree::new(req.ir, &base, &runtime_package, req.services.clone())
             .with_validate(opts.validate != Some(false));

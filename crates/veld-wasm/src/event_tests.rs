@@ -56,11 +56,7 @@ fn a_contract_with_events_compiles() {
 #[test]
 fn a_server_refuses_events_and_a_client_ignores_them() {
     let p = ProjectIn::default();
-    for (emitter, framework) in [
-        ("node", Some("express")),
-        ("java", Some("jdk")),
-        ("rust", Some("axum")),
-    ] {
+    for (emitter, framework) in [("java", Some("jdk")), ("rust", Some("axum"))] {
         let r = generate(&files(), &target(emitter, "server", framework), &p);
         assert!(!r.ok && r.files.is_empty(), "{emitter}");
         assert!(

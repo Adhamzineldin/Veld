@@ -234,7 +234,7 @@ impl Generator for Rust {
         let tr = transports(req, opts, profile)?;
         let mut used = req.services.clone();
         used.extend(req.consumes.iter().copied());
-        let used_features = req.ir.features_used(&used);
+        let used_features = req.ir.http_features_used(&used);
         let streaming = used_features.contains(&Feature::StreamingSse)
             || used_features.contains(&Feature::StreamingWs);
         let server = req.role == Role::Server;
