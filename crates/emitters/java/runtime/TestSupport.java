@@ -288,14 +288,14 @@ public final class TestSupport {
     Json data = seeded.get("data");
     Json type = seeded.get("type");
     if (type instanceof Json.Str sig) {
-      String name = sig.value().substring(sig.value().lastIndexOf('/') + 1, sig.value().indexOf('@'));
+      String name = sig.value().substring(sig.value().lastIndexOf('/') + 1, sig.value().lastIndexOf('@'));
       int cut = scope.indexOf('\n');
       Json body = Json.object()
           .put("type", Json.of(sig.value()))
           .put("title", Json.of(name))
           .put("status", Json.of((long) status))
           .put("operation", Json.of(cut < 0 ? scope : scope.substring(0, cut)))
-          .put("data", data == null ? Json.object().build() : data)
+          .put("data", data == null || data instanceof Json.Null ? Json.object().build() : data)
           .build();
       return new StoredAnswer(
           status, body.write().getBytes(StandardCharsets.UTF_8), "application/problem+json", null, null);

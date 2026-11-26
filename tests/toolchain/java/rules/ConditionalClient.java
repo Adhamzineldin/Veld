@@ -51,9 +51,9 @@ public final class ConditionalClient {
       java.util.ArrayList<String> seen = new java.util.ArrayList<>();
       exchange.getRequestHeaders().forEach((k, v) -> seen.add(k + "=" + v.get(0)));
       SEEN.set(seen);
-      String body = exchange.getRequestURI().getPath().endsWith("/paid")
-          ? "{\"id\":\"" + ID + "\",\"guests\":2}"
-          : "{\"id\":\"" + ID + "\",\"name\":\"Blue\",\"revision\":\"5\"}";
+      String body = exchange.getRequestURI().getPath().contains("/rooms/")
+          ? "{\"id\":\"" + ID + "\",\"name\":\"Blue\",\"revision\":\"5\"}"
+          : "{\"id\":\"" + ID + "\",\"guests\":2}";
       byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
       exchange.getResponseHeaders().set("content-type", "application/json");
       exchange.sendResponseHeaders(exchange.getRequestMethod().equals("DELETE") ? 204 : 200, exchange.getRequestMethod().equals("DELETE") ? -1 : bytes.length);

@@ -302,7 +302,7 @@ public final class VersionHttp {
     Json.Obj data = stale.body().get("data").asObject();
     check(data.get("expected").asString().equals("1") && data.get("actual").asString().equals("2"), data.write());
     Answer ok = send(server, "POST", "/rooms/" + ID + "/tick", ifMatch("\"2\""), null);
-    check(ok.status() == 200, "the current int version passes: " + ok.status());
+    check(ok.status() == 201, "the current int version passes (a POST answers 201): " + ok.status());
     check(Integer.valueOf(2).equals(receivedInt), "the handler received an Integer: " + receivedInt);
     check("\"3\"".equals(ok.header("etag")), "ETag of an int version: " + ok.header("etag"));
     check(ok.body().get("version").asDouble() == 3.0, "an int version is a number on the wire");

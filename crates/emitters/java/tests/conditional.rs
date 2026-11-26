@@ -61,6 +61,24 @@ service Rooms at "/rooms" {
 }
 "#;
 
+/// An `@idempotent` endpoint with no block whose body has a rule (the rule classes without
+/// `EndpointRules`), next to a stream.
+const COMBO: &str = r#"
+model Body {
+  n: int
+  rule positive: n > 0
+}
+
+model Tick { n: int }
+
+service Mixed at "/m" {
+  @idempotent
+  post "/" make(body: Body) -> 201 Body
+
+  get "/ticks" ticks() -> stream Tick
+}
+"#;
+
 /// Parameters that the client's request would shadow.
 const CLASH_IF_MATCH: &str = r#"
 model Room {
@@ -96,6 +114,10 @@ fn idempotency_ir() -> Ir {
 
 fn fingerprint_ir() -> Ir {
     compile_source(FINGERPRINTED.to_string(), "fp", "the fingerprint contract")
+}
+
+fn combo_ir() -> Ir {
+    compile_source(COMBO.to_string(), "combo", "the combination contract")
 }
 
 fn small_ir() -> Ir {
@@ -369,7 +391,13 @@ fn every_contract_with_the_annotations_compiles_with_every_warning_on() {
     if !require_javac("the_conditional_contracts_compile") {
         return;
     }
-    let mut irs = vec![version_ir(), idempotency_ir(), fingerprint_ir(), small_ir()];
+    let mut irs = vec![
+        version_ir(),
+        idempotency_ir(),
+        fingerprint_ir(),
+        small_ir(),
+        combo_ir(),
+    ];
     irs.extend(conformance_irs());
     for ir in &irs {
         for (role, testing) in [
