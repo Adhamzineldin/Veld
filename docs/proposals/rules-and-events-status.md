@@ -100,7 +100,7 @@ Found when the example gained a state machine and policies (25 Nov), most import
 - [i] §10 (state machines) complete
 - [i] §11 (policies, `@version`, `@idempotent`) complete
 - [i] `spec/events.md` before E1 (see Events)
-- [~] `spec/platform.md` before P1: drafted for P1, waiting for the owner's seven choices (see Platform)
+- [i] `spec/platform.md`: P1 as the owner confirmed it; P2, P3 and P4 drafted on 26 Nov (sections 10 to 24), each with a list of what it chose
 - [~] The config specs before the config series: `spec/workspace.md` and `spec/runtime-config.md` drafted, waiting for the owner's choices (see Config); `spec/config.md` is rewritten with the layout series
 
 ## Plumbing (one commit series, before any fan-out)
@@ -169,9 +169,11 @@ Found when the example gained a state machine and policies (25 Nov), most import
 - [ ] Not yet, and required by "every item ships with" above: the language server has no hover or completion for `policy`, `principal` and `allow` (reported by the agent that built them; whether it handles `flow` and `transition` has not been checked), and there is no record of the playground WASM being rebuilt since rules were added
 - [i] With `validate = false`, policies and the transition guard still run (`spec/rules.md` 5.3 corrected: it used to say everything in step 6 but the facts is switched off, which would have let a validation option switch authorization off)
 - [i] `@version` optimistic concurrency (`ETag`, `If-Match`, `412 PreconditionFailed`) outside the generators: language, checks, IR, reference evaluator, `veld test` (`ifMatch 3`, `ifMatch any`), `fmt`, `diff`, OpenAPI, language server, 7 conformance cases and the vectors `tests/rules/endpoints/version.veld.pending` (19 examples). `rules_version` is opt-in and every generator refuses it with `E0801`. Not yet: generated code (the guard, the `ETag`, the client's `ifMatch`) in any target; merged 26 Nov, new snapshots not stored yet
-- [~] `@version` in the Node, TypeScript, Java and Rust generators (`spec/rules.md` 11.12 fixes the shared names)
+- [i] `@version` in the Java and Rust generators, server and client (26 Nov, never run; `spec/targets/java.md` 13, `spec/targets/rust.md` 14): the guard, the `412`, the `ETag`, the handler's `version`, `ifMatch` on the client, the test handler; the vectors stay `.pending` until Node is in
+- [~] `@version` in the Node server and the TypeScript client (`spec/rules.md` 11.12 fixes the shared names)
 - [i] `@idempotent` outside the generators: language, checks, IR, reference evaluator (the lookup after step 5, replay, `409 Conflict`, what is stored), `veld test` (`key "k-1" stored ...`, `other`, `running`), `fmt`, `diff`, OpenAPI, language server and the vectors `tests/rules/endpoints/idempotency.veld.pending` (21 examples). `idempotency` is opt-in and every generator refuses it with `E0801`. Not yet: the `IdempotencyStore` interface, the caller hook and the `Veld-Test-Idempotency` header in a generated server. The choices made where the text was silent are in `spec/rules.md` 11.10
-- [~] `@idempotent` in the Node, TypeScript, Java and Rust generators
+- [i] `@idempotent` in the Java and Rust generators (same commits): `IdempotencyStore`, the memory store, the lookup after step 5, replay, the two conflicts, the caller hook, `idempotencyKey` on the client. Open: the fingerprint of a value whose text has several forms (a uuid in upper case) must be compared across the targets and the reference; Java has no test handler for a service without endpoint rules, Rust has; in Rust a dropped request leaves its key "running"
+- [~] `@idempotent` in the Node server and the TypeScript client
 - [i] Lint `auth-required` (`L0014`; `L0005` was taken): every endpoint has auth or `@auth(none)`
 
 ## Phase 5: proof and lifecycle
@@ -213,8 +215,9 @@ Found when the example gained a state machine and policies (25 Nov), most import
 - [i] E1 in the Node generator: for every service that publishes or subscribes, a typed publisher (`create<Service>Publisher`) and a typed subscriber (`subscribe<Service>Events` with a `<Service>EventHandlers` interface), the envelope, the publish and consume pipelines, the `Transport` interface and a memory transport; the same event files for express, fastify, hono, node-http and nest; a contract without events keeps its bytes. The generated code reproduces every byte golden of `tests/wire/events` and passes the event examples over the memory transport; removing the audited report fails a test. What it settled for the other targets is `spec/targets/typescript.md` 5f and `spec/events.md` 6.4, 8.1, 9 and 14. The features of event fields (unions, constraints and the rest) now count for a server that publishes or subscribes; a client still generates nothing for events. Seven new snapshots, stored by the main session
 - [ ] E1 in Node, open: no counter for ignored messages (the spec says "counted"); the test handler (`testing = true`) does not cover events
 - [i] E1 in the Java generator (JDK server and Spring) and in the Rust generator: publisher, subscriber, handler interface, envelope, memory transport, the hooks; tests for the byte goldens, the event examples, two services in one process and an audited event rule are written and compile, and the generated Java and Rust compile (`javac --release 17`, `cargo check`; the Spring variant was not compiled, its event files are the same). **Never run.** What each settled is `spec/targets/java.md` section 12 and `spec/targets/rust.md` section 13. Snapshots to store: seven or more for Java, six for Rust
-- [~] E2: specified (`spec/events.md` section 10, 26 Nov); outside the generators in progress. Then Kafka and RabbitMQ adapters per language; retry and dead letter; inbox; live event examples; broker tests in containers
-- [ ] E3: outbox and relay for `emits` (at-least-once, stated as such); event-aware `diff`; AsyncAPI export; crash-injection tests
+- [i] E2 outside the generators (26 Nov, never run): `@retry`, `@deadLetter`, `@ordered`, `called once`, the IR keys and the opt-in feature `events_delivery`, the reference dead-letter copy, settlement and inbox with byte goldens (`tests/wire/events/dead-letter.json`, `retry.json`: written by an independent Python program and not yet compared with the Rust reference), live event examples in `veld test --live`, `fmt`, `diff`, five conformance cases. What it chose is `spec/events.md` 10.10. Offline, an event example that expects `rejected` only because of a constraint is now `skip … (live only)` instead of a failure
+- [ ] E2 in the generators: the Kafka and RabbitMQ adapters per language, retry and dead letter in the consumer, the inbox, the test handler's event endpoint, broker tests in containers
+- [~] E3: specified (`spec/events.md` section 11, 26 Nov); outside the generators in progress (`emits`, the outbox entry and relay reference, the event table of `diff`, `veld export asyncapi`). Then the generators and the crash-injection tests
 
 ## Config
 The work is two series, because only the second changes generated code. The layout series must leave every generated file, manifest and lock file of every example and fixture the same bytes; the runtime config series changes client code for every contract, and those snapshots go on the owner's list.
@@ -222,8 +225,8 @@ The work is two series, because only the second changes generated code. The layo
 - [~] Spec for the typed runtime config: `spec/runtime-config.md` drafted (what a setting is, one `<Target>Runtime` type per target, the check that lists every problem at startup, `fromEnv` with names the application chooses, what is removed, `veld export runtime-schema`, and which generated files change). No code. The owner confirmed how a client gets its URL; read it before it is built, because it changes the constructor of every generated client
 - [i] Workspace root plus one `veld.toml` per member, and the single-file form; a file in the earlier format is the error `E0709`, which says what to write instead (errors `E0709` to `E0712`)
 - [i] `-p`/`--package`, `--workspace`, the current member, `--affected --since <ref>` with its reasons, `owners` in `veld diff` and `veld check --graph=json`
-- [ ] Typed runtime config per target; `VELD_<SERVICE>_URL` fallback removed; `fromEnv()` opt-in
-- [ ] `veld export runtime-schema`
+- [i] The shared model of a target's runtime config (`veld_codegen::runtime_config`: the settings in path order, every message, a reference check) with goldens in `tests/wire/runtime-config/`, and `veld export runtime-schema` (26 Nov, never run). What it chose is `spec/runtime-config.md` 9.1
+- [~] Typed runtime config per target; `VELD_<SERVICE>_URL` fallback removed; `fromEnv()` opt-in: Rust and Java in progress, Node after its `@version` work
 - [i] `veld init` (every scaffold), all five examples, every test fixture, the editor schemas and templates, and the docs moved to the new layout (new guide `docs/guides/workspaces.md`). **No generated byte changed**: for all five examples every generated file, manifest and `veld.lock.ir.json` is identical before and after, and the 145 parity cases (examples and the six presets) have the same hashes
 - [i] CLI and WASM share one target-resolution function; the parity test resolves the same files both ways and compares targets, packages and bytes
 - [ ] Layout, left open: the browser playground still passes the WASM build its earlier JSON shape and does not call the new `resolveWorkspace`; a plugin emitter's defaults are checked only when used, not at load; `veld doctor` does not print member counts; the READMEs that generators write still say "the project that holds veld.toml"; the JetBrains (Kotlin) tests were edited and not run locally
@@ -231,9 +234,9 @@ The work is two series, because only the second changes generated code. The layo
 ## Platform
 - [~] Spec for P1: `spec/platform.md` drafted (where each of the four runs in the pipeline, that no setting turns them off, what fails closed, the audit event, the limiter interface, codes `E1101`, `W1101`, `E1110`, `E1120`). No code. Seven choices in its section 9 wait for the owner. P2, P3 and P4 are not drafted
 - [ ] P1: `@visible`, `@tenant`, `@audited`, `@limit`
-- [ ] P2: timed transitions and the scheduler hook; `flag()`; `@timeout`, `@slo`, metrics hook, OpenSLO export
-- [ ] P3: sagas (experimental until crash and compensation-failure tests exist), with a needs-manual-intervention state
-- [ ] P4: message catalogs (Arabic first), `@retain` and the retention export
+- [~] P2: timed moves (`flow … after`, `transition … since`, the due-moves runner instead of a scheduler), `when flag("…")`, `@timeout`, `@slo` with the metrics hook and `veld export slo`: outside the generators in progress
+- [~] P3: sagas (experimental until crash and compensation-failure tests exist), with a stuck state that is reported: outside the generators in progress
+- [~] P4: `@pii` and `@secret`, message catalogs (Arabic first), `@retain` and the retention export: outside the generators in progress
 
 ## Docs, examples, website
 - [i] New example `examples/bookings`: a booking life cycle (a state machine), a signed-in caller and three policies, a Node server with an auth hook, fact loaders and conditional writes, a separate test server, a React app that shows only the moves the server accepts, 38 examples, covered by the example tests and an end-to-end test that also runs the live examples and the fuzzer (the web app is type-checked and driven through the generated client, but was not opened in a browser); a Java server for it is still to do
