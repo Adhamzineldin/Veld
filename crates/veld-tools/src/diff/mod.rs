@@ -305,6 +305,7 @@ pub fn diff(old: &Ir, new: &Ir) -> Vec<Change> {
 
 #[cfg(test)]
 mod changed_tests;
+#[cfg(test)]
 mod conditional_tests;
 #[cfg(test)]
 mod event_tests;
