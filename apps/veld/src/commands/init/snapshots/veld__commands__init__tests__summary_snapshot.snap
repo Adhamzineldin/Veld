@@ -13,4 +13,4 @@ output   users-api -> services/users/src/main/java
          web -> web/generated
          java-client -> clients/java/src/main/java
 about    Shop APIs
-files    5 to create
+files    9 to create

@@ -130,7 +130,7 @@ expression: out
 │           web -> web/src/generated
 │           java-client -> clients/java/src/main/java
 │  about    Shop APIs
-│  files    6 to create
+│  files    10 to create
 │
 └─────────────────────────────────────────────────────────
 ◆  Create this project?
@@ -138,25 +138,29 @@ expression: out
 ◇  Create this project?  yes
 │
 ◆  Writing files...
-✓  Created 6 files
+✓  Created 10 files
 │
 ◇  Files ──────────────────────────────────────────────────
 │
 │  + veld.toml
-│  + contracts/users/users.veld
-│  + contracts/billing/billing.veld
+│  + services/users/veld.toml
+│  + services/billing/veld.toml
+│  + clients/java/veld.toml
+│  + web/veld.toml
+│  + services/users/contracts/users.veld
+│  + services/billing/contracts/billing.veld
 │  + svc/users/package.json
 │  + web/package.json
 │  + README.md
 │  + created .gitignore (ignores .veld/ and node_modules/)
 │
 └──────────────────────────────────────────────────────────
-◇  Next steps ─────────────────────────────────────────────────────────────────────────────────────────
+◇  Next steps ──────────────────────────────────────────────────────────────────────────────────────────────────
 │
-│  edit contracts/<service>/  describe your API
-│  veld generate              write the generated code
-│  veld setup                 make it importable: @veld/<target> (npm) or a source root (Maven/Gradle)
-│  npm install                in each app, after `veld setup`
+│  edit services/<service>/contracts/  describe your API
+│  veld generate                       write the generated code
+│  veld setup                          make it importable: @veld/<target> (npm) or a source root (Maven/Gradle)
+│  npm install                         in each app, after `veld setup`
 │
-└──────────────────────────────────────────────────────────────────────────────────────────────────────
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────
 └  You are all set. Happy contracting!
