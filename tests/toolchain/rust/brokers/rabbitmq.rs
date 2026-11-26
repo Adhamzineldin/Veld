@@ -167,6 +167,22 @@ async fn close_stops_everything(url: &str) {
     connection.close(200, "done".into()).await.unwrap();
 }
 
+/// `publish` waits for the confirm a bounded time (`spec/events.md` 10.7). With a timeout of 0 ms
+/// the wait ends at its first poll, before any answer of the broker can arrive, so the error is
+/// certain; the default is 30000 and a normal publish still succeeds.
+async fn publish_does_not_wait_for_ever(url: &str) {
+    let connection = connect(url).await;
+    let topic = fresh("veld-timeout");
+    let quick = transport(&connection).publish_timeout_ms(0);
+    let error = quick.publish(&topic, None, b"x", ChannelOptions::NONE).await.expect_err("a confirm cannot arrive in 0 ms");
+    assert!(error.to_string().contains("did not confirm within 0 ms"), "{error}");
+    let normal = transport(&connection);
+    normal.publish(&topic, None, b"x", ChannelOptions::NONE).await.unwrap();
+    quick.close().await;
+    normal.close().await;
+    connection.close(200, "done".into()).await.unwrap();
+}
+
 #[tokio::main]
 async fn main() {
     let Some(url) = broker_or_skip("VELD_RABBITMQ") else { return };
@@ -174,6 +190,7 @@ async fn main() {
     again_and_before_the_group(&url).await;
     two_consumers_and_ordered(&url).await;
     the_dead_letter_queue(&url).await;
+    publish_does_not_wait_for_ever(&url).await;
     close_stops_everything(&url).await;
     println!("rabbitmq ok");
 }

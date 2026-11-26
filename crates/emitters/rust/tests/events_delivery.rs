@@ -86,7 +86,9 @@ fn subscribers(ir: &Ir) -> Vec<String> {
 /// The driver that serves the test handlers of every subscribing service as one server
 /// (`GET /__veld/test`, `POST /__veld/test/event`) and prints `PORT=<n>`.
 pub fn serve_driver(ir: &Ir) -> String {
-    let mods = subscribers(ir);
+    let mut mods = subscribers(ir);
+    // The merge of `spec/events.md` 10.9 names "the first rejecting service in name order".
+    mods.sort();
     let uses: Vec<String> = mods
         .iter()
         .map(|m| format!("use events_server::bookings::{m}_test_server as {m};"))
@@ -117,10 +119,14 @@ fn merged_probe() -> String {{
 }}
 
 async fn event(headers: HeaderMap, body: Bytes) -> axum::response::Response {{
+    let bad = |message: &str| (StatusCode::BAD_REQUEST, [(header::CONTENT_TYPE, "application/json")], json!({{ "error": message }}).to_string()).into_response();
     let text = |name: &str| headers.get(name).and_then(|v| v.to_str().ok()).map(str::to_string);
-    let Some(topic) = text("veld-test-topic") else {{ return StatusCode::BAD_REQUEST.into_response() }};
+    let Some(topic) = text("veld-test-topic").filter(|t| !t.is_empty()) else {{ return bad("Veld-Test-Topic is missing or empty") }};
     let key = text("veld-test-key");
-    let deliveries = text("veld-test-deliveries").and_then(|n| n.parse::<u8>().ok()).unwrap_or(1);
+    let deliveries: u8 = match headers.get("veld-test-deliveries") {{
+        None => 1,
+        Some(v) => match v.to_str() {{ Ok("1") => 1, Ok("2") => 2, _ => return bad("Veld-Test-Deliveries must be 1 or 2") }},
+    }};
     let mut answers = Vec::new();
 {delivers}
     let rejected = answers.iter().find(|a| a["outcome"] == "rejected");
@@ -133,7 +139,7 @@ async fn event(headers: HeaderMap, body: Bytes) -> axum::response::Response {{
         "outcome": if rejected.is_some() {{ "rejected" }} else if handled {{ "handled" }} else {{ "ignored" }},
         "reason": rejected.map_or(Value::Null, |a| a["reason"].clone()),
         "called": called,
-        "violations": rejected.map_or(json!([]), |a| a["violations"].clone()),
+        "violations": answers.iter().flat_map(|a| a["violations"].as_array().cloned().unwrap_or_default()).collect::<Vec<Value>>(),
         "deadLetters": answers.iter().map(|a| a["deadLetters"].as_u64().unwrap()).sum::<u64>(),
     }});
     ([(header::CONTENT_TYPE, "application/json")], body.to_string()).into_response()
@@ -254,6 +260,7 @@ fn the_delivery_crate_reproduces_the_goldens_runs_two_services_and_passes_the_ex
                 read("tests/toolchain/rust/events/delivery_process.rs"),
             ),
             ("delivery_serve", serve_driver(&ir)),
+            ("delivery_single", single_driver(&ir)),
         ],
         &[
             (
@@ -268,6 +275,62 @@ fn the_delivery_crate_reproduces_the_goldens_runs_two_services_and_passes_the_ex
     assert!(run_driver(&ws, "delivery_wire").contains("delivery wire ok"));
     assert!(run_driver(&ws, "delivery_process").contains("delivery process ok"));
     run_every_example(&ir, "delivery_serve", ir.examples.len());
+    the_event_endpoint_answers_400_with_an_error_object("delivery_serve");
+    the_event_endpoint_answers_400_with_an_error_object("delivery_single");
+}
+
+/// The generated test handler of the first subscribing service alone, served as it is.
+fn single_driver(ir: &Ir) -> String {
+    let module = subscribers(ir).into_iter().min().unwrap_or_default();
+    format!(
+        r#"//! One generated test handler behind an address.
+#[tokio::main]
+async fn main() {{
+    let app = events_server::bookings::{module}_test_server::router();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    println!("PORT={{}}", listener.local_addr().unwrap().port());
+    axum::serve(listener, app).await.unwrap();
+}}
+"#
+    )
+}
+
+/// One `POST /__veld/test/event` over a plain socket: the status and the body.
+fn post_event(url: &str, headers: &[(&str, &str)]) -> (u16, String) {
+    use std::io::{Read, Write};
+    let addr = url.trim_start_matches("http://");
+    let mut stream = std::net::TcpStream::connect(addr).unwrap();
+    let mut request = format!("POST /__veld/test/event HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\nContent-Length: 2\r\n");
+    for (name, value) in headers {
+        request.push_str(&format!("{name}: {value}\r\n"));
+    }
+    request.push_str("\r\n{}");
+    stream.write_all(request.as_bytes()).unwrap();
+    let mut answer = String::new();
+    stream.read_to_string(&mut answer).unwrap();
+    let status = answer.split(' ').nth(1).and_then(|n| n.parse().ok()).unwrap_or(0);
+    let body = answer.split("\r\n\r\n").nth(1).unwrap_or("").to_string();
+    (status, body)
+}
+
+/// `spec/events.md` 10.9: a missing or empty `Veld-Test-Topic` and a `Veld-Test-Deliveries` that is
+/// neither 1 nor 2 are `400` with `{ "error": "<text>" }`. The program is the one that serves the
+/// generated test handlers of every subscribing service.
+fn the_event_endpoint_answers_400_with_an_error_object(binary: &str) {
+    let server = Running::start(binary);
+    let cases: [(&str, Vec<(&str, &str)>); 5] = [
+        ("no topic", vec![]),
+        ("an empty topic", vec![("Veld-Test-Topic", "")]),
+        ("deliveries 0", vec![("Veld-Test-Topic", "t"), ("Veld-Test-Deliveries", "0")]),
+        ("deliveries 3", vec![("Veld-Test-Topic", "t"), ("Veld-Test-Deliveries", "3")]),
+        ("deliveries text", vec![("Veld-Test-Topic", "t"), ("Veld-Test-Deliveries", "two")]),
+    ];
+    for (what, headers) in cases {
+        let (status, body) = post_event(&server.url, &headers);
+        assert_eq!(status, 400, "{what}: {body}");
+        let parsed: serde_json::Value = serde_json::from_str(&body).unwrap_or_else(|e| panic!("{what}: not JSON ({e}): {body}"));
+        assert!(parsed["error"].as_str().is_some_and(|m| !m.is_empty()), "{what}: {body}");
+    }
 }
 
 /// Every event example of `tests/events/bookings.veld` through the generated test handlers of
@@ -429,7 +492,10 @@ fn the_test_handler_of_a_subscriber_serves_the_event_endpoint_and_lists_its_topi
         "{file}"
     );
     assert!(
-        file.contains("/__veld/test/event") && file.contains("veld-test-deliveries"),
+        file.contains("/__veld/test/event")
+            && file.contains("veld-test-deliveries")
+            && file.contains("Veld-Test-Deliveries must be 1 or 2")
+            && file.contains("Veld-Test-Topic is missing or empty"),
         "{file}"
     );
     assert!(

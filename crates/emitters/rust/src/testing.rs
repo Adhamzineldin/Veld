@@ -648,12 +648,17 @@ fn event_endpoint(w: &mut CodeWriter, ctx: &Ctx<'_, '_>, svc: &Service) {
     w.line("Ok(EventOutcome { outcome, reason, called, violations, dead_letters: copies.load(std::sync::atomic::Ordering::SeqCst) })");
     w.close().blank();
     w.line("/// `POST /__veld/test/event`: the body is the message, the headers are `Veld-Test-Topic`,");
-    w.line("/// `Veld-Test-Key` and `Veld-Test-Deliveries`. A request without a topic is `400`.");
+    w.line("/// `Veld-Test-Key` and `Veld-Test-Deliveries`. A missing or empty topic and a number of");
+    w.line("/// deliveries that is neither 1 nor 2 are `400` with `{ \"error\": \"...\" }` (`spec/events.md` 10.9).");
     w.open("async fn event(headers: ::axum::http::HeaderMap, body: ::axum::body::Bytes) -> ::axum::response::Response");
     w.line("use ::axum::response::IntoResponse;");
+    w.line("let bad = |message: &str| (::axum::http::StatusCode::BAD_REQUEST, [(::axum::http::header::CONTENT_TYPE, \"application/json\")], serde_json::json!({ \"error\": message }).to_string()).into_response();");
     w.line("let text = |name: &str| headers.get(name).and_then(|v| v.to_str().ok()).map(str::to_string);");
-    w.line("let Some(topic) = text(\"veld-test-topic\") else { return (::axum::http::StatusCode::BAD_REQUEST, \"Veld-Test-Topic is missing\").into_response() };");
-    w.line("let deliveries = text(\"veld-test-deliveries\").and_then(|n| n.parse::<u8>().ok()).unwrap_or(1);");
+    w.line("let Some(topic) = text(\"veld-test-topic\").filter(|t| !t.is_empty()) else { return bad(\"Veld-Test-Topic is missing or empty\") };");
+    w.open("let deliveries: u8 = match headers.get(\"veld-test-deliveries\")");
+    w.line("None => 1,");
+    w.line("Some(v) => match v.to_str() { Ok(\"1\") => 1, Ok(\"2\") => 2, _ => return bad(\"Veld-Test-Deliveries must be 1 or 2\") },");
+    w.close_with("};");
     w.open(
         "match deliver_event(&topic, text(\"veld-test-key\").as_deref(), deliveries, &body).await",
     );

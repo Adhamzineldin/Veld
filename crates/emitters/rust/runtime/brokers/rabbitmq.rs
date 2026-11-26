@@ -67,9 +67,13 @@ impl Running {
     }
 }
 
+/// How long `publish` waits for the broker's confirm by default, in milliseconds.
+const PUBLISH_TIMEOUT_MS: u64 = 30_000;
+
 struct Inner {
     connection: Arc<Connection>,
     redelivery: Redelivery,
+    publish_timeout_ms: u64,
     publishing: tokio::sync::Mutex<Option<Channel>>,
     declared: Mutex<BTreeSet<String>>,
     running: Mutex<Vec<Arc<Running>>>,
@@ -105,6 +109,25 @@ impl RabbitMqTransport {
             inner: Arc::new(Inner {
                 connection,
                 redelivery,
+                publish_timeout_ms: PUBLISH_TIMEOUT_MS,
+                publishing: tokio::sync::Mutex::new(None),
+                declared: Mutex::new(BTreeSet::new()),
+                running: Mutex::new(Vec::new()),
+                closed: Mutex::new(false),
+            }),
+        }
+    }
+
+    /// How long `publish` waits for the broker's confirm before it fails (default 30000). It is an
+    /// option of the adapter, so call it before the transport is used.
+    #[must_use]
+    pub fn publish_timeout_ms(self, ms: u64) -> Self {
+        let inner = &self.inner;
+        RabbitMqTransport {
+            inner: Arc::new(Inner {
+                connection: Arc::clone(&inner.connection),
+                redelivery: inner.redelivery,
+                publish_timeout_ms: ms,
                 publishing: tokio::sync::Mutex::new(None),
                 declared: Mutex::new(BTreeSet::new()),
                 running: Mutex::new(Vec::new()),
@@ -155,12 +178,24 @@ impl RabbitMqTransport {
         self.declare_exchange(topic).await?;
         let channel = self.publish_channel().await?;
         let properties = BasicProperties::default().with_content_type(CONTENT_TYPE.into()).with_delivery_mode(2);
-        let confirm = channel
-            .basic_publish(topic.into(), key.unwrap_or("").into(), BasicPublishOptions::default(), bytes, properties)
-            .await
-            .map_err(|e| failure("cannot publish", e))?
-            .await
-            .map_err(|e| failure("the broker did not confirm", e))?;
+        let wait = Duration::from_millis(self.inner.publish_timeout_ms);
+        let publish = async {
+            channel
+                .basic_publish(topic.into(), key.unwrap_or("").into(), BasicPublishOptions::default(), bytes, properties)
+                .await
+                .map_err(|e| failure("cannot publish", e))?
+                .await
+                .map_err(|e| failure("the broker did not confirm", e))
+        };
+        let confirm = match tokio::time::timeout(wait, publish).await {
+            Ok(result) => result?,
+            Err(_) => {
+                return Err(Error::other(format!(
+                    "veld rabbitmq: the broker did not confirm within {} ms",
+                    self.inner.publish_timeout_ms
+                )));
+            }
+        };
         match confirm {
             Confirmation::Ack(_) => Ok(()),
             Confirmation::Nack(_) => Err(Error::other("veld rabbitmq: the broker refused the message")),
