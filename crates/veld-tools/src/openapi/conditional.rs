@@ -61,9 +61,10 @@ pub(super) fn success_headers(ir: &Ir, ep: &Endpoint, response: &mut Value) {
     }
 }
 
-/// The replay header on an error answer the store keeps (below `500`).
+/// The replay header on an error answer that is kept: below `500`, and every answer of a saga,
+/// `SagaFailed` included (`spec/platform.md` section 18).
 pub(super) fn error_headers(ep: &Endpoint, status: u16, response: &mut Value) {
-    if ep.idempotency.is_some() && status < 500 {
+    if ep.idempotency.is_some() && (status < 500 || ep.saga.is_some()) {
         put_header(response, REPLAY, replay_entry());
     }
 }
@@ -79,6 +80,9 @@ pub(super) fn decorate_operation(ep: &Endpoint, o: &mut Map<String, Value>) {
             "x-veld-version".into(),
             json!({ "id": v.id, "fact": v.fact, "field": v.wire }),
         );
+    }
+    if ep.saga.is_some() {
+        o.insert("x-veld-saga".into(), Value::Bool(true));
     }
     if let Some(i) = &ep.idempotency {
         o.insert(

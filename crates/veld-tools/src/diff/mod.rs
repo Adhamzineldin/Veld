@@ -17,6 +17,7 @@ mod endpoints;
 mod events;
 pub(crate) mod expr_text;
 mod rules;
+mod saga;
 mod usage;
 
 pub use changed::{ChangedRule, RuleSite, changed_rules};
@@ -112,6 +113,9 @@ pub enum ChangeKind {
     IdempotencyRemoved,
     IdempotencyHeaderChanged,
     IdempotencyRequiredChanged,
+    SagaAdded,
+    SagaRemoved,
+    SagaChanged,
 }
 
 /// One difference between the old and the new contract.
@@ -313,5 +317,7 @@ mod event_tests;
 mod rollout_tests;
 #[cfg(test)]
 mod rule_tests;
+#[cfg(test)]
+mod saga_tests;
 #[cfg(test)]
 mod tests;
