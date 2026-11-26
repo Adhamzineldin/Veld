@@ -1132,3 +1132,23 @@ fn a_replay_must_say_so_and_a_success_must_carry_its_etag() {
         "{report}"
     );
 }
+
+#[test]
+fn a_dry_run_does_not_stop_a_replay() {
+    // A stored answer is sent again before step 6, so with `Veld-Test-Dry-Run: 1` the server still
+    // answers the stored success (200 and a body), not `204` and `Veld-Test-Passed`.
+    let ir = conditional_ir();
+    let body = json!({ "id": "00000000-0000-4000-8000-000000000001", "name": "x", "revision": "7" })
+        .to_string();
+    let replaying = serve(move |_| ok_reply(&body, Some("\"7\"")));
+    assert!(run_live(&replaying, &ir, "a stored success", true).passed());
+    let sent = replaying.requests();
+    assert_eq!(sent[0].headers["veld-test-dry-run"], "1");
+    // A dry run that answers `204` for the replay is wrong.
+    let stopped = serve(|_| Reply {
+        status: 204,
+        headers: vec![("Veld-Test-Passed", "1".to_owned())],
+        body: String::new(),
+    });
+    assert!(!run_live(&stopped, &ir, "a stored success", true).passed());
+}
