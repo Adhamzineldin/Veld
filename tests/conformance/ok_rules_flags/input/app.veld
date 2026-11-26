@@ -1,0 +1,52 @@
+// Flags: `when flag("name")` on every statement that can have it.
+
+model User {
+  id: uuid
+  roles: string[]
+}
+
+principal User
+
+enum Phase {
+  draft, live, archived
+  flow draft -> live
+  flow live -> archived when flag("archiving")
+  final archived
+}
+
+model Room {
+  id: uuid
+  open: bool
+  capacity: int
+  phase: Phase = .draft
+  rule positive: capacity > 0
+  rule small: capacity <= 40 message "too big" when flag("smallRooms")
+}
+
+policy Manage(user: User, room: Room) {
+  permit when "staff" in user.roles
+  permit when "beta" in user.roles when flag("betaDesk")
+  forbid when "suspended" in user.roles message "suspended" when flag("lockSuspended")
+}
+
+@auth(bearer)
+service Rooms at "/rooms" {
+  post "/{id}/book" bookRoom(id: uuid) -> Room {
+    fact room: Room = id
+    allow Manage(user, room)
+    require room.open when flag("openOnly")
+    ensure result.open message "still open" when flag("keepOpen")
+  }
+
+  post "/{id}/archive" archiveRoom(id: uuid) -> Room {
+    fact room: Room = id
+    transition room.phase: live -> archived
+  }
+}
+
+example "a flagged require is on" {
+  given flag "openOnly"
+  given room = { open: true, capacity: 3 }
+  as { roles: ["staff"] }
+  bookRoom(id: room.id) -> ok
+}

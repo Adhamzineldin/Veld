@@ -121,6 +121,7 @@ impl Lowerer<'_, '_> {
             ),
         };
         Example {
+            flags: Vec::new(),
             name: ex.name.clone(),
             package: self.pkg_id(ex.pkg),
             service: None,

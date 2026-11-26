@@ -407,3 +407,57 @@ fn a_result_that_leaves_out_the_state_is_judged_by_its_default() {
         e.hook[0].message
     );
 }
+
+#[test]
+fn an_edge_behind_a_flag_that_is_off_is_not_a_way_in() {
+    let src = r#"
+enum Phase {
+  draft, live, archived
+  flow draft -> live
+  flow live -> archived when flag("archiving")
+  final archived
+}
+model Room { id: uuid, phase: Phase = .draft }
+service Rooms at "/rooms" {
+  post "/{id}/archive" archive(id: uuid) -> Room {
+    fact room: Room = id
+    transition room.phase: live -> archived
+  }
+}
+"#;
+    let out = compile(&CompileInput {
+        packages: vec![PackageInput {
+            name: "t".into(),
+            kind: PackageKind::Service,
+            files: vec![SourceFile {
+                path: "t.veld".into(),
+                text: src.into(),
+            }],
+            base_url: None,
+        }],
+        consumes: BTreeMap::new(),
+    });
+    let ir = out.ir.unwrap();
+    let run = |ir: &Ir| {
+        let service = ir.services.iter().find(|s| s.name == "Rooms").unwrap();
+        let request = Request {
+            params: BTreeMap::from([(
+                "id".to_owned(),
+                json!("00000000-0000-4000-8000-000000000001"),
+            )]),
+            facts: BTreeMap::from([(
+                "room".to_owned(),
+                Some(json!({ "id": "00000000-0000-4000-8000-000000000001", "phase": "live" })),
+            )]),
+            ..Request::default()
+        };
+        Pipeline::new(ir, service, "archive")
+            .unwrap()
+            .run(&request)
+            .unwrap()
+    };
+    let off = crate::FlagState::default().resolve(&ir);
+    assert!(matches!(run(&off), Outcome::Error(ref e) if e.name == "InvalidTransition"));
+    let on = crate::FlagState::on(["archiving"]).resolve(&ir);
+    assert_eq!(run(&on), Outcome::Passes);
+}

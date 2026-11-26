@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use super::Lowerer;
 use crate::semantic::{RElse, REndpoint, REnsure, RRequire, RTransition, ServiceInfo};
-use crate::signature::{self, EndpointRef, StatementKind, TransitionRef};
+use crate::signature::{self, EndpointRef, StatementKind, TimedRef, TransitionRef};
 use veld_ir::endpoint_rules::{
     ElseError, ElseField, EndpointEnsure, EndpointFact, EndpointRequire, EndpointRules,
     EndpointTransition, EndpointVersion, ServiceFact,
@@ -78,6 +78,7 @@ impl Lowerer<'_, '_> {
         let expr = self.remap_expr(&r.expr);
         let kind = StatementKind::Require;
         EndpointRequire {
+            flag: r.flag.clone(),
             name: r.name.clone(),
             id: signature::endpoint_rule_id(decls, at, kind, r.name.as_deref(), &expr),
             expr,
@@ -100,6 +101,7 @@ impl Lowerer<'_, '_> {
         let expr = self.remap_expr(&r.expr);
         let kind = StatementKind::Ensure;
         EndpointEnsure {
+            flag: r.flag.clone(),
             name: r.name.clone(),
             id: signature::endpoint_rule_id(decls, at, kind, r.name.as_deref(), &expr),
             expr,
@@ -118,6 +120,8 @@ impl Lowerer<'_, '_> {
         at: &EndpointRef<'_>,
     ) -> EndpointTransition {
         let path: Vec<String> = t.steps.iter().map(|s| s.wire.clone()).collect();
+        let since: Vec<String> = t.since.iter().map(|s| s.wire.clone()).collect();
+        let after_ms = t.after_ms.map(|ms| ms.to_string());
         let id = signature::transition_rule_id(
             at,
             &TransitionRef {
@@ -125,6 +129,10 @@ impl Lowerer<'_, '_> {
                 path: &path,
                 from: &t.from_wire,
                 to: &t.to_wire,
+                timed: after_ms.as_deref().map(|after_ms| TimedRef {
+                    after_ms,
+                    since: &since,
+                }),
             },
         );
         EndpointTransition {
@@ -134,6 +142,7 @@ impl Lowerer<'_, '_> {
             decl: self.decl_id(t.decl),
             from: t.from.clone(),
             to: t.to.clone(),
+            since: t.since.clone(),
             origin: self.origin(t.span, module),
         }
     }

@@ -137,5 +137,5 @@ pub(super) fn rule_lines(r: &Rule, ind: usize) -> Vec<String> {
     if let Some(m) = &r.message {
         lines.push(format!("{pad}  message {}", quote(&m.value)));
     }
-    lines
+    super::stmt::with_flag(lines, r.flag.as_ref())
 }

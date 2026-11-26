@@ -221,6 +221,7 @@ fn sample_rule() -> Rule {
         ExprKind::List(rule_exprs()),
     );
     Rule {
+        flag: Some("shortStays".into()),
         name: "r".into(),
         id: "veld:p/m.B.r@0".into(),
         expr: all,
@@ -329,8 +330,10 @@ fn decls() -> Vec<Decl> {
             DeclKind::Enum(Enum {
                 variants: vec![variant],
                 flows: vec![Flow {
+                    flag: Some("shortStays".into()),
                     from: "A".into(),
                     to: "A".into(),
+                    after_ms: Some("86400000".into()),
                 }],
                 finals: vec!["A".into()],
             }),
@@ -372,6 +375,14 @@ fn decls() -> Vec<Decl> {
 
 fn endpoint(method: Method, binding: Binding, auth: AuthKind) -> Endpoint {
     Endpoint {
+        slo: Some(Slo {
+            p50_ms: Some("120".into()),
+            p90_ms: Some("200".into()),
+            p95_ms: Some("250".into()),
+            p99_ms: Some("300".into()),
+            errors: Some("0.1".into()),
+        }),
+        timeout_ms: Some("2000".into()),
         name: "op".into(),
         method,
         path: "/x".into(),

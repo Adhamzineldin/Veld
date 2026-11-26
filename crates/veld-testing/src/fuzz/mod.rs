@@ -196,6 +196,12 @@ fn not_fuzzed(live: &Live, service: &Service) -> Option<String> {
 /// # Errors
 /// None today; the type is kept so that callers do not change when one is added.
 pub fn fuzz(ir: &Ir, live: &Live, opts: &FuzzOptions) -> Result<FuzzReport, FuzzError> {
+    if !ir.flag_usage().is_empty() {
+        // A fuzz request sends no `Veld-Test-Flags`, so the server runs with every flag off
+        // (`spec/platform.md` section 11) and the reference must see the same contract.
+        let off = veld_rules::FlagState::default().resolve(ir);
+        return fuzz(&off, live, opts);
+    }
     let mut report = FuzzReport {
         seed: opts.seed,
         endpoints: Vec::new(),
@@ -339,6 +345,7 @@ impl Cx<'_> {
             endpoint: self.ep.name.clone(),
             request: req.clone(),
             clock: format_datetime(req.now),
+            flags: Vec::new(),
             expected: Expected::Ok(None),
         };
         let http = match build_request(self.ir, &filled, true) {

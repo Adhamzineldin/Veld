@@ -126,6 +126,7 @@ impl Parser<'_> {
         } else {
             None
         };
+        self.reject_flag_suffix("`fact`");
         Some(Stmt::Fact(FactStmt {
             name,
             optional,
@@ -164,6 +165,7 @@ impl Parser<'_> {
             None
         };
         let message = self.message()?;
+        let flag = self.flag_suffix()?;
         Some(Stmt::Require(RequireStmt {
             docs,
             annotations,
@@ -171,6 +173,7 @@ impl Parser<'_> {
             expr,
             otherwise,
             message,
+            flag,
             span: self.end_from(kw),
         }))
     }
@@ -210,12 +213,14 @@ impl Parser<'_> {
         let name = self.statement_name();
         let expr = self.parse_expr()?;
         let message = self.message()?;
+        let flag = self.flag_suffix()?;
         Some(Stmt::Ensure(EnsureStmt {
             docs,
             annotations,
             name,
             expr,
             message,
+            flag,
             span: self.end_from(kw),
         }))
     }

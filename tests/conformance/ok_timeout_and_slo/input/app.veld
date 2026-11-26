@@ -1,0 +1,18 @@
+// Deadlines and service levels on an endpoint and on a service.
+
+model Booking { id: uuid, guests: int }
+
+@timeout(seconds(5))
+@slo(p95: seconds(1), errors: 1)
+service Bookings at "/bookings" {
+  @timeout(seconds(2))
+  @slo(p50: ms(80), p90: ms(150), p95: ms(200), p99: ms(300), errors: 0.1)
+  get "/{id}" getBooking(id: uuid) -> Booking | NotFound
+
+  get "/" listBookings() -> Booking[]
+
+  @timeout(hours(1))
+  post "/{id}/export" exportBooking(id: uuid) -> Booking
+
+  get "/ticks" ticks() -> stream Booking
+}

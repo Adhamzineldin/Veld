@@ -17,8 +17,10 @@ mod endpoint_rules;
 mod endpoints;
 mod events;
 pub(crate) mod expr_text;
+mod flags;
 mod rules;
 mod saga;
+mod service_levels;
 mod usage;
 
 pub use changed::{ChangedRule, RuleSite, changed_rules};
@@ -92,6 +94,10 @@ pub enum ChangeKind {
     FactChanged,
     FlowRemoved,
     FlowAdded,
+    FlowTimingChanged,
+    FlagChanged,
+    TimeoutChanged,
+    SloChanged,
     TransitionChanged,
     EventAdded,
     EventRemoved,
@@ -307,6 +313,18 @@ pub(crate) fn push_constraint_changes(
 /// Compares two IRs and lists every change, breaking or not, in a stable order.
 #[must_use]
 pub fn diff(old: &Ir, new: &Ir) -> Vec<Change> {
+    if flags::involved(old, new) {
+        // A statement behind a flag is judged on its own (`spec/platform.md` section 11); the rest
+        // is compared as if those statements were not there.
+        let (o, n) = flags::strip(old, new);
+        let mut out = diff_plain(&o, &n);
+        flags::diff_flagged(old, new, &mut out);
+        return out;
+    }
+    diff_plain(old, new)
+}
+
+fn diff_plain(old: &Ir, new: &Ir) -> Vec<Change> {
     let ctx = Ctx { old, new };
     let usage = usage::Usage::of(old, new);
     let mut out = Vec::new();
@@ -330,10 +348,16 @@ mod derived_tests;
 #[cfg(test)]
 mod event_tests;
 #[cfg(test)]
+mod flags_tests;
+#[cfg(test)]
 mod rollout_tests;
 #[cfg(test)]
 mod rule_tests;
 #[cfg(test)]
 mod saga_tests;
 #[cfg(test)]
+mod service_levels_tests;
+#[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod timed_tests;

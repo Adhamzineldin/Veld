@@ -141,6 +141,9 @@ pub struct FilledExample {
     pub request: Request,
     /// The clock as text, as the live mode sends it in `Veld-Test-Now`.
     pub clock: String,
+    /// The flags that are on (`given flag`), sorted; the live mode sends them in
+    /// `Veld-Test-Flags`. A flag that is not here is off.
+    pub flags: Vec<String>,
     pub expected: Expected,
 }
 
@@ -183,6 +186,9 @@ fn fill_all(
     ir: &Ir,
     ex: &Example,
 ) -> Result<(FilledExample, Option<crate::saga::Script>), ExampleError> {
+    if let Some(seen) = as_the_example_sees_it(ir, ex) {
+        return fill_all(&seen, ex);
+    }
     if ex.event.is_some() {
         return Err(ExampleError::WrongForm {
             example: ex.name.clone(),
@@ -226,6 +232,7 @@ fn fill_all(
             caller,
         },
         clock,
+        flags: ex.flags.clone(),
         expected,
     };
     Ok((filled, saga))
@@ -534,6 +541,16 @@ impl Build<'_> {
     }
 }
 
+/// The contract with the statements that are off in this example removed (`spec/platform.md`
+/// section 11: a flag the example does not name is off). `None` when the contract has no flag,
+/// so nothing changes for a contract without flags.
+fn as_the_example_sees_it(ir: &Ir, ex: &Example) -> Option<Ir> {
+    if ex.event.is_some() || ir.flag_usage().is_empty() {
+        return None;
+    }
+    Some(crate::flags::FlagState::on(ex.flags.iter().cloned()).resolve(ir))
+}
+
 /// Runs an example offline: fills it in, runs the pipeline and compares the outcome with the
 /// expected one (section 12.3).
 ///
@@ -543,6 +560,9 @@ impl Build<'_> {
 pub fn run_example(ir: &Ir, ex: &Example) -> Result<ExampleReport, ExampleError> {
     if ex.event.is_some() {
         return run_event_example(ir, ex);
+    }
+    if let Some(seen) = as_the_example_sees_it(ir, ex) {
+        return run_example(&seen, ex);
     }
     let (service, endpoint) = locate(ir, ex)?;
     if endpoint.saga.is_some() {

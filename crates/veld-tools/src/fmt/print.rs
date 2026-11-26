@@ -8,7 +8,7 @@ use veld_compiler::syntax::ast::{
 use veld_compiler::syntax::lexer::CommentKind;
 
 use super::WIDTH;
-use super::expr::{derived_text, rule_lines};
+use super::expr::{derived_text, expr_text, rule_lines};
 use super::layout::{self, Attached, Layout, Lead, ROOT};
 use super::saga;
 use super::stmt;
@@ -409,18 +409,26 @@ impl Printer<'_> {
         if !e.variants.is_empty() {
             self.out.push('\n');
         }
-        let flows = e
-            .flows
-            .iter()
-            .map(|f| (f.span.start, "flow", " -> ", &f.states));
+        let flows = e.flows.iter().map(|f| {
+            let mut suffix = f
+                .after
+                .as_ref()
+                .map_or(String::new(), |d| format!(" after {}", expr_text(d)));
+            suffix.extend(f.flag.as_ref().map(stmt::flag_text));
+            (f.span.start, "flow", " -> ", &f.states, Some(suffix))
+        });
         let finals = e
             .finals
             .iter()
-            .map(|f| (f.span.start, "final", ", ", &f.states));
-        for (key, word, sep, states) in flows.chain(finals) {
+            .map(|f| (f.span.start, "final", ", ", &f.states, None));
+        for (key, word, sep, states, suffix) in flows.chain(finals) {
             let names: Vec<&str> = states.iter().map(|s| s.name.as_str()).collect();
             self.leading(key, 2);
-            self.out.push_str(&format!("  {word} {}", names.join(sep)));
+            self.out.push_str(&format!(
+                "  {word} {}{}",
+                names.join(sep),
+                suffix.unwrap_or_default()
+            ));
             self.end_line(key, 2);
         }
     }

@@ -18,7 +18,7 @@ pub const METHOD_WORDS: [&str; 8] = [
 /// Contextual words of the rules language (`spec/rules.md` section 2.2). Each is a keyword only
 /// where the grammar expects it and an ordinary identifier everywhere else, so a field, variant,
 /// parameter, endpoint or declaration may carry any of them. The reserved list never grows.
-pub const CONTEXTUAL_RULE_WORDS: [&str; 34] = [
+pub const CONTEXTUAL_RULE_WORDS: [&str; 38] = [
     "rule",
     "message",
     "implies",
@@ -36,6 +36,10 @@ pub const CONTEXTUAL_RULE_WORDS: [&str; 34] = [
     "final",
     "emits",
     "transition",
+    "after",
+    "since",
+    "flag",
+    "off",
     "policy",
     "permit",
     "forbid",
@@ -166,6 +170,11 @@ pub enum ArgShape {
     Idempotent,
     /// `max: n` and, optionally, `backoff: fixed | exponential`.
     Retry,
+    /// One constant duration: `seconds(2)` (`spec/platform.md` section 12).
+    Timeout,
+    /// Named objectives: `p50`, `p90`, `p95`, `p99` (durations) and `errors` (a percent), at
+    /// least one (`spec/platform.md` section 13).
+    Slo,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -187,7 +196,7 @@ const DEPRECATABLE: [Target; 12] = [
 ];
 
 /// The annotation table of `spec/language.md` section 7.
-pub const ANNOTATIONS: [AnnotationSpec; 21] = [
+pub const ANNOTATIONS: [AnnotationSpec; 23] = [
     AnnotationSpec {
         name: "auth",
         targets: &[Service, Endpoint],
@@ -314,6 +323,18 @@ pub const ANNOTATIONS: [AnnotationSpec; 21] = [
         args: ArgShape::Idempotent,
         usage: "@idempotent(header: \"Idempotency-Key\", required: true)",
     },
+    AnnotationSpec {
+        name: "timeout",
+        targets: &[Service, Endpoint],
+        args: ArgShape::Timeout,
+        usage: "@timeout(seconds(2))",
+    },
+    AnnotationSpec {
+        name: "slo",
+        targets: &[Service, Endpoint],
+        args: ArgShape::Slo,
+        usage: "@slo(p99: ms(300), errors: 0.1)",
+    },
 ];
 
 /// Looks an annotation up by name.
@@ -342,6 +363,7 @@ model ValidationIssue     { path: string, code: string, message: string }
 error InvalidTransition 409 { field: string, from: string, to: string }
 error PreconditionFailed 412 { expected: long, actual: long }
 error SagaFailed 502 { step: string, compensated: bool }
+error DeadlineExceeded 504 { timeoutMs: long }
 ";
 
 /// Name of the reserved prelude package.

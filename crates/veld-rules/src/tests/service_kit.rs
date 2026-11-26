@@ -74,6 +74,7 @@ pub fn require(
 ) -> EndpointRequire {
     let id_name = name.unwrap_or("require");
     EndpointRequire {
+        flag: None,
         name: name.map(str::to_owned),
         id: format!("veld:t/S.ep.{id_name}@0000000000000000"),
         expr,
@@ -89,6 +90,7 @@ pub fn require(
 pub fn ensure(name: Option<&str>, expr: Expr, reads: &[&str]) -> EndpointEnsure {
     let id_name = name.unwrap_or("ensure");
     EndpointEnsure {
+        flag: None,
         name: name.map(str::to_owned),
         id: format!("veld:t/S.ep.{id_name}@0000000000000000"),
         expr,
@@ -109,6 +111,8 @@ pub fn endpoint(
     rules: EndpointRules,
 ) -> Endpoint {
     Endpoint {
+        slo: None,
+        timeout_ms: None,
         name: name.to_owned(),
         method: Method::Post,
         path: format!("/{name}"),
@@ -192,6 +196,7 @@ pub fn eref(given: &str, path: &[&str]) -> ExampleValue {
 
 pub fn example(name: &str, endpoint: &str, outcome: ExampleOutcome) -> Example {
     Example {
+        flags: Vec::new(),
         name: name.to_owned(),
         package: PackageId(0),
         service: Some(ServiceId(0)),

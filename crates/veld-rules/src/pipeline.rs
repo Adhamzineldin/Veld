@@ -706,7 +706,7 @@ impl<'a> Pipeline<'a> {
         let Some(fact) = env.facts.get(&t.fact) else {
             return Err(InputError::NotAvailable("the fact of a transition").into());
         };
-        let guarded = machine::guard(self.ir, self.endpoint, t, fact)?;
+        let guarded = machine::guard(self.ir, self.endpoint, t, fact, env.now.unwrap_or_default())?;
         crate::coverage::record(|| t.id.clone(), guarded.is_none());
         match guarded {
             None => Ok(None),

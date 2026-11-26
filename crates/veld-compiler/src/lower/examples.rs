@@ -70,6 +70,7 @@ impl Lowerer<'_, '_> {
 
     fn example(&self, ex: &RExample, service: ServiceId) -> Example {
         Example {
+            flags: ex.flags.clone(),
             name: ex.name.clone(),
             package: self.pkg_id(ex.pkg),
             service: Some(service),

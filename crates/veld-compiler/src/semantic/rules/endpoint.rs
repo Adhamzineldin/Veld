@@ -71,6 +71,8 @@ pub struct RRequire {
     pub otherwise: Option<RElse>,
     pub docs: Option<String>,
     pub rollout: Option<Rollout>,
+    /// `when flag("name")`.
+    pub flag: Option<String>,
     pub span: Span,
 }
 
@@ -96,6 +98,8 @@ pub struct REnsure {
     pub reads: Vec<String>,
     pub docs: Option<String>,
     pub rollout: Option<Rollout>,
+    /// `when flag("name")`.
+    pub flag: Option<String>,
     pub span: Span,
 }
 
@@ -547,6 +551,7 @@ impl BlockChecker<'_, '_, '_> {
             otherwise: clause.flatten(),
             docs: doc_text(&r.docs),
             rollout: anns.rollout,
+            flag: r.flag.as_ref().map(|f| f.name.clone()),
             span: r.name.as_ref().map_or(r.span, |n| n.span),
         })
     }
@@ -735,6 +740,7 @@ impl BlockChecker<'_, '_, '_> {
             reads,
             docs: doc_text(&r.docs),
             rollout: anns.rollout,
+            flag: r.flag.as_ref().map(|f| f.name.clone()),
             span: r.name.as_ref().map_or(r.span, |n| n.span),
         })
     }

@@ -87,6 +87,10 @@ never reused. The ranges are listed in `language.md` section 9.
 | `E0932` | error | veld-compiler | The path of a `transition` does not start at a fact, does not end in a state machine, or passes through an optional step |
 | `E0933` | error | veld-compiler | A `transition` lists a move that is not a flow of the machine |
 | `E0934` | error | veld-compiler | More than one `transition` in an endpoint |
+| `E0935` | error | veld-compiler | `after` is wrong: on a `flow` with several edges, twice for one edge, or not a positive constant duration |
+| `E0936` | error | veld-compiler | `since` is wrong: missing on a timed edge, present on another, several sources, or not a required `datetime` field of the fact |
+| `E0937` | error | veld-compiler | `when flag(..)` is wrong: a bad name, or on a statement that cannot have it |
+| `E0938` | error | veld-compiler | `given flag` in an example names a flag that no statement of the workspace uses |
 | `E0940` | error | veld-compiler | The type after `principal` is not a model |
 | `E0941` | error | veld-compiler | More than one `principal` in a package |
 | `E0942` | error | veld-compiler | `allow` names an unknown policy, or its arguments do not fit the policy's parameters |
@@ -121,6 +125,7 @@ never reused. The ranges are listed in `language.md` section 9.
 | `W0930` | warning | veld-compiler | The same flow declared twice |
 | `W0931` | warning | veld-compiler | A state that is not final and has no way out |
 | `W0932` | warning | veld-compiler | A variant of a state machine that takes part in no flow and is not final |
+| `W0933` | warning | veld-compiler | A timed edge that no `transition` takes |
 | `W0940` | warning | veld-compiler | A policy with no `permit` permits nobody |
 | `W0970` | warning | veld-prove | `--prove`: some questions ended unknown or unsupported |
 | `W1001` | warning | veld-compiler | A published channel that nobody in the workspace subscribes to |

@@ -23,6 +23,12 @@ pub struct RTransition {
     /// Wire values of `from` (same order) and of `to`.
     pub from_wire: Vec<String>,
     pub to_wire: String,
+    /// `since` (`spec/platform.md` section 10): the steps below the fact of the `datetime` field.
+    /// Empty for a transition that is not timed.
+    pub since: Vec<Step>,
+    /// The milliseconds of the timed edge this transition takes; `Some` exactly when `since` is
+    /// not empty.
+    pub after_ms: Option<i64>,
     pub span: Span,
 }
 
@@ -111,7 +117,11 @@ impl Scope<'_, '_> {
             self.unknown_state(decl, &t.to, diags);
             return None;
         };
-        ok.then(|| RTransition {
+        let names: Vec<&str> = from.iter().map(|(n, _)| n.as_str()).collect();
+        let timing = ok
+            .then(|| super::since::check(self, t, decl, &names, &to.name, diags))
+            .flatten()?;
+        Some(RTransition {
             fact: t.path[0].name.clone(),
             steps,
             decl,
@@ -119,6 +129,8 @@ impl Scope<'_, '_> {
             from: from.into_iter().map(|(n, _)| n).collect(),
             to: to.name.clone(),
             to_wire: to.wire.clone(),
+            since: timing.0,
+            after_ms: timing.1,
             span: t.span,
         })
     }
@@ -283,7 +295,12 @@ impl Scope<'_, '_> {
         }
     }
 
-    fn field_of(&self, ty: &Type, id: &Ident, diags: &mut Vec<Diagnostic>) -> Option<&RField> {
+    pub(super) fn field_of(
+        &self,
+        ty: &Type,
+        id: &Ident,
+        diags: &mut Vec<Diagnostic>,
+    ) -> Option<&RField> {
         let info = match ty {
             Type::Decl(d)
                 if matches!(self.prog.decls[d.index()].kind, DKind::Model | DKind::Error) =>

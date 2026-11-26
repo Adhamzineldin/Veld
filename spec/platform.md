@@ -209,6 +209,22 @@ The contract does not keep timers. The row that holds the state is the only sour
 - **Examples** need nothing new: `given booking = { status: .pending, pendingSince: "2026-06-10T12:00:00Z" }`, `at "2026-06-11T11:00:00Z"`, and the call with its outcome.
 - **IR.** A flow gains `"after_ms": "86400000"` and a transition `"since": [ step ]`, each omitted when absent. The feature is `rules_timed`, opt-in.
 
+### 10.2 What the implementation chose where the text was silent
+
+- **Constant durations.** The constant fragment of `after` is: whole numbers, `days`, `hours`, `minutes`, `seconds` and `ms` of a constant whole number, and `+`, `-` (two durations) and `*` (a duration and a whole number), with checked 64-bit arithmetic. Anything else, including a name, is `E0935`. The same fragment, without operators, is what `@timeout` and `@slo` take (sections 12 and 13).
+- **A second declaration of an edge.** `flow a -> b after d` for an edge that is already declared is `E0935`, whichever of the two has the `after`. A plain `flow a -> b` repeated after a timed one stays `W0930`, and the first declaration decides.
+- **`W0933` is a workspace check.** It is not reported while the workspace has errors: a transition that failed its checks would make every edge look untaken.
+- **The due check** is part of the guard of §10.2 of `spec/rules.md`, after the state check, and uses the clock of the request: `now - since >= d`, in milliseconds, so a value that has waited exactly `d` is due and one that has waited one millisecond less is not. A `since` that is not a readable datetime is not due. The reference evaluator reads the clock only once, as for every other rule.
+- **Reference functions.** `veld_rules::timed_endpoints(ir)` lists the endpoints that take a timed edge, in service and endpoint order, with the fact, the wire path of `since`, the source and target wire values and the milliseconds; `veld_rules::timed_moves(machine)` lists `(from, to, ms)` for a machine, which is what `timedMoves()` returns. A runner asks the loader for facts that entered the source state at or before `now - after_ms`.
+- **`veld diff`.** What a caller built against the old contract sees is whether its call to the endpoint that takes the edge is still accepted.
+
+  | Change | Judged |
+  |---|---|
+  | an edge becomes timed, or its duration grows | breaking: a call that was accepted is refused |
+  | an edge stops being timed, or its duration shrinks | compatible |
+  | the `since` field of a timed transition changes | possibly breaking: the clock is another |
+  | a timed edge is removed or added | as any edge: removed is breaking, added is compatible |
+
 ## 11. Flags: `when flag("name")`
 
 ```veld
@@ -225,16 +241,36 @@ policy ManageBooking(user: User, booking: Booking) {
 flagged = "when" "flag" "(" STRING ")" ;      // after a rule, a require, an ensure, a permit, a forbid, a flow
 ```
 
-- `when flag("f")` is a suffix of one statement: an invariant, a `require` (after its `else`), an `ensure`, a `permit` or `forbid` clause (after its own `when`), and a `flow` with one edge. It says the statement exists only while the flag `f` is on. It is not an expression: `flag` cannot be called inside one. A flag name is 1 to 64 characters of `A-Z a-z 0-9 _ . -`, starting with a letter (`E0940`, also for the suffix on anything else and for a `flow` with more than one edge).
+- `when flag("f")` is a suffix of one statement: an invariant, a `require` (after its `else`), an `ensure`, a `permit` or `forbid` clause (after its own `when`), and a `flow` with one edge. It says the statement exists only while the flag `f` is on. It is not an expression: `flag` cannot be called inside one. A flag name is 1 to 64 characters of `A-Z a-z 0-9 _ . -`, starting with a letter (`E0937`, also for the suffix on anything else and for a `flow` with more than one edge).
 - **The provider.** The hooks object of a server whose contract uses flags requires `flags`, an interface with one operation: `isOn(name, context)`, where the context has the principal (absent without one), the caller's tenant text (absent without one) and the operation signature. A memory provider is generated for tests.
 - **One reading per request.** The server asks for each flag at most once per request, the first time a statement with it is reached, and uses that answer until the response is sent.
 - **Off** means the statement is not there: not evaluated, not reported, and for a `flow`, not an edge. **On** means it is an ordinary statement.
 - **When the provider fails**, the statement that restricts applies and the one that grants does not: an invariant, a `require`, an `ensure` and a `forbid` count as on; a `permit` and a `flow` count as off. The failure goes to `onError`.
 - **Clients.** A client has no provider. It skips flagged invariants in its local check, as it skips audited ones, and the rules digest leaves them out. `can<Endpoint>` and the policy functions take an optional last argument, a function from a flag name to a boolean; without it they decide as a failing provider does. `nextStates` lists flagged edges too: the server still decides.
 - **Events.** A flagged invariant of an event is evaluated by publisher and consumer with a context that has no principal.
-- **Examples.** `given flag "shortStays"` turns a flag on for the example; `given flag "shortStays" off` says off, which is also what a flag the example does not name is. A flag name no statement uses is `E0952`.
+- **Examples.** `given flag "shortStays"` turns a flag on for the example; `given flag "shortStays" off` says off, which is also what a flag the example does not name is. A flag name that no statement of the workspace uses is `E0938`.
 - **Tools.** `veld check` ends its summary with the flags the workspace uses and how many statements each gates; `--graph=json` has them under `flags`. `veld diff`: a new statement that restricts and is flagged is **possibly breaking** with the text "breaking once the flag `f` is on"; adding a flag to a statement that restricts is compatible and removing it is judged as adding the statement; for a statement that grants it is the other way round. `--prove` asks its questions with every flag on.
 - The flag is not part of a rule id. **IR:** `"flag": "shortStays"` on a `Rule`, an `EndpointRequire`, an `EndpointEnsure`, a `PolicyClause` and a flow, omitted when absent. The feature is `rules_flags`, opt-in.
+
+### 11.1 What the implementation chose where the text was silent
+
+- **Where the suffix stands.** Last on its statement, after the `message` when there is one: `rule r: e message "m" when flag("f")`, `require e else E { .. } message "m" when flag("f")`, `permit when e message "m" when flag("f")`, `flow a -> b after d when flag("f")` (`after` first). The formatter prints it at the end of the last line of the statement. `when`, `flag` and `off` are contextual: `when flag (` is a suffix, `when: T` is a field.
+- **A flag and an edge.** An edge declared twice is `W0930` whatever the flags say, and the first declaration decides (§10.2). A flagged `flow` with `after` is a flagged timed edge.
+- **`given flag`.** `given flag "name"` and `given flag "name" off` are `given` lines and may stand among the other `given` lines. The last line about a name decides, so `off` after an `on` turns it off again. A name no statement of the workspace uses is `E0938`, also with `off`. An example with `given flag` is a call example; an event example has no flags, and a flagged invariant of an event is off in it.
+- **The reference evaluator** takes the flags as a `FlagState`: `FlagState::on(names)` or `FlagState::ProviderFailed`. `FlagState::resolve(&ir)` is the contract as one request sees it: every statement that is off is removed and every statement that stays loses its flag, so a flag is read exactly once and the pipeline needs no flag logic of its own. The shared vectors say `"flags": ["name"]` and `"provider": "failed"` in a case. The partial check of a client has no provider and so ignores `flags`: it skips every flagged invariant.
+- **The test handler** reads the flags that are on from the request header `Veld-Test-Flags` (base64url of a JSON array of names), as it reads `Veld-Test-Now`; without it every flag is off. A fuzz request sends none.
+- **`veld check`** prints `flags: name (N statements), ...` after its summary, and `--graph=json` has `"flags": { "name": { "invariants": 1, "requires": 0, "ensures": 0, "permits": 0, "forbids": 0, "flows": 0 } }`, absent when there is no flag.
+- **`veld diff`.** A statement that has a flag on either side is judged on its own and left out of the ordinary comparison. What matters is what the statement does to a caller:
+
+  | Change | restricts (an invariant on a request, `require`, `forbid`) | grants (`permit`, `flow`) | guarantees (`ensure`, an invariant on a response) |
+  |---|---|---|---|
+  | a flagged statement is added | possibly breaking: "breaking once the flag `f` is on" | compatible | compatible |
+  | a flag is put on a statement | compatible | breaking for a `flow`, possibly breaking for a `permit` | compatible |
+  | the flag is taken off a statement | judged as adding it | compatible | compatible |
+  | a flagged statement is removed | compatible | possibly breaking | compatible |
+  | the flag changes from `f` to `g` | possibly breaking | possibly breaking | compatible |
+
+- **`--prove`** never reads a flag: every statement counts as present, which is what "every flag on" asks. The rules digest leaves a flagged invariant out, as it leaves an audited one out.
 
 ## 12. Deadlines: `@timeout`
 
@@ -248,6 +284,22 @@ get "/{id}" getBooking(id: uuid) -> Booking
 - **Server.** The request context carries `deadline`, the instant the request arrived plus `d`, and the target's usual way to notice it (an `AbortSignal` in TypeScript, a cancellation the handler future gets in Rust, `ctx.deadline()` and `ctx.expired()` in Java). When the pipeline has not produced its answer at the deadline, the server answers `504 DeadlineExceeded`. Where the language cannot stop a running handler, the handler runs on and its answer is dropped: the documentation says that a handler which writes must notice the deadline itself. The answer of a request that hit its deadline is not stored for an idempotency key (`spec/rules.md` §11.9: a `5xx` removes the entry).
 - **Client.** A generated client method of such an endpoint uses `d` as its default timeout when the caller sets none, and fails with the client's existing timeout error.
 - **IR.** `Endpoint` gains `"timeout_ms": "2000"`, omitted when absent. The feature is `timeouts`, opt-in.
+
+### 12.1 What the implementation chose where the text was silent
+
+- **Where it stands.** On an endpoint, or on a service as the default. An endpoint's own `@timeout` replaces the service's; they are not combined. A service's `@timeout` skips an endpoint that streams (`sse` or `ws`); an `@timeout` on such an endpoint itself is `E0602`.
+- **The argument** is one positional constant duration (`seconds(2)`, `ms(500)`, `minutes(1)`: a unit of a whole number, no operators). Zero, a negative one, one above `hours(1)`, a number, a string, a name argument, two arguments and no argument are `E0602`, and so is a second `@timeout` on one target.
+- **`DeadlineExceeded` is reached only by a contract that has a deadline,** as `PreconditionFailed` is reached only with a version guard: an endpoint with `timeout_ms` lists `504 DeadlineExceeded` among its errors, and the prelude declaration is in the IR only then.
+- **An example cannot state a deadline:** the reference evaluator has no clock for running time, so no example can make a request run past one.
+- **OpenAPI.** The operation has `"x-veld-timeout-ms": 2000` (a number) and the `504` answer of its error list.
+- **`veld diff`.**
+
+  | Change | Judged |
+  |---|---|
+  | a deadline is added, or made shorter | possibly breaking: a call that was slow enough may now answer `504` |
+  | a deadline is removed, or made longer | compatible |
+
+  The `504 DeadlineExceeded` that comes with a deadline is not reported as an added error as well.
 
 ## 13. Service levels: `@slo`
 
@@ -272,6 +324,58 @@ get "/{id}" getBooking(id: uuid) -> Booking
 - **`veld export slo [-o FILE]`** writes one YAML file of OpenSLO `v1` documents, one `SLO` per stated objective, in package, service and endpoint order: a ratio objective over a 28-day rolling window whose `good` and `total` queries are written for Prometheus over the metric above (`http_server_request_duration_seconds_bucket` and `_count`, selected by `veld_operation`). A latency objective whose threshold is not a bucket boundary the hook's consumer has is the user's to fix: the file is theirs, as for `veld export openapi`. A workspace without `@slo` is `E0803`.
 - **IR.** `Endpoint` gains `"slo": { "p99_ms": "300", "errors": "0.1" }`, omitted when absent. The feature is `slo`, opt-in: a generator declares it when it calls the hook.
 
+### 13.1 What the implementation chose where the text was silent
+
+- **Where it stands and what it takes.** On an endpoint, or on a service as the default of its endpoints that do not stream; an endpoint's own `@slo` replaces the service's, member by member it does not merge. On an endpoint that streams it is `E0602`. The arguments are all named. Each objective once. A latency is a positive constant duration (`ms(300)`, `seconds(1)`, as in section 12.1). `errors` is a number above 0 and below 100. At least one objective. The stated latencies must not decrease from `p50` to `p99`: `p99: ms(300)` with `p95: ms(500)` is `E0602`. `errors` is stored as the shortest decimal text of the number (`0.1`, `1`).
+- **`veld.operation`** in the `metrics` hook is the whole operation signature of the endpoint, `veld:<package>/<Service>.<endpoint>@<hash>`, as the `operation` member of a problem document has it.
+- **OpenAPI.** The operation has `"x-veld-slo": { "p99_ms": 300, "errors": 0.1 }`: the members that are stated, latencies in milliseconds as numbers, `errors` as the number of percent.
+- **`veld diff`.**
+
+  | Change | Judged |
+  |---|---|
+  | an objective is stated, or tightened (a lower latency or error share) | compatible: the server promises more |
+  | an objective is removed, or loosened | possibly breaking: a consumer may rely on the old promise |
+
+- **`veld export slo`.** It takes `-o FILE`, `--service NAME` and `--force` like `veld export openapi`, and writes to stdout without `-o`. The workspace without any `@slo` among the selected services is `E0803` and writes nothing. The document of one objective:
+
+  ```yaml
+  apiVersion: "openslo/v1"
+  kind: "SLO"
+  metadata:
+    name: "bookings-bookings-get-booking-p99"
+    displayName: "bookings/Bookings.getBooking p99"
+  spec:
+    description: "99% of the requests of getBooking answer within 300 ms."
+    service: "bookings-bookings"
+    indicator:
+      metadata:
+        name: "bookings-bookings-get-booking-p99-sli"
+      spec:
+        ratioMetric:
+          counted: true
+          good:
+            metricSource:
+              type: "Prometheus"
+              spec:
+                query: "sum(http_server_request_duration_seconds_bucket{veld_operation=\"<operation>\",le=\"0.3\"})"
+          total:
+            metricSource:
+              type: "Prometheus"
+              spec:
+                query: "sum(http_server_request_duration_seconds_count{veld_operation=\"<operation>\"})"
+    timeWindow:
+      - duration: "28d"
+        isRolling: true
+    budgetingMethod: "Occurrences"
+    objectives:
+      - displayName: "p99 under 300 ms"
+        target: 0.99
+  ```
+
+  - **The queries.** A latency objective `pNN` with `T` milliseconds: `good` is `sum(http_server_request_duration_seconds_bucket{veld_operation="<operation>",le="<T in seconds>"})`, `total` is `sum(http_server_request_duration_seconds_count{veld_operation="<operation>"})`, and the target is `0.5`, `0.9`, `0.95` or `0.99`. `errors: E`: `good` is `sum(http_server_request_duration_seconds_count{veld_operation="<operation>",http_response_status_code!~"5.."})`, `total` is the same count without the status, and the target is `1 - E/100`, worked out on the decimal text so no float reaches the file (`0.1` gives `0.999`). `<T in seconds>` is the shortest decimal: `300` gives `0.3`, `2000` gives `2`. `<operation>` is the whole operation signature. The window is the document's `timeWindow`; the queries are plain sums of the counters, and what the backend does with the window is its own.
+  - **Names.** `<package>-<service>-<endpoint>-<objective>` in lowercase words joined by `-` (`getBooking` is `get-booking`); the objective is `p50`, `p90`, `p95`, `p99` or `errors`. The indicator is the name with `-sli`.
+  - **Order and shape.** One document per objective, separated by `---`, in the order of the IR (package, service, endpoint) and, for an endpoint, `p50`, `p90`, `p95`, `p99`, `errors`. A small YAML writer of the compiler's own writes it: two spaces, every string quoted, numbers and booleans as they are. The same contract gives the same bytes.
+
 ## 14. The pipeline with P2
 
 Added to section 6: the deadline starts at step 1 and can end any later step; a flag is read where its statement stands; `metrics` is called after step 10. `run<Service>DueMoves` enters at step 3.
@@ -283,7 +387,8 @@ Added to section 6: the deadline starts at step 1 and can end any later step; a 
 | `E0935` | `after` is wrong: on a `flow` with several edges, twice for one edge, or not a positive constant duration |
 | `E0936` | `since` is wrong: missing on a timed edge, present on another, several sources, or not a required `datetime` field of the fact |
 | `W0933` | A timed edge that no `transition` takes |
-| `E0940` | `when flag(…)` is wrong: a bad name, or on a statement that cannot have it |
+| `E0937` | `when flag(…)` is wrong: a bad name, or on a statement that cannot have it |
+| `E0938` | `given flag "x"` in an example names a flag that no statement of the workspace uses |
 
 ## 16. What P2 chose
 

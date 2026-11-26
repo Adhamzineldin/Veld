@@ -54,7 +54,10 @@ pub(crate) fn sample_rules() -> EndpointRules {
             wire: "rev".into(),
             origin: origin(10),
         }),
-        transition: Some(sample_transition()),
+        transition: Some(EndpointTransition {
+            since: vec![step("pendingSince")],
+            ..sample_transition()
+        }),
         facts: vec![EndpointFact {
             name: "room".into(),
             ty: Type::Decl(DeclId(1)),
@@ -68,6 +71,7 @@ pub(crate) fn sample_rules() -> EndpointRules {
         }],
         requires: vec![
             EndpointRequire {
+                flag: Some("betaDesk".into()),
                 name: Some("fits".into()),
                 id: "veld:bookings/Bookings.book.fits@0123456789abcdef".into(),
                 expr: le(guests.clone(), capacity.clone()),
@@ -87,6 +91,7 @@ pub(crate) fn sample_rules() -> EndpointRules {
                 origin: origin(11),
             },
             EndpointRequire {
+                flag: None,
                 name: None,
                 id: "veld:bookings/Bookings.book.require@fedcba9876543210".into(),
                 expr: le(guests, path(Root::Param("max".into()), vec![], int_ty())),
@@ -100,6 +105,7 @@ pub(crate) fn sample_rules() -> EndpointRules {
         ],
         ensures: vec![
             EndpointEnsure {
+                flag: Some("betaDesk".into()),
                 name: Some("pending".into()),
                 id: "veld:bookings/Bookings.book.pending@0011223344556677".into(),
                 expr: Expr {
@@ -113,6 +119,7 @@ pub(crate) fn sample_rules() -> EndpointRules {
                 origin: origin(13),
             },
             EndpointEnsure {
+                flag: None,
                 name: None,
                 id: "veld:bookings/Bookings.book.ensure@7766554433221100".into(),
                 expr: Expr {
@@ -171,6 +178,7 @@ pub(crate) fn sample_examples() -> Vec<Example> {
     ]);
     let capacity = ExampleValue::Object(vec![field("capacity", ExampleValue::Json(json!(2)))]);
     let full = Example {
+        flags: vec!["betaDesk".into()],
         name: "a full room is rejected".into(),
         package: PackageId(0),
         service: Some(ServiceId(0)),
@@ -244,6 +252,7 @@ pub(crate) fn sample_examples() -> Vec<Example> {
 /// One event example per expectation form.
 pub(crate) fn sample_event_examples() -> Vec<Example> {
     let call = Example {
+        flags: Vec::new(),
         name: "a paid booking sends a receipt".into(),
         package: PackageId(0),
         service: None,
@@ -347,12 +356,14 @@ pub(crate) fn sample_policies() -> Vec<Policy> {
         ],
         clauses: vec![
             PolicyClause {
+                flag: Some("betaDesk".into()),
                 effect: PolicyEffect::Permit,
                 expr: owner,
                 message: None,
                 origin: origin(5),
             },
             PolicyClause {
+                flag: None,
                 effect: PolicyEffect::Forbid,
                 expr: suspended,
                 message: Some("A suspended account cannot manage rooms".into()),
@@ -366,6 +377,8 @@ pub(crate) fn sample_policies() -> Vec<Policy> {
 
 fn endpoint_with(rules: EndpointRules) -> Endpoint {
     Endpoint {
+        slo: None,
+        timeout_ms: None,
         name: "book".into(),
         method: Method::Post,
         path: "/".into(),
@@ -609,6 +622,7 @@ fn sample_transition() -> EndpointTransition {
         decl: DeclId(0),
         from: vec!["pending".into(), "paid".into()],
         to: "cancelled".into(),
+        since: vec![],
         origin: origin(12),
     }
 }
@@ -632,8 +646,10 @@ fn machine(flows: Vec<Flow>, finals: Vec<String>) -> Enum {
 
 fn flow(from: &str, to: &str) -> Flow {
     Flow {
+        flag: None,
         from: from.into(),
         to: to.into(),
+        after_ms: None,
     }
 }
 
@@ -773,6 +789,9 @@ fn the_exact_json_text_of_a_machine_and_a_transition() {
     );
 }
 
+mod flags;
+mod p2;
 mod policies;
 mod rollout;
+mod timed;
 mod version;

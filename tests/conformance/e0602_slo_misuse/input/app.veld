@@ -1,0 +1,39 @@
+// `@slo(...)` takes at least one of p50, p90, p95, p99 (positive durations, not slower than the
+// next) and errors (above 0, below 100, in percent), each once, all named.
+
+model Tick { n: int }
+
+service Rooms at "/rooms" {
+  @slo
+  get "/a" noArgs() -> Tick
+
+  @slo()
+  get "/b" empty() -> Tick
+
+  @slo(ms(300))
+  get "/c" unnamed() -> Tick
+
+  @slo(p98: ms(300))
+  get "/d" unknown() -> Tick
+
+  @slo(p99: 300)
+  get "/e" notADuration() -> Tick
+
+  @slo(p99: ms(0))
+  get "/f" zero() -> Tick
+
+  @slo(p99: ms(1), p99: ms(2))
+  get "/g" twice() -> Tick
+
+  @slo(errors: 0)
+  get "/h" noErrors() -> Tick
+
+  @slo(errors: 100)
+  get "/i" allErrors() -> Tick
+
+  @slo(p95: ms(500), p99: ms(300))
+  get "/j" backwards() -> Tick
+
+  @slo(errors: 1)
+  get "/ticks" ticks() -> stream Tick
+}

@@ -9,6 +9,8 @@ use std::collections::BTreeSet;
 use std::fmt;
 
 pub mod endpoint_rules;
+pub mod flags;
+pub use flags::FlagUsage;
 pub mod rules;
 pub mod saga;
 pub mod schema;
@@ -290,6 +292,12 @@ impl Ir {
                 if e.is_state_machine() {
                     f.insert(Feature::RulesTransitions);
                 }
+                if e.has_timed_edge() {
+                    f.insert(Feature::RulesTimed);
+                }
+                if e.flows.iter().any(|fl| fl.flag.is_some()) {
+                    f.insert(Feature::RulesFlags);
+                }
             }
         }
     }
@@ -351,6 +359,13 @@ impl Ir {
         self.close_over(stack)
     }
 
+    /// True when a `require`, an `ensure` or a clause of a policy that an `allow` of `ep` names
+    /// carries a flag (`spec/platform.md` section 11).
+    #[must_use]
+    pub fn endpoint_uses_flags(&self, ep: &Endpoint) -> bool {
+        ep.rules.first_flag_origin(self).is_some()
+    }
+
     /// Features of the endpoints of the services and the declarations they reach, without what
     /// only events use. A server that merely calls a service (`consumes`) uses these.
     #[must_use]
@@ -383,14 +398,26 @@ impl Ir {
                 if ep.saga.is_some() {
                     f.insert(Feature::Sagas);
                 }
+                if ep.timeout_ms.is_some() {
+                    f.insert(Feature::Timeouts);
+                }
+                if ep.slo.is_some() {
+                    f.insert(Feature::Slo);
+                }
                 if ep.rules.transition.is_some() {
                     f.insert(Feature::RulesTransitions);
+                }
+                if ep.rules.transition.as_ref().is_some_and(|t| t.is_timed()) {
+                    f.insert(Feature::RulesTimed);
                 }
                 if ep.rules.first_policy_origin().is_some() {
                     f.insert(Feature::RulesPolicies);
                 }
                 if ep.rules.first_audited_origin().is_some() {
                     f.insert(Feature::RulesRollout);
+                }
+                if self.endpoint_uses_flags(ep) {
+                    f.insert(Feature::RulesFlags);
                 }
                 for p in &ep.params {
                     p.ty.features(&mut f);
@@ -722,6 +749,12 @@ impl Enum {
     pub fn is_state_machine(&self) -> bool {
         !self.flows.is_empty()
     }
+
+    /// True when at least one edge is timed (`spec/platform.md` section 10).
+    #[must_use]
+    pub fn has_timed_edge(&self) -> bool {
+        self.flows.iter().any(Flow::is_timed)
+    }
 }
 
 /// One edge of a state machine, by variant names.
@@ -729,6 +762,23 @@ impl Enum {
 pub struct Flow {
     pub from: String,
     pub to: String,
+    /// `flow a -> b after d` (`spec/platform.md` section 10): the milliseconds a value must have
+    /// been in `from` before it may move, a decimal string so it stays exact. Omitted from the
+    /// JSON when the edge is not timed, so the IR of a contract without `after` is unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub after_ms: Option<String>,
+    /// `flow a -> b when flag("name")` (`spec/platform.md` section 11): the edge exists only
+    /// while the flag is on. Omitted from the JSON when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flag: Option<String>,
+}
+
+impl Flow {
+    /// True for a timed edge.
+    #[must_use]
+    pub fn is_timed(&self) -> bool {
+        self.after_ms.is_some()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -896,6 +946,9 @@ fn rule_features(rules: &[Rule], f: &mut BTreeSet<Feature>) {
     }
     if rules.iter().any(Rule::is_audited) {
         f.insert(Feature::RulesRollout);
+    }
+    if rules.iter().any(|r| r.flag.is_some()) {
+        f.insert(Feature::RulesFlags);
     }
 }
 
@@ -1114,7 +1167,48 @@ pub struct Endpoint {
     /// JSON when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub saga: Option<Saga>,
+    /// `@timeout` (`spec/platform.md` section 12): the deadline of a request in milliseconds, a
+    /// decimal string so it stays exact. Omitted from the JSON when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeout_ms: Option<String>,
+    /// `@slo` (`spec/platform.md` section 13). Omitted from the JSON when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub slo: Option<Slo>,
     pub origin: Origin,
+}
+
+/// The service level an endpoint states with `@slo` (`spec/platform.md` section 13). Each
+/// latency is the milliseconds within which that share of requests answers, as a decimal string;
+/// `errors` is the most percent of requests that may end in a `5xx`, as written. A member that
+/// the annotation does not give is omitted from the JSON.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct Slo {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub p50_ms: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub p90_ms: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub p95_ms: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub p99_ms: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub errors: Option<String>,
+}
+
+impl Slo {
+    /// The stated latency objectives as `(name, milliseconds)`, fastest share first.
+    #[must_use]
+    pub fn latencies(&self) -> Vec<(&'static str, &str)> {
+        [
+            ("p50", &self.p50_ms),
+            ("p90", &self.p90_ms),
+            ("p95", &self.p95_ms),
+            ("p99", &self.p99_ms),
+        ]
+        .into_iter()
+        .filter_map(|(n, v)| v.as_deref().map(|v| (n, v)))
+        .collect()
+    }
 }
 
 /// `@idempotent` on an endpoint (`spec/rules.md` sections 11.8 and 11.9).
@@ -1304,6 +1398,15 @@ pub enum Feature {
     /// `@retry`, `@deadLetter` or `@ordered` on a channel that a service publishes or subscribes
     /// to (`spec/events.md` section 10.8).
     EventsDelivery,
+    /// `flow ... after` and `transition ... since` (`spec/platform.md` section 10).
+    RulesTimed,
+    /// `when flag("name")` on a rule, a `require`, an `ensure`, a `permit` or `forbid` clause or
+    /// a `flow` (`spec/platform.md` section 11).
+    RulesFlags,
+    /// `@timeout` (`spec/platform.md` section 12).
+    Timeouts,
+    /// `@slo` (`spec/platform.md` section 13): the metrics hook.
+    Slo,
 }
 
 impl Feature {
@@ -1316,15 +1419,19 @@ impl Feature {
     ];
     /// Features no generator supports unless it says so: [`Feature::ALL`] minus these is what
     /// `all_except` hands out. A feature that changes what a rule means must be opted into.
-    pub const OPT_IN: [Feature; 6] = [
+    pub const OPT_IN: [Feature; 10] = [
         Feature::RulesRollout,
         Feature::RulesVersion,
         Feature::Idempotency,
         Feature::RulesDerived,
         Feature::Sagas,
         Feature::EventsDelivery,
+        Feature::RulesTimed,
+        Feature::RulesFlags,
+        Feature::Timeouts,
+        Feature::Slo,
     ];
-    pub const ALL: [Feature; 21] = [
+    pub const ALL: [Feature; 25] = [
         Feature::Unions,
         Feature::Constraints,
         Feature::Auth,
@@ -1346,6 +1453,10 @@ impl Feature {
         Feature::Sagas,
         Feature::Events,
         Feature::EventsDelivery,
+        Feature::RulesTimed,
+        Feature::RulesFlags,
+        Feature::Timeouts,
+        Feature::Slo,
     ];
     #[must_use]
     pub fn name(self) -> &'static str {
@@ -1371,6 +1482,10 @@ impl Feature {
             Feature::Sagas => "sagas",
             Feature::Events => "events",
             Feature::EventsDelivery => "events_delivery",
+            Feature::RulesTimed => "rules_timed",
+            Feature::RulesFlags => "rules_flags",
+            Feature::Timeouts => "timeouts",
+            Feature::Slo => "slo",
         }
     }
     #[must_use]

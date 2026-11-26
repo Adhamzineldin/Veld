@@ -176,6 +176,20 @@ fn run_examples(
     count
 }
 
+/// The flags the workspace uses and how many statements each gates, one line
+/// (`spec/platform.md` section 11); `None` without flags.
+fn flags_line(ir: &veld_ir::Ir) -> Option<String> {
+    let usage = ir.flag_usage();
+    if usage.is_empty() {
+        return None;
+    }
+    let items: Vec<String> = usage
+        .iter()
+        .map(|(name, u)| format!("{name} ({})", pipeline::plural(u.total(), "statement")))
+        .collect();
+    Some(format!("flags: {}", items.join(", ")))
+}
+
 fn summarize(
     ui: &Ui,
     ir: &veld_ir::Ir,
@@ -233,5 +247,8 @@ fn summarize(
             &format!("in {}", render::elapsed(started.elapsed()))
         )
     ));
+    if let Some(line) = flags_line(ir) {
+        ui.info(&line);
+    }
     Ok(Exit::Ok)
 }

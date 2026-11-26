@@ -5,7 +5,7 @@
 
 use std::collections::BTreeSet;
 
-use super::{RFlow, RVariant};
+use super::{RFlow, RVariant, timed};
 use crate::diagnostics::{Diagnostic, Span};
 use crate::syntax::ast::{self, Ident};
 
@@ -34,12 +34,13 @@ pub(super) fn resolve_machine(
     let mut m = RMachine::default();
     let before = diags.len();
     for f in &e.flows {
+        let after = timed::after_ms(f, diags);
         for pair in f.states.windows(2) {
             let (a, b) = (&pair[0], &pair[1]);
             // Both names are always looked at, so a bad chain reports every bad name.
             let (ok_a, ok_b) = (known(a, diags), known(b, diags));
             if ok_a && ok_b {
-                add_edge(&mut m, a, b, diags);
+                add_edge(&mut m, (a, b), after, f, diags);
             }
         }
     }
@@ -80,8 +81,18 @@ fn unknown_state(
     );
 }
 
-fn add_edge(m: &mut RMachine, a: &Ident, b: &Ident, diags: &mut Vec<Diagnostic>) {
+fn add_edge(
+    m: &mut RMachine,
+    (a, b): (&Ident, &Ident),
+    after_ms: Option<i64>,
+    stmt: &ast::FlowStmt,
+    diags: &mut Vec<Diagnostic>,
+) {
     if let Some(first) = m.flows.iter().find(|f| f.from == a.name && f.to == b.name) {
+        if stmt.after.is_some() {
+            timed::second_after(first.span, a, b, diags);
+            return;
+        }
         diags.push(
             Diagnostic::warning(
                 "W0930",
@@ -95,6 +106,8 @@ fn add_edge(m: &mut RMachine, a: &Ident, b: &Ident, diags: &mut Vec<Diagnostic>)
     m.flows.push(RFlow {
         from: a.name.clone(),
         to: b.name.clone(),
+        after_ms,
+        flag: stmt.flag.as_ref().map(|f| f.name.clone()),
         span: a.span.to(b.span),
     });
 }

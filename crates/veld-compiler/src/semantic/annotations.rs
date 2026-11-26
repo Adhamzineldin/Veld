@@ -33,6 +33,10 @@ pub struct Anns<'a> {
     pub dead_letter: bool,
     /// `@ordered` on a channel.
     pub ordered: bool,
+    /// `@timeout` on a service or an endpoint.
+    pub timeout: Option<super::service_levels::Timeout>,
+    /// `@slo` on a service or an endpoint.
+    pub slo: Option<super::service_levels::SloArgs>,
 }
 
 /// What `@idempotent(header: "Name", required: true)` says (`spec/rules.md` section 11.8).
@@ -115,7 +119,7 @@ fn hidden_from(spec: &language::AnnotationSpec, target: Target) -> bool {
     let rules_only = |t: &Target| matches!(t, Target::Rule | Target::Require | Target::Ensure);
     // `@version` and `@idempotent` are suggested only where they apply, so that the help of an
     // unknown annotation on a model or a service reads as it did before they existed.
-    let own_target_only = matches!(spec.name, "version" | "idempotent");
+    let own_target_only = matches!(spec.name, "version" | "idempotent" | "timeout" | "slo");
     (!events_only(&target) && spec.targets.iter().all(events_only))
         || (!rules_only(&target) && spec.targets.iter().all(rules_only))
         || (own_target_only && !spec.targets.contains(&target))
@@ -234,6 +238,8 @@ fn apply<'a>(
         ("rollout", _) => out.rollout = Some(rollout_arg(args)?),
         ("idempotent", _) => out.idempotent = Some(idempotent_args(args, a.span)?),
         ("retry", _) => out.retry = Some(retry_args(args)?),
+        ("timeout", _) => out.timeout = Some(super::service_levels::timeout_args(args, a.span)?),
+        ("slo", _) => out.slo = Some(super::service_levels::slo_args(args, a.span)?),
         ("auth", _) => out.auth = Some(auth_arg(args)?.declared()),
         ("middleware", _) => out.middleware = Some(idents(args)?),
         _ => {}

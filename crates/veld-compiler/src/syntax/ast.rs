@@ -168,7 +168,18 @@ pub struct Rule {
     pub name: Ident,
     pub expr: Expr,
     pub message: Option<StrLit>,
+    /// `when flag("name")` after the message or the expression.
+    pub flag: Option<FlagSuffix>,
     /// From the `rule` keyword to the end of the message or expression.
+    pub span: Span,
+}
+
+/// `when flag("name")` after a statement (`spec/platform.md` section 11).
+#[derive(Debug, Clone, PartialEq)]
+pub struct FlagSuffix {
+    /// The name inside the quotes.
+    pub name: String,
+    /// From `when` to the closing `)`.
     pub span: Span,
 }
 
@@ -300,6 +311,10 @@ pub struct EnumDecl {
 #[derive(Debug, Clone, PartialEq)]
 pub struct FlowStmt {
     pub states: Vec<Ident>,
+    /// `after d` (`spec/platform.md` section 10): the duration a value stays in the source state.
+    pub after: Option<Expr>,
+    /// `when flag("name")`, after `after`.
+    pub flag: Option<FlagSuffix>,
     pub span: Span,
 }
 
@@ -567,6 +582,8 @@ pub struct PolicyClause {
     pub forbid: bool,
     pub expr: Expr,
     pub message: Option<StrLit>,
+    /// `when flag("name")` after the message or the expression.
+    pub flag: Option<FlagSuffix>,
     /// From the `permit` or `forbid` word to the end of the clause.
     pub span: Span,
 }
@@ -587,6 +604,9 @@ pub struct TransitionStmt {
     pub path: Vec<Ident>,
     pub from: Vec<Ident>,
     pub to: Ident,
+    /// `since fact.path` (`spec/platform.md` section 10): the field that holds the time the value
+    /// entered its state, as written: the fact first.
+    pub since: Option<Vec<Ident>>,
     pub span: Span,
 }
 
@@ -610,6 +630,8 @@ pub struct RequireStmt {
     pub expr: Expr,
     pub otherwise: Option<Else>,
     pub message: Option<StrLit>,
+    /// `when flag("name")` after the message, the `else` or the expression.
+    pub flag: Option<FlagSuffix>,
     pub span: Span,
 }
 
@@ -636,6 +658,8 @@ pub struct EnsureStmt {
     pub name: Option<Ident>,
     pub expr: Expr,
     pub message: Option<StrLit>,
+    /// `when flag("name")` after the message or the expression.
+    pub flag: Option<FlagSuffix>,
     pub span: Span,
 }
 
@@ -747,11 +771,14 @@ pub enum ExpectKind {
     Rejected,
 }
 
-/// `given name = value` (`None` is `absent`).
+/// `given name = value` (`None` is `absent`), or `given flag "name" [off]`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Given {
+    /// The fact, or for a flag the name inside the quotes (with the span of the string).
     pub name: Ident,
     pub value: Option<Value>,
+    /// `Some(on)` for `given flag "name"` (`on`) and `given flag "name" off` (`!on`).
+    pub flag: Option<bool>,
     pub span: Span,
 }
 

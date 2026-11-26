@@ -1,0 +1,18 @@
+// `when`, `flag` and `off` are words only in the shape `when flag(` and after `given flag "x"`.
+
+model Toggle { flag: string, when: int, off: bool }
+
+enum Mode {
+  flag, off
+  flow flag -> off
+  final off
+}
+
+service Toggles at "/toggles" {
+  get "/a" flag(@query off: int) -> Toggle
+  get "/b" off() -> Toggle
+}
+
+example "an endpoint called flag" {
+  flag(off: 1) -> ok
+}

@@ -1,0 +1,25 @@
+// `when flag("name")` on invariants (spec/platform.md section 11). A flag that is off means the
+// invariant is not there: not evaluated, not reported. A case turns flags on with `flags`, and
+// says `"provider": "failed"` when the flag provider failed, which makes a statement that
+// restricts apply.
+//
+// This file and flags.json.pending wait under a `.pending` suffix until a generator implements
+// `rules_flags`; the reference evaluator runs them already (crates/veld-rules/tests/platform_p2.rs).
+
+model Stay {
+  start: datetime
+  end: datetime
+  guests: int
+
+  rule maxStay: end - start <= days(14) when flag("shortStays")
+  rule positive: guests > 0
+  rule smallGroup: guests <= 6 when flag("smallGroups")
+}
+
+model Stays {
+  items: Stay[]
+}
+
+model Child extends Stay {
+  note: string
+}

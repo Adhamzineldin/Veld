@@ -43,6 +43,10 @@
     "final",
     "emits",
     "transition",
+    "after",
+    "since",
+    "flag",
+    "off",
     "policy",
     "permit",
     "forbid",
@@ -290,7 +294,25 @@
       ],
       "args": "idempotent",
       "usage": "@idempotent(header: \"Idempotency-Key\", required: true)"
+    },
+    {
+      "name": "timeout",
+      "targets": [
+        "service",
+        "endpoint"
+      ],
+      "args": "timeout",
+      "usage": "@timeout(seconds(2))"
+    },
+    {
+      "name": "slo",
+      "targets": [
+        "service",
+        "endpoint"
+      ],
+      "args": "slo",
+      "usage": "@slo(p99: ms(300), errors: 0.1)"
     }
   ],
-  "prelude": "error BadRequest 400      { message: string }\nerror Unauthorized 401    { message?: string }\nerror Forbidden 403       { message?: string }\nerror NotFound 404        { resource?: string }\nerror Conflict 409        { message: string }\nerror ValidationError 422 { issues: ValidationIssue[] }\nerror TooManyRequests 429 { retryAfter?: int }\nerror Internal 500        { message?: string }\nmodel ValidationIssue     { path: string, code: string, message: string }\nerror InvalidTransition 409 { field: string, from: string, to: string }\nerror PreconditionFailed 412 { expected: long, actual: long }\nerror SagaFailed 502 { step: string, compensated: bool }\n"
+  "prelude": "error BadRequest 400      { message: string }\nerror Unauthorized 401    { message?: string }\nerror Forbidden 403       { message?: string }\nerror NotFound 404        { resource?: string }\nerror Conflict 409        { message: string }\nerror ValidationError 422 { issues: ValidationIssue[] }\nerror TooManyRequests 429 { retryAfter?: int }\nerror Internal 500        { message?: string }\nmodel ValidationIssue     { path: string, code: string, message: string }\nerror InvalidTransition 409 { field: string, from: string, to: string }\nerror PreconditionFailed 412 { expected: long, actual: long }\nerror SagaFailed 502 { step: string, compensated: bool }\nerror DeadlineExceeded 504 { timeoutMs: long }\n"
 }

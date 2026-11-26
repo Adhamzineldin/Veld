@@ -341,6 +341,10 @@ fn first_use(
                 Feature::Idempotency => ep.idempotency.is_some(),
                 Feature::Sagas => ep.saga.is_some(),
                 Feature::RulesTransitions => ep.rules.transition.is_some(),
+                Feature::RulesTimed => ep.rules.transition.as_ref().is_some_and(|t| t.is_timed()),
+                Feature::RulesFlags => ir.endpoint_uses_flags(ep),
+                Feature::Timeouts => ep.timeout_ms.is_some(),
+                Feature::Slo => ep.slo.is_some(),
                 Feature::RulesPolicies => ep.rules.first_policy_origin().is_some(),
                 Feature::Unions
                 | Feature::Constraints
@@ -369,7 +373,10 @@ fn first_use(
                 if feature == Feature::Idempotency {
                     return ep.idempotency.as_ref().map(|i| i.origin.clone());
                 }
-                if feature == Feature::RulesTransitions {
+                if feature == Feature::RulesFlags {
+                    return ep.rules.first_flag_origin(ir).cloned();
+                }
+                if feature == Feature::RulesTransitions || feature == Feature::RulesTimed {
                     return ep.rules.transition.as_ref().map(|t| t.origin.clone());
                 }
                 if feature == Feature::RulesPolicies {
@@ -404,6 +411,12 @@ fn first_use(
     if feature == Feature::RulesTransitions {
         return first_machine_origin(ir, &searched(ir, services, req));
     }
+    if feature == Feature::RulesTimed {
+        return first_timed_origin(ir, &searched(ir, services, req));
+    }
+    if feature == Feature::RulesFlags {
+        return first_flag_origin(ir, &searched(ir, services, req));
+    }
     let wanted_union = feature == Feature::Unions;
     let wanted_const = feature == Feature::Consts;
     searched(ir, services, req)
@@ -425,6 +438,33 @@ fn searched(ir: &Ir, services: &[ServiceId], req: &GenRequest<'_>) -> Vec<DeclId
         ids.extend(ir.event_reachable_decls(&req.services));
     }
     ids
+}
+
+/// The origin of the first flagged invariant of a reachable declaration, else of the first
+/// reachable enum with a flagged flow (`spec/platform.md` section 11).
+fn first_flag_origin(ir: &Ir, decls: &[DeclId]) -> Option<Origin> {
+    let rule = decls.iter().copied().find_map(|id| {
+        let flagged = ir.decl(id).rules().iter().find(|r| r.flag.is_some());
+        flagged.map(|r| r.origin.clone())
+    });
+    rule.or_else(|| {
+        decls
+            .iter()
+            .copied()
+            .map(|id| ir.decl(id))
+            .find(|d| matches!(&d.kind, DeclKind::Enum(e) if e.flows.iter().any(|f| f.flag.is_some())))
+            .map(|d| d.origin.clone())
+    })
+}
+
+/// The origin of the first reachable enum with a timed edge (`spec/platform.md` section 10).
+fn first_timed_origin(ir: &Ir, decls: &[DeclId]) -> Option<Origin> {
+    decls
+        .iter()
+        .copied()
+        .map(|id| ir.decl(id))
+        .find(|d| matches!(&d.kind, DeclKind::Enum(e) if e.has_timed_edge()))
+        .map(|d| d.origin.clone())
 }
 
 /// The origin of the first reachable enum that is a state machine.
@@ -497,6 +537,8 @@ mod tests {
 
     fn ir_with_sse() -> Ir {
         let ep = Endpoint {
+            slo: None,
+            timeout_ms: None,
             name: "feed".into(),
             method: Method::Get,
             path: "/feed".into(),
@@ -710,6 +752,7 @@ mod tests {
 
     fn event_rule(audited: bool, line: u32) -> Rule {
         Rule {
+            flag: None,
             name: "r".into(),
             id: "veld:a/Paid.r@0".into(),
             expr: Expr {

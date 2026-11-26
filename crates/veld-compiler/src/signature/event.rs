@@ -21,7 +21,10 @@ pub fn event_rules_digest(ir: &Ir, event: DeclId) -> Option<String> {
             continue;
         }
         let d = ir.decl(id);
-        let enforced = d.rules().iter().filter(|r| !r.is_audited());
+        let enforced = d
+            .rules()
+            .iter()
+            .filter(|r| !r.is_audited() && r.flag.is_none());
         ids.extend(enforced.map(|r| r.id.as_str()));
         // A subscriber reads the derived values the publisher computed (`spec/rules.md` 17.2).
         ids.extend(d.fields().iter().filter_map(|f| f.derived_id.as_deref()));

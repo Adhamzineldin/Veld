@@ -137,6 +137,8 @@ export interface Variant {
 export interface Flow {
   from: string;
   to: string;
+  after_ms?: string;
+  flag?: string;
 }
 
 export interface UnionArm {
@@ -209,6 +211,7 @@ export interface Rule {
   docs: string | null;
   deprecated: string | null;
   rollout?: Rollout;
+  flag?: string;
   origin: Origin;
 }
 
@@ -307,6 +310,14 @@ export interface EndpointVersion {
   origin: Origin;
 }
 
+export interface Slo {
+  p50_ms?: string;
+  p90_ms?: string;
+  p95_ms?: string;
+  p99_ms?: string;
+  errors?: string;
+}
+
 export interface Idempotency {
   header: string;
   required: boolean;
@@ -321,6 +332,7 @@ export interface EndpointTransition {
   decl: DeclId;
   from: string[];
   to: string;
+  since?: Step[];
   origin: Origin;
 }
 
@@ -352,6 +364,7 @@ export interface PolicyClause {
   effect: PolicyEffect;
   expr: Expr;
   message: string | null;
+  flag?: string;
   origin: Origin;
 }
 
@@ -378,6 +391,7 @@ export interface EndpointRequire {
   reads: string[];
   else: ElseError | null;
   rollout?: Rollout;
+  flag?: string;
   docs: string | null;
   origin: Origin;
 }
@@ -401,6 +415,7 @@ export interface EndpointEnsure {
   message: string | null;
   reads: string[];
   rollout?: Rollout;
+  flag?: string;
   docs: string | null;
   origin: Origin;
 }
@@ -425,6 +440,7 @@ export interface Example {
   if_match?: ExampleIfMatch;
   key?: ExampleKey;
   saga?: ExampleSaga;
+  flags?: string[];
   outcome?: ExampleOutcome;
   event?: ExampleEvent;
   expect?: EventExpect;
@@ -642,6 +658,8 @@ export interface Endpoint {
   rules?: EndpointRules;
   idempotency?: Idempotency;
   saga?: Saga;
+  timeout_ms?: string;
+  slo?: Slo;
   origin: Origin;
 }
 
@@ -675,7 +693,7 @@ export interface Auth {
 
 export type AuthKind = "none" | "bearer" | "basic" | "api_key";
 
-export type Feature = "unions" | "constraints" | "auth" | "middleware" | "headers" | "streaming_sse" | "streaming_ws" | "page" | "consts" | "bytes" | "rules_invariants" | "rules_endpoint" | "rules_transitions" | "rules_policies" | "rules_rollout" | "rules_version" | "idempotency" | "rules_derived" | "sagas" | "events" | "events_delivery";
+export type Feature = "unions" | "constraints" | "auth" | "middleware" | "headers" | "streaming_sse" | "streaming_ws" | "page" | "consts" | "bytes" | "rules_invariants" | "rules_endpoint" | "rules_transitions" | "rules_policies" | "rules_rollout" | "rules_version" | "idempotency" | "rules_derived" | "sagas" | "events" | "events_delivery" | "rules_timed" | "rules_flags" | "timeouts" | "slo";
 
 export type Role = "server" | "client";
 

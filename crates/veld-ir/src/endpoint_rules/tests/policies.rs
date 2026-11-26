@@ -133,6 +133,7 @@ fn an_allow_uses_the_policies_feature() {
 fn reading_the_principal_without_an_allow_needs_the_policies_feature_too() {
     let principal = path(Root::Principal, vec![step("suspended")], bool_ty());
     let require = EndpointRequire {
+        flag: None,
         name: None,
         id: "veld:bookings/Bookings.book.require@0123456789abcdef".into(),
         expr: principal.clone(),

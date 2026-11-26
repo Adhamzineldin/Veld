@@ -5,7 +5,7 @@
 //! they are variant names.
 
 use super::Parser;
-use crate::syntax::ast::{Doc, FinalStmt, FlowStmt, Ident, Stmt, TransitionStmt};
+use crate::syntax::ast::{Doc, Expr, FinalStmt, FlowStmt, Ident, Stmt, TransitionStmt};
 use crate::syntax::lexer::Tok;
 
 impl Parser<'_> {
@@ -30,11 +30,33 @@ impl Parser<'_> {
         while self.eat(&Tok::Arrow) {
             states.push(self.expect_ident("a state name after `->`")?);
         }
+        let after = self.after_clause()?;
+        let at = self.span();
+        let flag = self.flag_suffix()?;
+        if flag.is_some() && states.len() != 2 {
+            self.err(
+                "E0937",
+                "`when flag(..)` belongs to a `flow` with exactly one edge",
+                at,
+            );
+        }
         self.reject_emits();
         Some(FlowStmt {
             states,
+            after,
+            flag,
             span: self.end_from(kw),
         })
+    }
+
+    /// `after d` on the line of a `flow`: the cursor is on `after` when there is one.
+    fn after_clause(&mut self) -> Option<Option<Expr>> {
+        let same_line = !self.newline_between(self.prev_end(), self.span().start);
+        if !(self.at_word("after") && same_line) {
+            return Some(None);
+        }
+        self.advance();
+        self.parse_expr().map(Some)
     }
 
     /// `final a, b`, with the cursor on `final`.
@@ -47,6 +69,7 @@ impl Parser<'_> {
             }
             states.push(self.expect_ident("a state name")?);
         }
+        self.reject_flag_suffix("`final`");
         Some(FinalStmt {
             states,
             span: self.end_from(kw),
@@ -73,6 +96,20 @@ impl Parser<'_> {
         }
     }
 
+    /// `since fact.path` on the line of a `transition`.
+    fn since_clause(&mut self) -> Option<Option<Vec<Ident>>> {
+        let same_line = !self.newline_between(self.prev_end(), self.span().start);
+        if !(self.at_word("since") && same_line) {
+            return Some(None);
+        }
+        self.advance();
+        let mut path = vec![self.expect_ident("the path of the field after `since`")?];
+        while self.eat(&Tok::Dot) {
+            path.push(self.expect_ident("a field name")?);
+        }
+        Some(Some(path))
+    }
+
     /// `transition fact.path: a, b -> c`, with the cursor on `transition`.
     pub(super) fn transition_stmt(&mut self, docs: &[Doc]) -> Option<Stmt> {
         let kw = self.advance().span;
@@ -94,10 +131,13 @@ impl Parser<'_> {
         }
         self.expect(&Tok::Arrow, "`->` before the target state")?;
         let to = self.expect_ident("the target state")?;
+        let since = self.since_clause()?;
+        self.reject_flag_suffix("`transition`");
         Some(Stmt::Transition(TransitionStmt {
             path,
             from,
             to,
+            since,
             span: self.end_from(kw),
         }))
     }

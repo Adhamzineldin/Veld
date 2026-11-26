@@ -79,7 +79,7 @@
       "patterns": [
         {
           "name": "entity.other.attribute-name.annotation.veld",
-          "match": "@(auth|middleware|deprecated|min|max|length|pattern|format|readonly|wire|example|discriminator|query|header|topic|retry|deadLetter|ordered|rollout|version|idempotent)\\b"
+          "match": "@(auth|middleware|deprecated|min|max|length|pattern|format|readonly|wire|example|discriminator|query|header|topic|retry|deadLetter|ordered|rollout|version|idempotent|timeout|slo)\\b"
         },
         {
           "name": "invalid.illegal.unknown-annotation.veld",
@@ -205,7 +205,7 @@
         },
         {
           "name": "support.class.error.veld",
-          "match": "\\b(BadRequest|Unauthorized|Forbidden|NotFound|Conflict|ValidationError|TooManyRequests|Internal|InvalidTransition|PreconditionFailed|SagaFailed)\\b"
+          "match": "\\b(BadRequest|Unauthorized|Forbidden|NotFound|Conflict|ValidationError|TooManyRequests|Internal|InvalidTransition|PreconditionFailed|SagaFailed|DeadlineExceeded)\\b"
         },
         {
           "name": "entity.name.type.reference.veld",

@@ -22,6 +22,9 @@ pub const FACTS: &str = "Veld-Test-Facts";
 pub const PRINCIPAL: &str = "Veld-Test-Principal";
 /// The header that carries the clock: an RFC 3339 datetime, as text.
 pub const NOW: &str = "Veld-Test-Now";
+/// The header that carries the flags that are on: base64url of a JSON array of names. Absent
+/// when no flag is on (`spec/platform.md` section 11).
+pub const FLAGS: &str = "Veld-Test-Flags";
 /// The header that carries the handler's result: base64url of its wire JSON.
 pub const RESULT: &str = "Veld-Test-Result";
 /// `1` asks the test handler to stop after step 6 and answer `204`.
@@ -232,6 +235,12 @@ fn test_headers(filled: &FilledExample, dry_run: bool) -> Vec<(String, String)> 
         out.push((PRINCIPAL.to_owned(), b64_json(p)));
     }
     out.push((NOW.to_owned(), filled.clock.clone()));
+    if !filled.flags.is_empty() {
+        out.push((
+            FLAGS.to_owned(),
+            b64_json(&Json::from(filled.flags.clone())),
+        ));
+    }
     match &req.result {
         Some(r) => out.push((RESULT.to_owned(), b64_json(r))),
         None if dry_run => out.push((DRY_RUN.to_owned(), "1".to_owned())),

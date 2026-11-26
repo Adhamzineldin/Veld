@@ -7,12 +7,16 @@ mod collect;
 mod delivery_tests;
 #[cfg(test)]
 mod derived_tests;
+mod duration;
 mod events;
 #[cfg(test)]
 mod events_groundwork_tests;
 #[cfg(test)]
 mod events_tests;
 mod examples;
+mod flags;
+#[cfg(test)]
+mod flags_tests;
 pub use collect::module_path;
 mod inherit;
 mod machine;
@@ -28,9 +32,15 @@ mod rollout_tests;
 pub mod rules;
 #[cfg(test)]
 mod saga_tests;
+mod service_levels;
+#[cfg(test)]
+mod service_levels_tests;
 mod services;
 #[cfg(test)]
 mod tests;
+mod timed;
+#[cfg(test)]
+mod timed_tests;
 mod typeck;
 #[cfg(test)]
 mod version_tests;
@@ -137,6 +147,10 @@ pub struct RVariant {
 pub struct RFlow {
     pub from: String,
     pub to: String,
+    /// `after d` in milliseconds (`spec/platform.md` section 10); `None` for an ordinary edge.
+    pub after_ms: Option<i64>,
+    /// `when flag("name")`.
+    pub flag: Option<String>,
     pub span: Span,
 }
 
@@ -216,6 +230,10 @@ pub struct REndpoint {
     pub idempotent: Option<RIdempotent>,
     /// The checked saga of a `saga post` endpoint (`spec/platform.md` section 17).
     pub saga: Option<RSaga>,
+    /// `@timeout` in milliseconds, from the endpoint or its service (`spec/platform.md` section 12).
+    pub timeout_ms: Option<i64>,
+    /// `@slo`, from the endpoint or its service (`spec/platform.md` section 13).
+    pub slo: Option<service_levels::SloArgs>,
     pub span: Span,
 }
 
@@ -342,6 +360,7 @@ pub fn analyze_lenient<'a>(
     rules::check_policies(&mut prog, diags);
     services::analyze(&mut prog, diags);
     rules::check_sagas(&mut prog, consumes, diags);
+    timed::check_unused_edges(&prog, diags);
     examples::check(&mut prog, diags);
     events::check_graph(&prog, diags);
     resolve::report_unused_imports(&prog, diags);

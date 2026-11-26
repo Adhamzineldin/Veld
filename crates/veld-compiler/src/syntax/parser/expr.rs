@@ -58,12 +58,17 @@ impl Parser<'_> {
             end = text.span;
             message = Some(text);
         }
+        let flag = self.flag_suffix()?;
+        if let Some(f) = &flag {
+            end = f.span;
+        }
         Some(Rule {
             docs,
             annotations,
             name,
             expr,
             message,
+            flag,
             span: kw.to(end),
         })
     }

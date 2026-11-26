@@ -19,6 +19,9 @@ mod event;
 mod event_tests;
 mod example;
 mod expr;
+mod flags;
+#[cfg(test)]
+mod flags_tests;
 #[cfg(test)]
 mod idempotency_tests;
 mod machine;
@@ -30,6 +33,8 @@ mod rule_tests;
 mod saga;
 #[cfg(test)]
 mod saga_tests;
+#[cfg(test)]
+mod timed_tests;
 
 use super::ast::{
     Annotation, Arg, ArgValue, ConstDecl, Decl, DeclKind, Doc, Endpoint, EnumDecl, ErrorDecl,

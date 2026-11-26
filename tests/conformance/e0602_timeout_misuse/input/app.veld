@@ -1,0 +1,39 @@
+// `@timeout(d)` takes one positive constant duration of at most one hour, on a service or an
+// endpoint, and not on an endpoint that streams.
+
+model Tick { n: int }
+
+@timeout(seconds(0))
+service Bad at "/bad" {
+  get "/a" a() -> Tick
+}
+
+service Rooms at "/rooms" {
+  @timeout
+  get "/a" noArgs() -> Tick
+
+  @timeout(2)
+  get "/b" notADuration() -> Tick
+
+  @timeout(hours(2))
+  get "/c" tooLong() -> Tick
+
+  @timeout(seconds(1), seconds(2))
+  get "/d" twoArgs() -> Tick
+
+  @timeout(d: seconds(1))
+  get "/e" named() -> Tick
+
+  @timeout(seconds(1))
+  @timeout(seconds(2))
+  get "/f" twice() -> Tick
+
+  @timeout(seconds(1))
+  get "/ticks" ticks() -> stream Tick
+
+  @timeout(seconds(1))
+  ws "/chat" chat(body: stream Tick) -> stream Tick
+}
+
+@timeout(seconds(1))
+model Nope { a: int }

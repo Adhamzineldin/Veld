@@ -11,7 +11,7 @@ mod values;
 
 use std::collections::BTreeMap;
 
-use super::{DKind, Program, REndpoint, ServiceInfo};
+use super::{DKind, Program, REndpoint, ServiceInfo, flags};
 use crate::diagnostics::{Diagnostic, Span};
 use crate::syntax::ast::{self, doc_text};
 use values::Values;
@@ -40,6 +40,8 @@ pub struct RExample {
     pub key: Option<RKey>,
     /// The saga lines (`spec/platform.md` section 18).
     pub saga: Option<RSagaExample>,
+    /// The flags that are on (`given flag "name"`), sorted.
+    pub flags: Vec<String>,
     pub outcome: ROutcome,
     pub docs: Option<String>,
     pub span: Span,
@@ -265,7 +267,9 @@ fn check_example(
     };
     let mut ok = true;
     let mut givens = Vec::new();
-    for g in &ex.givens {
+    let flags = flags::example_flags(prog, ex, v.diags);
+    ok &= flags.is_some();
+    for g in ex.givens.iter().filter(|g| g.flag.is_none()) {
         match v.given(g, ep) {
             Some(x) => givens.push(x),
             None => ok = false,
@@ -297,6 +301,7 @@ fn check_example(
         if_match,
         key,
         saga,
+        flags: flags.unwrap_or_default(),
         outcome,
         docs: doc_text(&ex.docs),
         span: ex.span,

@@ -142,4 +142,6 @@ mod rollout_tests;
 #[cfg(test)]
 mod saga_tests;
 #[cfg(test)]
+mod service_levels_tests;
+#[cfg(test)]
 mod tests;

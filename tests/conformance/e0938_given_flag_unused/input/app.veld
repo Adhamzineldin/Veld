@@ -1,0 +1,25 @@
+// A `given flag` must name a flag that some statement of the workspace uses.
+
+model Room {
+  id: uuid
+  open: bool
+}
+
+service Rooms at "/rooms" {
+  post "/{id}/book" book(id: uuid) -> 204 {
+    fact room: Room = id
+    require room.open when flag("openOnly")
+  }
+}
+
+example "a flag with a typo" {
+  given flag "opneOnly"
+  given room = { open: true }
+  book(id: room.id) -> ok
+}
+
+example "a flag nothing uses, turned off" {
+  given flag "nothing" off
+  given room = { open: true }
+  book(id: room.id) -> ok
+}
