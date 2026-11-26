@@ -1,4 +1,4 @@
-//! `veld export <openapi|rules|runtime-schema|slo|retention|ir>`.
+//! `veld export <openapi|asyncapi|rules|runtime-schema|slo|retention|ir>`.
 //!
 //! The exports print to stdout, or to `-o FILE`. A file is written with
 //! `output::write_unmanaged`: staged and contained like generated output, but never tracked in a
@@ -38,6 +38,12 @@ pub fn run(ui: &Ui, config: Option<&Path>, cmd: &ExportCommand) -> Result<Exit> 
                 force: out.force,
             };
             document(ui, &out, "retention.md", &veld_tools::retention_report(ir))
+        }
+        ExportCommand::Asyncapi(out) => {
+            let services = selected_services(ir, &out.service)?;
+            let value = veld_tools::asyncapi(ir, &services)
+                .map_err(|e| user(format!("E0803: `export asyncapi`: {e}")))?;
+            document(ui, out, "asyncapi.json", &pretty(&value)?)
         }
         ExportCommand::Openapi(out) => {
             let value = veld_tools::openapi(ir, &selected_services(ir, &out.service)?);

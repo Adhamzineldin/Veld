@@ -178,3 +178,11 @@ fn node_refuses_retention_and_typescript_ignores_it() {
     veld_emit_conformance::check_retention_is_refused(&Node).unwrap();
     veld_emit_conformance::check_retention_is_refused(&TypeScript).unwrap();
 }
+
+/// `emits` and the outbox (`spec/events.md` section 11): the Node server has not built them and
+/// refuses a service with an emitting `transition` with `E0801`; the TypeScript client keeps its bytes.
+#[test]
+fn node_refuses_the_outbox_and_typescript_ignores_it() {
+    veld_emit_conformance::check_events_outbox_is_refused(&Node).unwrap();
+    veld_emit_conformance::check_events_outbox_is_ignored_by_clients(&TypeScript).unwrap();
+}

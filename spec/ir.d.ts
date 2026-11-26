@@ -142,6 +142,7 @@ export interface Flow {
   to: string;
   after_ms?: string;
   flag?: string;
+  emits?: DeclId;
 }
 
 export interface UnionArm {
@@ -338,7 +339,13 @@ export interface EndpointTransition {
   from: string[];
   to: string;
   since?: Step[];
+  emits?: TransitionEmit[];
   origin: Origin;
+}
+
+export interface TransitionEmit {
+  event: DeclId;
+  channel: ChannelId;
 }
 
 export interface EndpointAllow {
@@ -457,6 +464,7 @@ export interface Example {
   outcome?: ExampleOutcome;
   event?: ExampleEvent;
   expect?: EventExpect;
+  emitted?: DeclId[];
   docs: string | null;
   origin: Origin;
 }
@@ -706,7 +714,7 @@ export interface Auth {
 
 export type AuthKind = "none" | "bearer" | "basic" | "api_key";
 
-export type Feature = "unions" | "constraints" | "auth" | "middleware" | "headers" | "streaming_sse" | "streaming_ws" | "page" | "consts" | "bytes" | "rules_invariants" | "rules_endpoint" | "rules_transitions" | "rules_policies" | "rules_rollout" | "rules_version" | "idempotency" | "rules_derived" | "sagas" | "events" | "events_delivery" | "rules_timed" | "rules_flags" | "timeouts" | "slo" | "messages" | "retention";
+export type Feature = "unions" | "constraints" | "auth" | "middleware" | "headers" | "streaming_sse" | "streaming_ws" | "page" | "consts" | "bytes" | "rules_invariants" | "rules_endpoint" | "rules_transitions" | "rules_policies" | "rules_rollout" | "rules_version" | "idempotency" | "rules_derived" | "sagas" | "events" | "events_delivery" | "rules_timed" | "rules_flags" | "timeouts" | "slo" | "messages" | "retention" | "events_outbox";
 
 export type Role = "server" | "client";
 

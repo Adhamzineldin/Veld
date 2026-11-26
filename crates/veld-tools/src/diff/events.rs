@@ -2,10 +2,12 @@
 //!
 //! An addition is compatible: a new event, a new channel, an event a channel newly carries (a
 //! consumer ignores an event it does not know, `spec/events.md` section 8), a new `publishes`
-//! line, a new subscription and a new `on` line of a subscription. Every other change is one
-//! entry, classified "possibly breaking": the table of `spec/events.md` section 16, which judges
-//! a change for both sides of the stream, is a later phase. Events are matched by qualified name,
-//! like other declarations.
+//! line, a new subscription and a new `on` line of a subscription. A change inside an event is
+//! judged field by field (`event_fields.rs`), a rule by the digest, and a channel by what a
+//! consumer sees: its topic, its key and the events it carries (the table of `spec/events.md`
+//! section 16, which judges a change for both sides of the stream). A `publishes` line or a
+//! subscription that goes away or changes is one entry, "possibly breaking". Events are matched
+//! by qualified name, like other declarations.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -34,18 +36,18 @@ pub(super) fn diff_events(ctx: &Ctx<'_>, out: &mut Vec<Change>) {
     diff_services(ctx, out);
 }
 
-/// The signature differs, or the rules digest does: a rule is not part of the signature, and a
-/// changed rule is a change of the event (`spec/events.md` section 16).
-fn event_changed(o: &Decl, n: &Decl) -> bool {
-    let digest = |d: &Decl| match &d.kind {
+/// The rules digest of an event: a rule is not part of the signature, so a rule that was added,
+/// removed or changed (on the event, or on a declaration it reaches) is a change of the digest
+/// (`spec/events.md` section 6.1).
+fn digest(d: &Decl) -> Option<String> {
+    match &d.kind {
         DeclKind::Event(e) => e.rules_digest.clone(),
         DeclKind::Model(_)
         | DeclKind::Error(_)
         | DeclKind::Enum(_)
         | DeclKind::Union(_)
         | DeclKind::Const(_) => None,
-    };
-    o.sig != n.sig || digest(o) != digest(n)
+    }
 }
 
 fn diff_event_decls(ctx: &Ctx<'_>, out: &mut Vec<Change>) {
@@ -57,12 +59,19 @@ fn diff_event_decls(ctx: &Ctx<'_>, out: &mut Vec<Change>) {
                 q,
                 format!("event `{}` was removed or renamed", o.name),
             )),
-            Some(n) if event_changed(o, n) => out.push(Change::possibly_breaking(
-                ChangeKind::EventChanged,
-                q,
-                format!("event `{}` changed", o.name),
-            )),
-            Some(_) => {}
+            Some(n) => {
+                super::event_fields::diff_event_fields(ctx, o, n, out);
+                if digest(o) != digest(n) {
+                    out.push(Change::possibly_breaking(
+                        ChangeKind::EventChanged,
+                        q,
+                        format!(
+                            "a rule of event `{}` was added, removed or changed; a consumer whose digest differs stops checking rules (`spec/events.md` section 8)",
+                            o.name
+                        ),
+                    ));
+                }
+            }
         }
     }
     for (q, n) in &new {
@@ -84,7 +93,7 @@ fn carried(ir: &Ir, c: &Channel) -> BTreeSet<String> {
         .collect()
 }
 
-fn key_text(ir: &Ir, c: &Channel) -> String {
+pub(super) fn key_text(ir: &Ir, c: &Channel) -> String {
     c.key.as_ref().map_or_else(String::new, |k| {
         format!("{}:{}", k.wire, super::type_key(ir, &k.ty))
     })
@@ -107,16 +116,48 @@ fn new_event_names(ir: &Ir, c: &Channel, known: &BTreeSet<String>) -> String {
         .join(", ")
 }
 
-/// What changed in a channel that both contracts have. A channel that only carries more events
-/// is compatible; a changed topic or key, or an event it no longer carries, is not.
-fn channel_change(ctx: &Ctx<'_>, q: &str, o: &Channel, n: &Channel) -> Option<Change> {
-    let (was, is) = (carried(ctx.old, o), carried(ctx.new, n));
-    let same_address = o.topic == n.topic && key_text(ctx.old, o) == key_text(ctx.new, n);
-    if same_address && was == is {
-        return None;
+/// What changed in a channel that both contracts have, by what a consumer sees. A changed topic
+/// or key and an event the channel no longer carries are each breaking: a consumer subscribed to
+/// the old topic stops receiving, the order per key moves, and a consumer that handles the event
+/// has nothing to handle. Events the channel newly carries are compatible.
+fn channel_change(ctx: &Ctx<'_>, q: &str, o: &Channel, n: &Channel) -> Vec<Change> {
+    let mut out = Vec::new();
+    if o.topic != n.topic {
+        out.push(Change::breaking(
+            ChangeKind::ChannelChanged,
+            q,
+            format!(
+                "the topic of channel `{}` changed from `{}` to `{}`: a consumer of the old topic receives nothing more",
+                o.name, o.topic, n.topic
+            ),
+        ));
     }
-    if same_address && was.is_subset(&is) {
-        return Some(Change::non_breaking(
+    let (old_key, new_key) = (key_text(ctx.old, o), key_text(ctx.new, n));
+    if old_key != new_key {
+        out.push(Change::breaking(
+            ChangeKind::ChannelChanged,
+            q,
+            format!(
+                "the key of channel `{}` changed from {} to {}: the order per key and the `subject` of every message change",
+                o.name,
+                key_name(&old_key),
+                key_name(&new_key)
+            ),
+        ));
+    }
+    let (was, is) = (carried(ctx.old, o), carried(ctx.new, n));
+    for gone in was.difference(&is) {
+        out.push(Change::breaking(
+            ChangeKind::ChannelChanged,
+            q,
+            format!(
+                "channel `{}` no longer carries `{gone}`: a consumer that handles it never receives it",
+                o.name
+            ),
+        ));
+    }
+    if is.difference(&was).next().is_some() {
+        out.push(Change::non_breaking(
             ChangeKind::ChannelChanged,
             q,
             format!(
@@ -126,11 +167,15 @@ fn channel_change(ctx: &Ctx<'_>, q: &str, o: &Channel, n: &Channel) -> Option<Ch
             ),
         ));
     }
-    Some(Change::possibly_breaking(
-        ChangeKind::ChannelChanged,
-        q,
-        format!("the topic, key or events of channel `{}` changed", o.name),
-    ))
+    out
+}
+
+fn key_name(text: &str) -> String {
+    if text.is_empty() {
+        "no key".to_owned()
+    } else {
+        format!("`{text}`")
+    }
 }
 
 fn diff_channels(ctx: &Ctx<'_>, out: &mut Vec<Change>) {

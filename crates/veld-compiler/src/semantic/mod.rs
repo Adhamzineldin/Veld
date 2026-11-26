@@ -8,6 +8,9 @@ mod delivery_tests;
 #[cfg(test)]
 mod derived_tests;
 mod duration;
+mod emits;
+#[cfg(test)]
+mod emits_tests;
 mod events;
 #[cfg(test)]
 mod events_groundwork_tests;
@@ -66,7 +69,7 @@ pub use examples::{
     RSagaExpect,
 };
 pub use policy::{PolicyEntry, PolicyInfo, RClause, RPolicy, RPolicyParam, RPrincipal};
-pub(crate) use rules::{RAllow, RBlock, RElse, REnsure, RRequire, RSaga, RTransition};
+pub(crate) use rules::{RAllow, RBlock, RElse, REmitted, REnsure, RRequire, RSaga, RTransition};
 pub(crate) use rules::{RArg, RCall, RObjectField, RStep, RValue};
 pub use rules::{RDerived, RRule};
 use veld_ir::{Auth, Constraints, Literal, Method, PackageKind, Type};
@@ -162,6 +165,17 @@ pub struct RFlow {
     /// `when flag("name")`.
     pub flag: Option<String>,
     pub span: Span,
+    /// `emits Event` (`spec/events.md` section 11), once the name is looked up.
+    pub emits: Option<REmits>,
+}
+
+/// The event a flow emits: the name as written, and the event (an index into `Program::decls`)
+/// once it is resolved. `event` stays `None` when the name is no event (`E1011` was reported).
+#[derive(Debug, Clone)]
+pub struct REmits {
+    pub name: String,
+    pub span: Span,
+    pub event: Option<usize>,
 }
 
 #[derive(Debug, Clone)]
@@ -368,6 +382,7 @@ pub fn analyze_lenient<'a>(
     inherit::flatten(&mut prog, diags);
     typeck::check(&mut prog, diags);
     events::check_channels(&mut prog, diags);
+    emits::resolve_flows(&mut prog, diags);
     rules::check(&mut prog, diags);
     rules::check_policies(&mut prog, diags);
     services::analyze(&mut prog, diags);

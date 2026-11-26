@@ -65,7 +65,7 @@ never reused. The ranges are listed in `language.md` section 9.
 | `E0712` | error | veld-project | `--affected` cannot read the changes (no git work tree, `git` not found, unknown ref) |
 | `E0801` | error | veld-codegen | Feature not supported by the generator for this role |
 | `E0802` | error | veld-codegen | Invalid generator options (also: an unsupported language version, such as `java = "19"`) |
-| `E0803` | error | veld-codegen | Invalid generation request (unknown framework or framework version, a language older than the framework needs, unknown role or service, nothing selected, a `-p` name or a target that is not a selected member) |
+| `E0803` | error | veld-codegen | Invalid generation request (unknown framework or framework version, a language older than the framework needs, unknown role or service, nothing selected, a `-p` name or a target that is not a selected member, `export asyncapi` of a workspace without channels) |
 | `E0804` | error | generators | Constant cannot be represented by the generator |
 | `E0805` | error | generators | Generated file cannot be added (bad or duplicate path) |
 | `E0899` | error | veld-codegen | Generator or plugin failure without a more specific code |
@@ -110,7 +110,8 @@ never reused. The ranges are listed in `language.md` section 9.
 | `E1007` | error | veld-compiler | The group of a subscription is not a legal group name |
 | `E1008` | error | veld-compiler | An `on` line names an event the channel does not carry or names an event twice, or the subscription has no `on` line |
 | `E1009` | error | veld-compiler | A subscription to a channel of this workspace that no service publishes |
-| `E1010` | error | veld-compiler | An event example that is not well formed: the channel cannot be chosen, an `expect` names no handler of that channel, `rejected` is combined with `called`, or `once` follows `not called` or `rejected` |
+| `E1010` | error | veld-compiler | An example whose `expect` lines are not well formed. An event example: the channel cannot be chosen, an `expect` names no handler of that channel, `rejected` is combined with `called`, or `once` follows `not called` or `rejected`. A call example: `expect emitted` on an endpoint whose transition emits nothing, naming an event it does not emit, twice, without `ok` and `returns`, or combined with `expect not emitted` |
+| `E1011` | error | veld-compiler | `emits` is wrong: on a flow with several edges, not an event, or a transition whose service publishes no channel that carries it |
 | `E1201` | error | veld-compiler | A step or a `compensate` of a saga names a service that is not consumed, an endpoint that does not exist or cannot be called (a stream or `ws`), or arguments that do not fit |
 | `E1202` | error | veld-compiler | The endpoint of a step or of a `compensate` is not `@idempotent` |
 | `E1203` | error | veld-compiler | A saga is not well formed: two steps with one name, a step called like a parameter, an expression that reads a later step, a last step whose type is not the success type, a missing or wrong `timeout`, a saga without a step, or a statement of an endpoint block in it |

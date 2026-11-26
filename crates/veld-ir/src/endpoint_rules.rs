@@ -227,7 +227,19 @@ pub struct EndpointTransition {
     /// for a transition that is not timed.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub since: Vec<Step>,
+    /// The events the move emits, with the channel the service sends each on
+    /// (`spec/events.md` section 11). Not part of `id`. Omitted from the JSON when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub emits: Vec<TransitionEmit>,
     pub origin: Origin,
+}
+
+/// One event a transition emits: the first channel of the service's `publishes` lines that
+/// carries it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TransitionEmit {
+    pub event: DeclId,
+    pub channel: ChannelId,
 }
 
 impl EndpointTransition {
@@ -358,6 +370,11 @@ pub struct Example {
     /// The `expect` lines of an event example.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expect: Option<EventExpect>,
+    /// `expect emitted E` and `expect not emitted` of a call example (`spec/events.md` section
+    /// 11.1): the events the call writes to the outbox, an empty list for `not emitted`. Omitted
+    /// from the JSON when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub emitted: Option<Vec<DeclId>>,
     pub origin: Origin,
 }
 

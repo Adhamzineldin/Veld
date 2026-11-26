@@ -414,6 +414,7 @@ impl Printer<'_> {
                 .after
                 .as_ref()
                 .map_or(String::new(), |d| format!(" after {}", expr_text(d)));
+            suffix.extend(f.emits.as_ref().map(|i| format!(" emits {}", i.name)));
             suffix.extend(f.flag.as_ref().map(stmt::flag_text));
             (f.span.start, "flow", " -> ", &f.states, Some(suffix))
         });
@@ -560,6 +561,9 @@ impl Printer<'_> {
                     p.end_line(key, 2);
                     if let Some(e) = x.saga.as_ref().and_then(|s| s.expect.as_ref()) {
                         p.example_line(e.span.start, &saga::expect_line(e));
+                    }
+                    for x in &c.emitted {
+                        p.example_line(x.span.start, &stmt::emitted_line(x));
                     }
                 }
                 ExampleBody::Event(e) => p.event_example(e),

@@ -435,6 +435,8 @@ pub struct TestArgs {
 pub enum ExportCommand {
     /// OpenAPI 3.1 JSON
     Openapi(DocOut),
+    /// AsyncAPI 3.0 JSON: the channels, their messages and the operations of the services
+    Asyncapi(DocOut),
     /// The rules of the workspace as Markdown, for people who do not read contracts
     Rules(DocOut),
     /// JSON Schema of the runtime config of a target
@@ -647,6 +649,7 @@ mod tests {
             "--service",
             "t",
         ]);
+        ok(&["export", "asyncapi", "-o", "events.json", "--service", "s"]);
         bad(&["export", "nope"]);
         ok(&["export", "ir"]);
         ok(&["plugin", "new", "kotlin"]);

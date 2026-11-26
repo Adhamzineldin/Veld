@@ -228,6 +228,11 @@ impl Live {
         {
             report.verdict = Verdict::Failed(mismatch);
         }
+        if report.passed()
+            && let Some(mismatch) = self.emitted_differences(ir, ex, &answer)
+        {
+            report.verdict = Verdict::Failed(mismatch);
+        }
         if let Some(reported) = reported {
             // What the server tells its hook about audited rules is judged like the rest of the
             // answer (section 12.4): a server that never reports one must not pass.
@@ -240,6 +245,19 @@ impl Live {
             report.audited = audited;
         }
         Ok(report)
+    }
+
+    /// Where the events the test handler says it wrote (`Veld-Test-Emitted`) differ from the
+    /// `expect emitted` lines of `ex` (`spec/events.md` section 11.1). `None` for an example
+    /// without such a line.
+    fn emitted_differences(&self, ir: &Ir, ex: &Example, answer: &Answer) -> Option<Mismatch> {
+        let expected = ex.emitted.as_ref()?;
+        let names: Vec<String> = expected
+            .iter()
+            .filter_map(|id| ir.decls.get(id.index()))
+            .map(|d| d.name.clone())
+            .collect();
+        crate::emitted::differences(&names, answer)
     }
 
     /// The audited rules the server must report for `filled`, and whether its list must equal them.

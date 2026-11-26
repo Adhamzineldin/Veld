@@ -109,6 +109,10 @@ impl Lowerer<'_, '_> {
             docs: ex.docs.clone(),
             event: None,
             expect: None,
+            emitted: ex
+                .emitted
+                .as_ref()
+                .map(|l| l.iter().map(|e| self.decl_id(*e)).collect()),
             origin: self.origin(ex.span, ex.module),
         }
     }

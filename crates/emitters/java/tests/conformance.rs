@@ -186,3 +186,11 @@ fn java_refuses_message_catalogs() {
 fn java_refuses_retention_in_the_server_only() {
     veld_emit_conformance::check_retention_is_refused(&Java).unwrap();
 }
+
+/// `emits` and the outbox (`spec/events.md` section 11): the Java server has not built them and
+/// refuses a service with an emitting `transition` with `E0801`; the client keeps its bytes.
+#[test]
+fn java_server_refuses_the_outbox_and_the_client_ignores_it() {
+    veld_emit_conformance::check_events_outbox_is_refused(&Java).unwrap();
+    veld_emit_conformance::check_events_outbox_is_ignored_by_clients(&Java).unwrap();
+}

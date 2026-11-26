@@ -26,6 +26,7 @@ pub mod machine;
 pub mod messages;
 mod old;
 mod ops;
+pub mod outbox;
 mod pipeline;
 pub mod policy;
 pub mod redact;

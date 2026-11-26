@@ -313,7 +313,9 @@ pub struct FlowStmt {
     pub states: Vec<Ident>,
     /// `after d` (`spec/platform.md` section 10): the duration a value stays in the source state.
     pub after: Option<Expr>,
-    /// `when flag("name")`, after `after`.
+    /// `emits Event` (`spec/events.md` section 11), when the line has it.
+    pub emits: Option<Ident>,
+    /// `when flag("name")`, last on the line (`spec/platform.md` section 11).
     pub flag: Option<FlagSuffix>,
     pub span: Span,
 }
@@ -806,6 +808,16 @@ pub struct ExampleCall {
     pub args: Vec<ExampleArgument>,
     pub returns: Option<Value>,
     pub outcome: Outcome,
+    /// `expect emitted E` and `expect not emitted` after the call (`spec/events.md` section
+    /// 11.1), in source order. The checker rejects a mix.
+    pub emitted: Vec<ExpectEmitted>,
+    pub span: Span,
+}
+
+/// `expect emitted Event`, or `expect not emitted` when `event` is `None`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExpectEmitted {
+    pub event: Option<TypeExpr>,
     pub span: Span,
 }
 

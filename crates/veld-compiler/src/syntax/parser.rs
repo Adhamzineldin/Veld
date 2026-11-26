@@ -11,6 +11,9 @@
 
 #[cfg(test)]
 mod derived_tests;
+mod emitted;
+#[cfg(test)]
+mod emitted_tests;
 mod endpoint;
 #[cfg(test)]
 mod endpoint_tests;

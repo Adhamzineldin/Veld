@@ -40,7 +40,7 @@ pub(crate) use endpoint::{
 pub(super) use policy::check_policies;
 pub(super) use saga::check as check_sagas;
 pub(crate) use saga::{RArg, RCall, RObjectField, RSaga, RStep, RValue};
-pub(crate) use transition::RTransition;
+pub(crate) use transition::{REmitted, RTransition};
 use veld_ir::Rollout;
 use veld_ir::rules::Expr;
 pub(crate) use version::{RVersion, guard as version_guard};

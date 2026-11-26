@@ -8,6 +8,7 @@ The bytes of an event message (`spec/events.md` sections 6 to 8). The Node, Java
 | `consume.json` | The consume goldens: what a consumer does with a message. |
 | `dead-letter.json` | The dead-letter copy goldens (phase E2, section 10.5): the bytes of the copy. |
 | `retry.json` | The retry goldens (phase E2, section 10.4): how often the handler runs, what is copied, what the transport is told. |
+| `outbox.json` | The outbox goldens (phase E3, section 11.1): the entry of an emitted event, the relay and what the server checks after a handler. |
 | `edges.veld` | The contract of the edge cases. The other contract is `tests/events/bookings.veld`. |
 
 Every contract is compiled as the package `bookings`. The package is part of `source` (`veld:bookings/Bookings`) and of `type`, which is the declaration signature.
@@ -81,6 +82,33 @@ What the cases cover: text that is not JSON, an array, a string, a number, `null
 Section 10.4 as a table. `results[i]` is what run `i + 1` of the handler comes to (`returned` or `failed`); a run without an entry takes the last one, and an empty list is a handler that returns. A generator's test builds a consumer with the channel's `@retry` and `@deadLetter`, a `sleep` that records the wait it was asked for, the options `retryDelayMs` and `retryMaxDelayMs` and a handler that does `results`, delivers the message with the attempt `transportAttempt`, and requires: the number of handler `runs`; one entry of `failures` per failed run, with the `meta.attempt` of the run and `last` (the `final` of `onHandlerError`); the waits in `waitsMs`; the `copy` published to the dead-letter topic (its reason, or `null`) with the `copyAttempts` it carries; and the `answer` to the transport (`done` or `again`). `answerIfCopyFails` is the answer when publishing the copy fails (section 10.5).
 
 A case with `rejected` (`malformed`, `shape` or `rule`) is a message that step 1, 3 or 4 rejects: no run, acknowledged, copied with that reason when the channel has `@deadLetter`. A case with `ignored` is a message of step 2: acknowledged and nothing else.
+
+## `outbox.json`
+
+Three arrays. The reference is `veld_rules::outbox` (`crates/veld-rules/src/outbox`), its test `crates/veld-rules/tests/outbox.rs` runs the file.
+
+**`entries`**: what `emit.<event>(value)` hands to `outbox.save(topic, key | none, bytes)` (steps 1 to 5 of publishing, section 7). It is the cases of `envelopes.json`, with the same `service`, `channel`, `event`, `id`, `time` and `value`, and three more members: `topic` (the topic of the channel), `key` (the key text, or `null`: the `subject` of the message) and `canonical` (the bytes, the same as in `envelopes.json`). A generator's test fixes the hooks' id source to `id` and their clock to `time`, calls `emit` with `value`, and requires that its outbox received exactly `topic`, `key` and the bytes `canonical`, and that nothing reached a transport.
+
+```json
+{ "name": "…", "contract": "tests/events/bookings.veld", "service": "Bookings", "channel": "BookingEvents",
+  "event": "BookingPaid", "id": "0b5c9c3e-…", "time": "2026-06-10T12:00:00Z", "value": { … },
+  "topic": "shop.bookings.v1", "key": "5d2b3a0e-…", "canonical": "{…}" }
+```
+
+**`relay`**: the relay as a table. A case saves `saves` entries into a fresh memory outbox (named by the order of their save, `"1"`, `"2"`, …; a generated `MemoryOutbox` has ids of its own and the test maps them) and then makes the `runs` in order against that outbox. A run is `limit`, a `script` and what it must `expect`. `script[i]` is what happens to the `i`-th entry the run looks at; an entry past the end of the script is accepted:
+
+| Step | The transport | `done` | The run |
+|---|---|---|---|
+| `"accepted"` | accepts the message | succeeds | goes on |
+| `{ "publishFails": "text" }` | fails with `text` | not called | stops; the failure goes to `onError` |
+| `{ "doneFails": "text" }` | accepts the message | fails with `text` | stops; the failure goes to `onError`; the entry is pending again and will be sent again |
+| `"crashAfterPublish"` | accepts the message | not called: the process ends | stops; nothing is reported; the entry will be sent again |
+
+`expect` has `published` (the entries the transport accepted, in order), `done` (the entries `done` succeeded for), `sent` (what the relay answers: how many entries it sent, the length of `published`) and `failure` (`{ "entry", "error" }` or `null`). `pendingAfter` is what `pending(…)` lists after the run. The relay looks at the first `limit` entries `pending` gives it, in that order.
+
+**`written`**: what the server checks after the handler of an endpoint whose move emits (section 11.1). `expected` are the events the edge taken emits, `written` the events the handler wrote in order, both by name, and `result` is `ok`, or `missing E`, `twice E` or `unexpected E`: a success is then answered `500 Internal` and goes to `onError`. A handler that answered an error is not checked.
+
+The contract `tests/events/outbox.veld.pending` has the moves of the cases in the `written` array (a state machine whose edges emit, one endpoint per move) and the call examples with `expect emitted`; the examples are run live against a generated test handler (section 11.1, `Veld-Test-Emitted`) and offline they are reported as live only.
 
 ## Rules
 

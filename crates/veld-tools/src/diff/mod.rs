@@ -14,8 +14,10 @@ mod conditional;
 mod data_marks;
 mod decls;
 mod delivery;
+mod emits;
 mod endpoint_rules;
 mod endpoints;
+mod event_fields;
 mod events;
 pub(crate) mod expr_text;
 mod flags;
@@ -35,8 +37,8 @@ use veld_ir::{Constraints, Ir, Type};
 pub enum Severity {
     Breaking,
     /// The tool cannot tell: a rule expression changed and no solver says whether it is tighter
-    /// or looser, or something other than an addition changed in an event, a channel or a
-    /// subscription (`spec/events.md` section 16 is not built yet).
+    /// or looser, or a change in an event, a channel, a `publishes` line or a subscription that
+    /// `spec/events.md` section 16 does not decide.
     PossiblyBreaking,
     NonBreaking,
 }
@@ -104,6 +106,9 @@ pub enum ChangeKind {
     EventAdded,
     EventRemoved,
     EventChanged,
+    EmitsAdded,
+    EmitsRemoved,
+    EmitsTopicChanged,
     ChannelAdded,
     ChannelRemoved,
     ChannelChanged,
@@ -348,6 +353,8 @@ fn diff_plain(old: &Ir, new: &Ir) -> Vec<Change> {
     endpoints::diff_endpoints(&ctx, &mut out);
     events::diff_events(&ctx, &mut out);
     delivery::diff_delivery(&ctx, &mut out);
+    emits::diff_emits(&ctx, &mut out);
+    emits::diff_emit_channels(&ctx, &mut out);
     out
 }
 
@@ -361,6 +368,8 @@ mod data_marks_tests;
 mod delivery_tests;
 #[cfg(test)]
 mod derived_tests;
+#[cfg(test)]
+mod event_table_tests;
 #[cfg(test)]
 mod event_tests;
 #[cfg(test)]

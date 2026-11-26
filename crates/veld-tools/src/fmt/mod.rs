@@ -53,6 +53,8 @@ mod derived_tests;
 #[cfg(test)]
 mod flags_tests;
 #[cfg(test)]
+mod outbox_tests;
+#[cfg(test)]
 mod rollout_tests;
 #[cfg(test)]
 mod saga_tests;

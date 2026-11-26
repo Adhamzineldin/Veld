@@ -24,10 +24,10 @@ pub(super) struct Position {
 
 impl Position {
     pub(super) fn of(role: Role) -> Position {
-        if role.request || role.response {
+        if role.request || role.response || role.stream {
             Position {
-                request: role.request,
-                response: role.response,
+                request: role.request || role.stream,
+                response: role.response || role.stream,
             }
         } else {
             Position {

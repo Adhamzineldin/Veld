@@ -4,6 +4,7 @@
 //! Every tool is a pure function over source text or the IR. None of them
 //! touches the file system.
 
+pub mod asyncapi;
 pub mod deps;
 pub mod diff;
 pub mod fmt;
@@ -15,6 +16,7 @@ pub mod rulebook;
 pub mod runtime_schema;
 pub mod slo;
 
+pub use asyncapi::{NoChannels, asyncapi};
 pub use deps::{DepGraph, DepsFormat, deps, deps_with_owners};
 pub use diff::{
     Change, ChangeKind, ChangedRule, RuleSite, Severity, changed_rules, diff, has_breaking,

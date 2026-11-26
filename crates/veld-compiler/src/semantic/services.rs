@@ -99,6 +99,7 @@ fn analyze_service(
     }
     let taken: Vec<(String, Span)> = endpoints.iter().map(|e| (e.name.clone(), e.span)).collect();
     let events = events::check_service_events(prog, module, s, &taken, diags);
+    super::emits::attach(prog, &events.publishes, &mut endpoints, diags);
     let info = ServiceInfo {
         pkg,
         module,

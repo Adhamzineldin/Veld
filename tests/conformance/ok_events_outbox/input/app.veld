@@ -1,0 +1,68 @@
+// A state machine whose moves emit events (spec/events.md section 11), a service that publishes
+// the channel that carries them, and the examples that say what a call writes to the outbox.
+// `emits` stays an ordinary name elsewhere.
+
+event BookingPaid {
+  bookingId: uuid
+  amount: decimal
+  rule positive: amount >= 0
+}
+event BookingCancelled { bookingId: uuid }
+
+@topic("shop.bookings.v1")
+channel BookingEvents {
+  carries BookingPaid, BookingCancelled
+  key bookingId
+}
+
+enum Status {
+  pending, paid, cancelled, emits
+  flow pending -> paid emits BookingPaid
+  flow pending -> cancelled emits BookingCancelled
+  flow paid -> cancelled emits BookingCancelled
+  flow cancelled -> emits
+  final emits
+}
+
+model Booking { id: uuid, status: Status, total: decimal }
+
+service Bookings at "/bookings" {
+  publishes BookingEvents
+
+  post "/{id}/pay" pay(id: uuid) -> Booking {
+    fact booking: Booking = id
+    transition booking.status: pending -> paid
+  }
+
+  post "/{id}/cancel" cancel(id: uuid) -> Booking {
+    fact booking: Booking = id
+    transition booking.status: pending, paid -> cancelled
+  }
+
+  get "/ping" ping() -> 204
+}
+
+service Notifications {
+  subscribes BookingEvents as "notifications" {
+    on BookingPaid -> sendReceipt
+    on BookingCancelled -> sendApology
+  }
+}
+
+example "paying writes the receipt event" {
+  given booking = { status: .pending }
+  pay() returns { status: .paid } -> ok
+  expect emitted BookingPaid
+}
+
+example "cancelling a paid booking writes the cancellation" {
+  given booking = { status: .paid }
+  cancel() returns { status: .cancelled } -> ok
+  expect emitted BookingCancelled
+}
+
+example "a move that is not allowed writes nothing" {
+  given booking = { status: .cancelled }
+  pay() -> InvalidTransition
+  expect not emitted
+}

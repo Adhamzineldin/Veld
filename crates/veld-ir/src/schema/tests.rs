@@ -342,6 +342,7 @@ fn decls() -> Vec<Decl> {
                     from: "A".into(),
                     to: "A".into(),
                     after_ms: Some("86400000".into()),
+                    emits: None,
                 }],
                 finals: vec!["A".into()],
             }),

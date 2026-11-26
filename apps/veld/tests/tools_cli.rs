@@ -257,9 +257,9 @@ const STREAM: &str = "event Paid { id: uuid }\nevent Gone { id: uuid }\n\nchanne
 
 /// Growing a stream (a new event, a channel that carries one more, a new subscriber) is
 /// compatible: `--strict` passes and nothing is listed as possibly breaking. Taking an event
-/// off a channel is not.
+/// off a channel is breaking (`spec/events.md` section 16).
 #[test]
-fn diff_calls_additions_to_a_stream_compatible_and_a_removal_possibly_breaking() {
+fn diff_calls_additions_to_a_stream_compatible_and_a_removal_breaking() {
     if !Command::new("git")
         .arg("--version")
         .output()
@@ -300,9 +300,9 @@ fn diff_calls_additions_to_a_stream_compatible_and_a_removal_possibly_breaking()
         .args(["diff", "--against", "HEAD", "--strict"])
         .assert()
         .code(1)
-        .stdout(predicate::str::contains(
-            "Possibly breaking changes (whether they break a caller or a consumer is not known)",
-        ))
+        .stdout(predicate::str::contains("Breaking changes"))
+        .stdout(predicate::str::contains("no longer carries"))
+        .stdout(predicate::str::contains("Possibly breaking").not())
         .stdout(predicate::str::contains("a rule changed").not());
 }
 
@@ -377,4 +377,50 @@ fn export_openapi_and_ir() {
         ir,
         serde_json::from_slice::<serde_json::Value>(&debug).unwrap()
     );
+}
+
+// --- export asyncapi ---------------------------------------------------------------------
+
+/// `veld export asyncapi` (`spec/events.md` section 16.1): a document of the channels, written
+/// like the OpenAPI export, and `E0803` for a workspace without channels.
+#[test]
+fn export_asyncapi_writes_the_channels_and_refuses_a_workspace_without_any() {
+    let tmp = tempdir().unwrap();
+    init(tmp.path());
+    veld(tmp.path())
+        .args(["export", "asyncapi"])
+        .assert()
+        .code(1)
+        .stderr(predicate::str::contains("E0803"));
+    write(tmp.path(), "contracts/payments.veld", STREAM);
+    let out = veld(tmp.path())
+        .args(["export", "asyncapi"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let doc: serde_json::Value = serde_json::from_slice(&out).unwrap();
+    assert_eq!(doc["asyncapi"], "3.0.0");
+    assert!(doc["channels"].as_object().is_some_and(|c| c.len() == 1));
+    veld(tmp.path())
+        .args([
+            "export",
+            "asyncapi",
+            "-o",
+            "events.json",
+            "--service",
+            "Billing",
+        ])
+        .assert()
+        .success();
+    let file: serde_json::Value =
+        serde_json::from_slice(&fs::read(tmp.path().join("events.json")).unwrap()).unwrap();
+    assert_eq!(file["channels"], doc["channels"]);
+    assert_eq!(file["info"]["title"], "Billing");
+    veld(tmp.path())
+        .args(["export", "asyncapi", "--service", "Nope"])
+        .assert()
+        .code(1)
+        .stderr(predicate::str::contains("known services"));
 }

@@ -190,7 +190,7 @@ fn diff_fields(
         if old.contains_key(w) {
             continue;
         }
-        if request_required(n) && role.request {
+        if request_required(n) && (role.request || role.stream) {
             out.push(Change::breaking(
                 ChangeKind::RequiredFieldAdded,
                 q,
@@ -225,7 +225,7 @@ fn diff_field(
     }
     if !request_required(o) && request_required(n) {
         out.push(Change::when(
-            role.request,
+            role.request || role.stream,
             ChangeKind::FieldBecameRequired,
             q,
             format!("field `{w}` became required"),
@@ -233,7 +233,7 @@ fn diff_field(
     }
     if !o.optional && n.optional {
         out.push(Change::when(
-            role.response,
+            role.response || role.stream,
             ChangeKind::FieldBecameOptional,
             q,
             format!("field `{w}` became optional"),
@@ -318,7 +318,7 @@ fn diff_enum(q: &str, o: &Enum, n: &Enum, role: Role, out: &mut Vec<Change>) {
         ));
     }
     for w in new.iter().filter(|w| !old.contains(w)) {
-        let breaking = role.response && !role.request;
+        let breaking = (role.response && !role.request) || role.stream;
         out.push(Change::when(
             breaking,
             ChangeKind::EnumVariantAdded,
@@ -363,7 +363,7 @@ fn diff_union(ctx: &Ctx<'_>, q: &str, pair: (&Union, &Union), role: Role, out: &
         .iter()
         .filter(|b| !o.arms.iter().any(|a| a.label == b.label))
     {
-        let breaking = role.response && !role.request;
+        let breaking = (role.response && !role.request) || role.stream;
         out.push(Change::when(
             breaking,
             ChangeKind::UnionArmAdded,

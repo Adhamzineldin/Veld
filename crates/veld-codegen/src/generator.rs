@@ -361,6 +361,7 @@ fn first_use(
                 | Feature::EventsDelivery
                 | Feature::Messages
                 | Feature::Retention
+                | Feature::EventsOutbox
                 | Feature::RulesRollout
                 | Feature::RulesDerived
                 | Feature::RulesInvariants => false,
@@ -416,6 +417,13 @@ fn first_use(
             .services
             .iter()
             .find_map(|s| ir.first_delivery_origin(*s).cloned());
+    }
+    if feature == Feature::EventsOutbox {
+        return req.services.iter().find_map(|s| {
+            ir.service(*s)
+                .first_emitting_transition()
+                .map(|t| t.origin.clone())
+        });
     }
     if feature == Feature::RulesInvariants {
         return first_rule_origin(ir, &searched(ir, services, req));

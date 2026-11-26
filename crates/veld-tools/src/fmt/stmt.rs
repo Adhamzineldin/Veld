@@ -4,9 +4,9 @@
 //! call is one line; with `returns` the call, `returns` and the outcome take a line each.
 
 use veld_compiler::syntax::ast::{
-    Else, EventExample, Example, ExampleCall, ExpectKind, Expectation, FlagSuffix, Given,
-    IfMatchLine, KeyLine, KeyStoreLine, Outcome, PolicyClause, PolicyDecl, PrincipalDecl, Stmt,
-    TransitionStmt, Value, ValueKind,
+    Else, EventExample, Example, ExampleCall, ExpectEmitted, ExpectKind, Expectation, FlagSuffix,
+    Given, IfMatchLine, KeyLine, KeyStoreLine, Outcome, PolicyClause, PolicyDecl, PrincipalDecl,
+    Stmt, TransitionStmt, Value, ValueKind,
 };
 
 use super::expr::expr_text;
@@ -268,6 +268,14 @@ pub(super) fn call_lines(c: &ExampleCall, ind: usize) -> Vec<String> {
             format!("{p}  returns {}", value_text(r)),
             format!("{p}  -> {outcome}"),
         ],
+    }
+}
+
+/// `expect emitted E` or `expect not emitted`, after the call of an example.
+pub(super) fn emitted_line(x: &ExpectEmitted) -> String {
+    match &x.event {
+        Some(e) => format!("expect emitted {}", type_expr(e)),
+        None => "expect not emitted".to_string(),
     }
 }
 

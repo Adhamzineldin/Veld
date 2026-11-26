@@ -29,7 +29,20 @@ pub struct RTransition {
     /// The milliseconds of the timed edge this transition takes; `Some` exactly when `since` is
     /// not empty.
     pub after_ms: Option<i64>,
+    /// The events the move emits (`spec/events.md` section 11), filled after the service's
+    /// `publishes` lines are known; empty for a move without `emits`.
+    pub emits: Vec<REmitted>,
     pub span: Span,
+}
+
+/// One event a transition emits and the channel the service sends it on.
+#[derive(Debug, Clone, Copy)]
+pub struct REmitted {
+    /// An index into `Program::decls`.
+    pub event: usize,
+    /// An index into `Program::channels`: the first channel of the service's `publishes` lines
+    /// that carries the event.
+    pub channel: usize,
 }
 
 /// What the checker knows while it looks at the statement.
@@ -131,6 +144,7 @@ impl Scope<'_, '_> {
             to_wire: to.wire.clone(),
             since: timing.0,
             after_ms: timing.1,
+            emits: Vec::new(),
             span: t.span,
         })
     }

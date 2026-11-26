@@ -229,6 +229,12 @@ impl Ir {
         {
             f.insert(Feature::EventsDelivery);
         }
+        if services
+            .iter()
+            .any(|s| self.service(*s).first_emitting_transition().is_some())
+        {
+            f.insert(Feature::EventsOutbox);
+        }
         let mut ids = self.events_of(services);
         ids.extend(self.event_reachable_decls(services));
         for id in ids {
@@ -806,6 +812,10 @@ pub struct Flow {
     /// while the flag is on. Omitted from the JSON when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub flag: Option<String>,
+    /// The event the move emits (`spec/events.md` section 11). It is not part of any id: the id
+    /// of a transition names the guard. Omitted from the JSON when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub emits: Option<DeclId>,
 }
 
 impl Flow {
@@ -1120,6 +1130,16 @@ impl Service {
             Some(p) => Some(&p.origin),
             None => self.subscriptions.first().map(|s| &s.origin),
         }
+    }
+
+    /// The transition of the first endpoint whose move emits an event, in source order
+    /// (`spec/events.md` section 11). This is where the gate of `events_outbox` points.
+    #[must_use]
+    pub fn first_emitting_transition(&self) -> Option<&endpoint_rules::EndpointTransition> {
+        self.endpoints
+            .iter()
+            .filter_map(|e| e.rules.transition.as_ref())
+            .find(|t| !t.emits.is_empty())
     }
 
     /// The channels the service publishes to, in source order.
@@ -1455,6 +1475,8 @@ pub enum Feature {
     /// A server with `@retain` models (`spec/platform.md` section 23). Opt-in, and only a server
     /// is concerned: a client generates nothing for it.
     Retention,
+    /// A `transition` over a flow that `emits` an event (`spec/events.md` section 11).
+    EventsOutbox,
 }
 
 impl Feature {
@@ -1467,7 +1489,7 @@ impl Feature {
     ];
     /// Features no generator supports unless it says so: [`Feature::ALL`] minus these is what
     /// `all_except` hands out. A feature that changes what a rule means must be opted into.
-    pub const OPT_IN: [Feature; 12] = [
+    pub const OPT_IN: [Feature; 13] = [
         Feature::RulesRollout,
         Feature::RulesVersion,
         Feature::Idempotency,
@@ -1480,8 +1502,9 @@ impl Feature {
         Feature::Slo,
         Feature::Messages,
         Feature::Retention,
+        Feature::EventsOutbox,
     ];
-    pub const ALL: [Feature; 27] = [
+    pub const ALL: [Feature; 28] = [
         Feature::Unions,
         Feature::Constraints,
         Feature::Auth,
@@ -1509,6 +1532,7 @@ impl Feature {
         Feature::Slo,
         Feature::Messages,
         Feature::Retention,
+        Feature::EventsOutbox,
     ];
     #[must_use]
     pub fn name(self) -> &'static str {
@@ -1540,6 +1564,7 @@ impl Feature {
             Feature::Slo => "slo",
             Feature::Messages => "messages",
             Feature::Retention => "retention",
+            Feature::EventsOutbox => "events_outbox",
         }
     }
     #[must_use]
@@ -1588,3 +1613,6 @@ mod events_tests;
 
 #[cfg(test)]
 mod delivery_tests;
+
+#[cfg(test)]
+mod outbox_tests;

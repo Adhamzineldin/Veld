@@ -17,6 +17,7 @@ mod derived;
 mod event_rollout;
 mod events;
 mod events_delivery;
+mod events_outbox;
 mod fixtures;
 mod messages;
 mod platform_p2;
@@ -43,6 +44,10 @@ pub use events::{
 pub use events_delivery::{
     check_events_delivery_is_ignored_by_clients, check_events_delivery_is_refused,
     compiled_events_delivery_contract,
+};
+pub use events_outbox::{
+    check_events_outbox_is_ignored_by_clients, check_events_outbox_is_refused,
+    compiled_events_outbox_contract,
 };
 pub use fixtures::{FIXTURES, Fixture};
 pub use messages::{

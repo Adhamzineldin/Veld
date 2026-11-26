@@ -75,7 +75,8 @@
     "on",
     "called",
     "rejected",
-    "once"
+    "once",
+    "emitted"
   ],
   "saga_words": [
     "saga",

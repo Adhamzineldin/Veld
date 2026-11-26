@@ -5,7 +5,7 @@
 
 use std::collections::BTreeSet;
 
-use super::{RFlow, RVariant, timed};
+use super::{REmits, RFlow, RVariant, timed};
 use crate::diagnostics::{Diagnostic, Span};
 use crate::syntax::ast::{self, Ident};
 
@@ -35,12 +35,16 @@ pub(super) fn resolve_machine(
     let before = diags.len();
     for f in &e.flows {
         let after = timed::after_ms(f, diags);
+        let emits = f
+            .emits
+            .as_ref()
+            .and_then(|id| single_edge_emits(f, id, diags));
         for pair in f.states.windows(2) {
             let (a, b) = (&pair[0], &pair[1]);
             // Both names are always looked at, so a bad chain reports every bad name.
             let (ok_a, ok_b) = (known(a, diags), known(b, diags));
             if ok_a && ok_b {
-                add_edge(&mut m, (a, b), after, f, diags);
+                add_edge(&mut m, (a, b), after, emits.clone(), f, diags);
             }
         }
     }
@@ -81,10 +85,31 @@ fn unknown_state(
     );
 }
 
+/// `emits` stands on a flow with one edge (`E1011`); `None` for a longer chain.
+fn single_edge_emits(f: &ast::FlowStmt, id: &Ident, diags: &mut Vec<Diagnostic>) -> Option<REmits> {
+    if f.states.len() > 2 {
+        diags.push(
+            Diagnostic::error(
+                "E1011",
+                "`emits` stands on a flow with one edge, and this flow has several",
+                id.span,
+            )
+            .with_help("write one `flow a -> b emits Event` line per edge"),
+        );
+        return None;
+    }
+    Some(REmits {
+        name: id.name.clone(),
+        span: id.span,
+        event: None,
+    })
+}
+
 fn add_edge(
     m: &mut RMachine,
     (a, b): (&Ident, &Ident),
     after_ms: Option<i64>,
+    emits: Option<REmits>,
     stmt: &ast::FlowStmt,
     diags: &mut Vec<Diagnostic>,
 ) {
@@ -92,6 +117,22 @@ fn add_edge(
         if stmt.after.is_some() {
             timed::second_after(first.span, a, b, diags);
             return;
+        }
+        let differs = emits
+            .as_ref()
+            .is_some_and(|e| first.emits.as_ref().map(|x| &x.name) != Some(&e.name));
+        if let (true, Some(e)) = (differs, emits.as_ref()) {
+            diags.push(
+                Diagnostic::error(
+                    "E1011",
+                    format!(
+                        "the flow `{} -> {}` is declared twice, and this line says another `emits`",
+                        a.name, b.name
+                    ),
+                    e.span,
+                )
+                .with_label(first.span, "first declared here"),
+            );
         }
         diags.push(
             Diagnostic::warning(
@@ -109,6 +150,7 @@ fn add_edge(
         after_ms,
         flag: stmt.flag.as_ref().map(|f| f.name.clone()),
         span: a.span.to(b.span),
+        emits,
     });
 }
 

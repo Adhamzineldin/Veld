@@ -31,6 +31,7 @@ impl Parser<'_> {
             states.push(self.expect_ident("a state name after `->`")?);
         }
         let after = self.after_clause()?;
+        let emits = self.parse_emits()?;
         let at = self.span();
         let flag = self.flag_suffix()?;
         if flag.is_some() && states.len() != 2 {
@@ -40,10 +41,10 @@ impl Parser<'_> {
                 at,
             );
         }
-        self.reject_emits();
         Some(FlowStmt {
             states,
             after,
+            emits,
             flag,
             span: self.end_from(kw),
         })
@@ -76,24 +77,16 @@ impl Parser<'_> {
         })
     }
 
-    /// `flow a -> b emits Event` belongs to events: say so, and skip the rest of the line.
-    fn reject_emits(&mut self) {
+    /// `emits Event` at the end of a flow line (`spec/events.md` section 11). `emits` is a word
+    /// only on the line of the `flow`; the outer `None` is a syntax error, already reported.
+    fn parse_emits(&mut self) -> Option<Option<Ident>> {
         let same_line = !self.newline_between(self.prev_end(), self.span().start);
         if !(self.at_word("emits") && same_line) {
-            return;
+            return Some(None);
         }
-        let at = self.span();
-        self.err(
-            "E0003",
-            "`emits` attaches an event to a flow, and events are not supported yet",
-            at,
-        );
-        while !self.at_eof()
-            && !matches!(self.peek(), Tok::RBrace)
-            && !self.newline_between(self.prev_end(), self.span().start)
-        {
-            self.advance();
-        }
+        self.advance();
+        let event = self.expect_ident("the name of an event after `emits`")?;
+        Some(Some(event))
     }
 
     /// `since fact.path` on the line of a `transition`.

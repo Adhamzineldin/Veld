@@ -324,6 +324,11 @@ impl Lowerer<'_, '_> {
                         from: f.from.clone(),
                         to: f.to.clone(),
                         after_ms: f.after_ms.map(|ms| ms.to_string()),
+                        emits: f
+                            .emits
+                            .as_ref()
+                            .and_then(|e| e.event)
+                            .map(|e| self.decl_id(e)),
                     })
                     .collect(),
                 finals: d.res.machine.finals.clone(),

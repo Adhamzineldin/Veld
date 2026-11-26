@@ -180,9 +180,9 @@ fn a_service_with_neither_at_nor_a_brace_is_still_an_error() {
 }
 
 #[test]
-fn flow_emits_stays_rejected() {
-    let r = p("enum S { a, b\n flow a -> b emits Paid\n}");
-    assert!(r.diagnostics.iter().any(|d| d.code == "E0003"));
+fn flow_emits_is_parsed_since_phase_e3() {
+    let r = clean("enum S { a, b\n flow a -> b emits Paid\n}");
+    assert_eq!(r.file.decls.len(), 1);
 }
 
 #[test]
