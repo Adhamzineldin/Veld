@@ -464,3 +464,49 @@ A target without settings emits none of these, and its runtime classes are the o
 ### 14.4 Tests
 
 `crates/emitters/java/tests/runtime_config.rs` (snapshots of the runtime module of a consuming server with rules, of a client target and of the Spring properties class; the entries; the gate; the goldens of `tests/wire/runtime-config/cases.json` through `tests/toolchain/java/runtime-config/RuntimeConfigGolden.java`, one generated target per model) and `tests/toolchain/java/Roundtrip.java` (client requires `baseUrl`, `GenAClients.create`).
+
+## 15. Derived fields (`rules_derived`)
+
+`spec/rules.md` §17.2 in Java. The generator declares `rules_derived` for both roles. A contract without a derived field gets the bytes it got before: `runtime/Derive.java` and every `// #if derived` region of the runtime (`Schema`, `Wire`, `Rules`, `RuleWalk`, `Router`, `WsConnection`, `WsChannel`, `ClientCore`, `Events`, `EndpointRules`) exist only for a target that emits a declaration with a derived field (a model, an error or an event; reached by an endpoint or not). Derived fields use the violations and the rule classes, so such a target also carries the rule classes of section 8.
+
+### 15.1 What a developer sees
+
+- **A derived field is a nullable component**, like a field with a default (section 2): `total: decimal = subtotal - discount` is `BigDecimal total`, `count: int = len(items)` is `Integer count`. This is how "optional in what a handler returns, present in what it receives" looks in Java: the handler (or a caller of the client) passes `null`, whatever it passes is replaced, and the value the server hands to a handler, a fact or the principal has it. `null` after the server's work means the expression failed. `fromWire` reads the member with `opt`, `toWire` leaves a `null` out. In the schema the field is `optional`, so validation does not ask for it, and `Schema.derived(Compute, wires...)` marks the derived wire names: validation skips them (what a caller sent, even a malformed value, is never a shape error), `Wire.prepare` in request mode drops them, and a query object does not read them from the query string.
+- **The public function** of a declaration with derived fields is `<Decl>.derive(value)`, next to `check(value)`: the code the server runs, nested values included, so a form can show `total` while the user types (`Order.derive(draft)`). `derive(value, out)` also collects the violations of the fields that failed (a field whose expression fails stays `null`). For an error the function takes and returns its payload: `OverLimit.derive(OverLimit.Data)`. It exists in the client and in the server, and it applies the defaults too.
+- `DERIVED_<FIELD>` constants hold the field ids (`derived_id` of the IR, embedded verbatim).
+
+### 15.2 The pipeline
+
+`Derive.apply(schema, prepared, path, request, out)` walks a prepared wire value by its schema in the order of the specification: what was supplied for a derived field is dropped, nested values (fields, list items, map values, page items, union arms) are computed first, then the derived fields of the object in the order of `Decl::derived_fields`, by the function the generated declaration registered (`deriveWire`: one `deriveField<Name>` per field, each result put into the object, the value decoded again for the field that follows). The expression is printed by the printer of invariants (section 8) and converted back to the developer's value (`Instant`, `LocalDate`) by `app_value`. The order of the members is the order of the schema.
+
+| Where | What runs | A failing field |
+|---|---|---|
+| a request (`Router.bind`: body, query object; a WebSocket message in `WsConnection`) | after `Wire.prepare(REQUEST)`, before step 5 | one violation (`rule` = the field's id, `path` of the value, `fields` the fields read, `message` `field <name> could not be computed`, `error` set) in the `422 ValidationError` of step 5, with the violations of invariants after them. With `validate = false` the fields are computed and a failure is not reported (step 5 is off) |
+| a fact, the principal (`EndpointRules.Run.derive`) | after the loader returns, and after the authentication hook, before `allow` | `500 Internal`, reported to `onRuleViolation` as `OUTPUT`, `REJECTED` |
+| a result, a declared error, a stream item, a WebSocket message the server sends (`Router.success`, `failure`, `sseFrame`, `WsConnection.send`) | after `Wire.prepare(RESPONSE)`, before step 8 (also under the output mode `off`) | the output mode decides: `STRICT` is `500 Internal`, `AUDIT` sends the value without the field and reports (`AUDITED`), `OFF` sends it without the field and reports nothing |
+| a published event, a consumed event (`Events`) | the publisher before its invariants; the subscriber after decoding (the value in the message is not believed) | the publish throws the `ValidationError` with the violation, like a violated invariant; a consumer rejects the message as `RULE` only when the digests are equal, like an invariant |
+| an `else` payload (`require ... else E`) | the payload is computed before its invariants | silent (the field stays `null`) |
+| `ensure` (step 9) | the result is computed before the handler's value is read | a statement that reads an absent derived field is skipped |
+
+The violations travel from the walk to the check that follows on the thread (`Derive.take()`, like the `ensure` checks of `EndpointRules`), so step 5 and step 8 report them together with the invariants.
+
+**Absent values.** An expression, a rule or an `ensure` that reads a derived field that is absent is skipped without a violation: the generated code reads the boxed component, and the unboxing of `null` is a `NullPointerException` that `Derive.run`, `Rules.run` and `EndpointRules` (`require`, `ensure`) catch in the `derived` regions. A derived field that reads a `@readonly` field of its own declaration is left absent in request position (`request ? null : ...`).
+
+**Fingerprint.** The values computed in a request are in `Bound.canonical`, so the idempotency fingerprint (section 13.2) covers them; a value the caller sent is not in it.
+
+### 15.3 The client
+
+`ClientCore` strips the derived members of what it sends (a request body, a query object, a WebSocket message) whether or not it validates, so a value a caller filled in is never sent; `RuleWalk.localCheck` computes the derived fields of the body first, then checks the invariants (the violations of the derived fields are local violations, `raisedLocally()` is true and nothing is sent); a response is decoded as it is and its derived members are the server's.
+
+### 15.4 Choices where `spec/rules.md` was silent
+
+- A derived field is a boxed component in every declaration that has it, also where nobody fills it in (an error payload, an event, a request type of the client). The language says a request type has no derived field for the caller to fill in; Java has no way to leave a record component out, so the caller passes `null`.
+- `Derive.value(schema, codec, value)` is the typed entry the generated code uses for `derive(value)`, for a fact and for the principal; it is public.
+- A derived field of type `duration` is `E0801` (no Java type), like a fact key of that type.
+- A rule that reads an optional derived field inside a collection element (`items[i].total` of an item that failed) is skipped like any rule that reads an absent derived field.
+- A derived field that reads a `@readonly` field of a nested declaration is not skipped in request position: only a direct read of the declaration's own `@readonly` fields is. The value the placeholder gives is not a value the caller sent.
+- An `else` payload that cannot be computed is not reported: the error is answered with the field left out.
+
+### 15.5 Tests
+
+`crates/emitters/java/tests/derived.rs` with `tests/toolchain/java/derived/`: the 22 cases of `tests/rules/core/derived.json.pending` (the partial one is TypeScript only) through the generated schemas by `DerivedVectors.java`, comparing the violations, `computed` and the same values through the public function (`derive`), for both releases; the 9 examples of `tests/rules/endpoints/derived.veld.pending` through the generated test handler (`DerivedStubs.java`, `DerivedServe.java`, `spring-derived/App.java`) on the JDK server and on Spring; `DerivedShopHttp.java` (a value the caller sent is replaced, a malformed one is dropped, a `require` and an invariant read the derived values, a fact's derived field, a failing fact is `500`, a failing request expression is `422`, the handler's value is overwritten, an `ensure` reads the result, `off` still computes, `audit` sends without the field, `strict` is `500`); `DerivedExtraHttp.java` (the principal, an invariant on a result under the output modes, every item of an SSE stream); `DerivedClient.java` (the local check computes first, a derived field is never sent, a response's value is kept, `Cart.derive`); `DerivedEvents.java` (the publisher computes, the subscriber computes again, a failing field and an invariant stop the publish); snapshots of a contract with a chain of derived fields (`derived_*`); no trace of the feature in a contract without it; `javac -Xlint:all -Werror` for the server (with and without `testing`) and the client in both releases; `check_derived_is_generated` in `tests/conformance.rs`.
