@@ -1,0 +1,8 @@
+// `timeout` and `slo` are annotation names only after `@`.
+
+model Limits { timeout: int, slo: int, p99: int, errors: int }
+
+service Bounds at "/limits" {
+  get "/a" timeout(@query slo: int) -> Limits
+  get "/b" slo() -> Limits
+}
