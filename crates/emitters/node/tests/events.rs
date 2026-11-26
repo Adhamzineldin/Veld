@@ -1826,13 +1826,20 @@ fn the_outbox_exists_only_for_a_contract_with_an_emitting_move() {
     let events = text(&with, "server/bookings-events.ts");
     assert!(events.contains("export function runBookingsOutboxRelay("));
     assert!(events.contains("export function makePayEmit("));
-    // The same contract without `emits`: no word of the outbox anywhere.
-    let ir = compile_text(
-        read(OUTBOX)
-            .replace(" emits BookingPaid", "")
-            .replace(" emits BookingCancelled", "")
-            .replace(" emits RefundDue", ""),
-    );
+    // The same contract without `emits` (and without the examples that expect an emitted event): no
+    // word of the outbox anywhere. `outbox` alone is a local variable of the WebSocket code.
+    let stripped = read(OUTBOX)
+        .replace(" emits BookingPaid", "")
+        .replace(" emits BookingCancelled", "")
+        .replace(" emits RefundDue", "")
+        .lines()
+        .filter(|l| {
+            !l.trim_start().starts_with("expect emitted")
+                && !l.trim_start().starts_with("expect not emitted")
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let ir = compile_text(stripped);
     let without = gen_server_services_fw(
         &ir,
         &["Bookings", "Notifications"],
@@ -1843,7 +1850,7 @@ fn the_outbox_exists_only_for_a_contract_with_an_emitting_move() {
         let source = String::from_utf8_lossy(bytes);
         for word in [
             "Outbox",
-            "outbox",
+            "hooks.outbox",
             "emitEvent",
             "prepareEvent",
             "checkWritten",
@@ -1882,9 +1889,53 @@ fn the_relay_hands_the_transport_the_options_of_the_channel() {
 
 #[test]
 fn a_parameter_called_emit_on_a_move_that_emits_is_e0801() {
-    let text = read(OUTBOX).replace("pay(id: uuid)", "pay(id: uuid, emit: int)");
+    let text = read(OUTBOX).replace("pay(id: uuid)", "pay(id: uuid, @query emit: int)");
     let ir = compile_text(text);
     let err = generate_with(&ir, &["Bookings", "Notifications"], &Value::Null).unwrap_err();
     assert!(err.iter().all(|d| d.code == "E0801"), "{err:?}");
     assert!(err[0].message.contains("`emit`"), "{}", err[0].message);
+}
+
+/// The outbox next to a timed edge, a derived field, a flagged statement and an `@idempotent`
+/// endpoint: the generated server compiles under `tsc --strict` for both editions.
+#[test]
+fn the_outbox_compiles_next_to_the_other_features() {
+    let Some(tsc_path) = tsc_path() else {
+        return;
+    };
+    let text = read(OUTBOX)
+        .replace(
+            "  flow pending -> cancelled emits BookingCancelled\n",
+            "  flow pending -> cancelled after hours(24) emits BookingCancelled\n",
+        )
+        .replace(
+            "  total: decimal\n}",
+            "  total: decimal\n  qty: int\n  double: int = qty * 2\n  pendingSince: datetime\n}",
+        )
+        .replace(
+            "    transition booking.status: pending -> paid\n  }",
+            "    transition booking.status: pending -> paid\n    require booking.double > 0 when flag(\"positiveOnly\")\n  }",
+        )
+        .replace("  post \"/{id}/pay\" pay", "  @idempotent\n  post \"/{id}/pay\" pay")
+        .replace(
+            "transition booking.status: pending, paid -> cancelled",
+            "transition booking.status: pending -> cancelled since booking.pendingSince",
+        )
+        .lines()
+        .filter(|l| !l.trim_start().starts_with("expect emitted") && !l.trim_start().starts_with("expect not emitted"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let ir = compile_text(text);
+    for (edition, _) in TARGETS {
+        let guard = scratch("events-outbox-combo-");
+        build_with(
+            guard.path(),
+            &tsc_path,
+            &ir,
+            &["Bookings", "Notifications"],
+            &[],
+            edition,
+            &json!({ "typescript": edition, "testing": true }),
+        );
+    }
 }

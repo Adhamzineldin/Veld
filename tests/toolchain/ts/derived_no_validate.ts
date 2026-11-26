@@ -18,7 +18,8 @@ const impl: srv.ShopService = {
   async createCart(req) {
     calls += 1;
     given = req.body;
-    return { items: req.body.items, coupon: req.body.coupon, subtotal: 0, payable: 0 };
+    // The result must satisfy the rules too: they still run on output (`strict`), the request is what is not checked.
+    return { items: req.body.items, coupon: 0, subtotal: 0, payable: 0 };
   },
   async pay(req) {
     calls += 1;
