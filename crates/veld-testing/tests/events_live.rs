@@ -580,6 +580,62 @@ fn a_line_about_a_service_the_handler_does_not_serve_is_not_judged() {
     assert!(run(&fake, &ir, name).passed());
 }
 
+// --- a handler is asked about its own services only ------------------------------------------
+
+const CANCELLED: &str = "an optional field that is present is checked";
+
+fn bookings() -> Ir {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/events/bookings.veld");
+    compile_text(&std::fs::read_to_string(path).unwrap().replace("\r\n", "\n"))
+}
+
+fn serving(ir: &Ir, services: Vec<&'static str>) -> Fake {
+    serve(
+        ir.clone(),
+        Opts {
+            services,
+            ..Opts::default()
+        },
+    )
+}
+
+#[test]
+fn a_handler_without_an_on_line_for_the_event_is_expected_to_ignore_it() {
+    let ir = bookings();
+    let fake = serving(&ir, vec!["Ledger"]);
+    let report = run(&fake, &ir, CANCELLED);
+    assert!(report.passed(), "{report}");
+    assert_eq!(fake.events().len(), 1, "the message is still sent");
+}
+
+#[test]
+fn a_handler_that_serves_the_on_line_is_expected_to_reject() {
+    let ir = bookings();
+    let fake = serving(&ir, vec!["Notifications"]);
+    assert!(run(&fake, &ir, CANCELLED).passed());
+}
+
+#[test]
+fn a_handler_that_serves_both_is_expected_to_reject() {
+    let ir = bookings();
+    let fake = serving(&ir, vec!["Notifications", "Ledger"]);
+    assert!(run(&fake, &ir, CANCELLED).passed());
+}
+
+#[test]
+fn a_handler_that_does_not_ignore_what_it_has_no_on_line_for_fails() {
+    let ir = bookings();
+    let fake = serve(
+        ir.clone(),
+        Opts {
+            services: vec!["Ledger"],
+            tamper: Some(|v| v["outcome"] = json!("rejected")),
+            ..Opts::default()
+        },
+    );
+    assert!(failure(&run(&fake, &ir, CANCELLED)).contains("ignored"));
+}
+
 // --- constraints: the live run is where they are checked -------------------------------------
 
 const LIMITED: &str = r#"

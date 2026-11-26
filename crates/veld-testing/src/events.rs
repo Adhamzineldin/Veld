@@ -157,7 +157,11 @@ pub(crate) fn run(live: &Live, ir: &Ir, ex: &Example) -> Result<ExampleReport, L
     };
     let wanted = wanted(ir, &filled, &delivery, &served);
     let mut differences = against_reference(&wanted, &got);
-    differences.extend(against_expectation(ir, expect, &got, &served));
+    // The `expect` lines are about the whole workspace; a handler that serves no `on` line for
+    // the event is only asked to ignore it (spec/events.md 10.9).
+    if handles(ir, &filled, &served) {
+        differences.extend(against_expectation(ir, expect, &got, &served));
+    }
     if differences.is_empty() {
         return Ok(ExampleReport {
             name: ex.name.clone(),
@@ -282,6 +286,16 @@ fn wanted(
     delivery: &Delivery,
     served: &BTreeSet<ServiceId>,
 ) -> Wanted {
+    // A handler that serves no `on` line for the event ignores it (step 2), whatever the
+    // reference says about the whole workspace.
+    if !handles(ir, filled, served) {
+        return Wanted {
+            outcome: "ignored",
+            reason: None,
+            violations: Some(BTreeSet::new()),
+            called: BTreeSet::new(),
+        };
+    }
     // A generated consumer checks the shape and the constraints (step 3) before the invariants
     // (step 4): a value that breaks a constraint is rejected as `shape` whatever the rules say.
     if !constraint_findings(ir, filled.event, &filled.value).is_empty() {
@@ -309,25 +323,24 @@ fn wanted(
             }),
             called: BTreeSet::new(),
         },
-        Delivery::Handled { called } => handled(ir, filled, called, served),
+        Delivery::Handled { called } => handled(ir, called, served),
     }
 }
 
-fn handled(
-    ir: &Ir,
-    filled: &FilledEvent,
-    called: &[(ServiceId, String)],
-    served: &BTreeSet<ServiceId>,
-) -> Wanted {
-    let handles = served.iter().any(|s| {
+/// Whether a served service has an `on` line for the event on the channel.
+fn handles(ir: &Ir, filled: &FilledEvent, served: &BTreeSet<ServiceId>) -> bool {
+    served.iter().any(|s| {
         ir.service(*s)
             .subscriptions
             .iter()
             .filter(|sub| sub.channel == filled.channel)
             .any(|sub| sub.handlers.iter().any(|h| h.event == filled.event))
-    });
+    })
+}
+
+fn handled(ir: &Ir, called: &[(ServiceId, String)], served: &BTreeSet<ServiceId>) -> Wanted {
     Wanted {
-        outcome: if handles { "handled" } else { "ignored" },
+        outcome: "handled",
         reason: None,
         violations: None,
         called: called
