@@ -60,6 +60,9 @@ pub(super) struct EpScope {
     pub lenient: bool,
     /// The caller of the endpoint, when the package declares a principal (`spec/rules.md` 11.1).
     pub principal: Option<PrincipalScope>,
+    /// The fields of the declaration are in scope too, as in an invariant: the scope of
+    /// `@visible` (`spec/platform.md` section 2).
+    pub fields_in_scope: bool,
 }
 
 /// The principal as an endpoint block sees it.

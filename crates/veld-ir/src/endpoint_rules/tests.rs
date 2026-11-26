@@ -382,6 +382,8 @@ fn endpoint_with(rules: EndpointRules) -> Endpoint {
     Endpoint {
         slo: None,
         timeout_ms: None,
+        audited: false,
+        limit: None,
         name: "book".into(),
         method: Method::Post,
         path: "/".into(),

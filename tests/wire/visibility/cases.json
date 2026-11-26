@@ -1,0 +1,2046 @@
+{
+  "package": "guests",
+  "contract": "tests/wire/visibility/contract.veld",
+  "cases": [
+    {
+      "name": "the guest sees their own contact details",
+      "type": "Guest",
+      "note": "The caller is the guest: phone, email, ratio, the early field and the tags are there. The doors and the vault need the role staff, so they go, and a door in a list or a map goes with its own path.",
+      "caller": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+        "roles": []
+      },
+      "now": "2026-06-10T12:00:00Z",
+      "value": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+        "name": "Guest 1",
+        "quota": 4,
+        "expires": "2026-06-11T00:00:00Z",
+        "phone": "+201000000001",
+        "email": "g1@example.test",
+        "ratio": 25,
+        "early": "hello",
+        "tags": [
+          "a",
+          "b"
+        ],
+        "home": {
+          "street": "1 Nile St",
+          "city": "Cairo",
+          "door": "D1"
+        },
+        "work": {
+          "street": "2 Nile St",
+          "city": "Cairo",
+          "door": "D2"
+        },
+        "past": [
+          {
+            "street": "3 Nile St",
+            "city": "Cairo",
+            "door": "D3"
+          },
+          {
+            "street": "4 Nile St",
+            "city": "Cairo",
+            "door": "D4"
+          }
+        ],
+        "byYear": {
+          "2024": {
+            "street": "5 Nile St",
+            "city": "Cairo",
+            "door": "D5"
+          },
+          "2025": {
+            "street": "6 Nile St",
+            "city": "Cairo",
+            "door": "D6"
+          }
+        },
+        "vault": {
+          "street": "7 Nile St",
+          "city": "Cairo",
+          "door": "D7"
+        }
+      },
+      "shown": "{\"byYear\":{\"2024\":{\"city\":\"Cairo\",\"street\":\"5 Nile St\"},\"2025\":{\"city\":\"Cairo\",\"street\":\"6 Nile St\"}},\"early\":\"hello\",\"email\":\"g1@example.test\",\"expires\":\"2026-06-11T00:00:00Z\",\"home\":{\"city\":\"Cairo\",\"street\":\"1 Nile St\"},\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"name\":\"Guest 1\",\"past\":[{\"city\":\"Cairo\",\"street\":\"3 Nile St\"},{\"city\":\"Cairo\",\"street\":\"4 Nile St\"}],\"phone\":\"+201000000001\",\"quota\":4,\"ratio\":25,\"tags\":[\"a\",\"b\"],\"work\":{\"city\":\"Cairo\",\"street\":\"2 Nile St\"}}",
+      "hidden": [
+        "$.byYear.2024.door",
+        "$.byYear.2025.door",
+        "$.home.door",
+        "$.past[0].door",
+        "$.past[1].door",
+        "$.vault",
+        "$.work.door"
+      ]
+    },
+    {
+      "name": "another caller sees neither",
+      "type": "Guest",
+      "note": "Not the guest, no role: phone, email and the vault are dropped, doors too.",
+      "caller": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000002",
+        "roles": []
+      },
+      "now": "2026-06-10T12:00:00Z",
+      "value": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+        "name": "Guest 1",
+        "quota": 4,
+        "expires": "2026-06-11T00:00:00Z",
+        "phone": "+201000000001",
+        "email": "g1@example.test",
+        "ratio": 25,
+        "early": "hello",
+        "tags": [
+          "a",
+          "b"
+        ],
+        "home": {
+          "street": "1 Nile St",
+          "city": "Cairo",
+          "door": "D1"
+        },
+        "work": {
+          "street": "2 Nile St",
+          "city": "Cairo",
+          "door": "D2"
+        },
+        "past": [
+          {
+            "street": "3 Nile St",
+            "city": "Cairo",
+            "door": "D3"
+          },
+          {
+            "street": "4 Nile St",
+            "city": "Cairo",
+            "door": "D4"
+          }
+        ],
+        "byYear": {
+          "2024": {
+            "street": "5 Nile St",
+            "city": "Cairo",
+            "door": "D5"
+          },
+          "2025": {
+            "street": "6 Nile St",
+            "city": "Cairo",
+            "door": "D6"
+          }
+        },
+        "vault": {
+          "street": "7 Nile St",
+          "city": "Cairo",
+          "door": "D7"
+        }
+      },
+      "shown": "{\"byYear\":{\"2024\":{\"city\":\"Cairo\",\"street\":\"5 Nile St\"},\"2025\":{\"city\":\"Cairo\",\"street\":\"6 Nile St\"}},\"early\":\"hello\",\"expires\":\"2026-06-11T00:00:00Z\",\"home\":{\"city\":\"Cairo\",\"street\":\"1 Nile St\"},\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"name\":\"Guest 1\",\"past\":[{\"city\":\"Cairo\",\"street\":\"3 Nile St\"},{\"city\":\"Cairo\",\"street\":\"4 Nile St\"}],\"quota\":4,\"ratio\":25,\"tags\":[\"a\",\"b\"],\"work\":{\"city\":\"Cairo\",\"street\":\"2 Nile St\"}}",
+      "hidden": [
+        "$.byYear.2024.door",
+        "$.byYear.2025.door",
+        "$.email",
+        "$.home.door",
+        "$.past[0].door",
+        "$.past[1].door",
+        "$.phone",
+        "$.vault",
+        "$.work.door"
+      ]
+    },
+    {
+      "name": "staff sees the phone, not the email",
+      "type": "Guest",
+      "note": "The role staff opens the phone (an or), the vault and every door, but the email is for the guest alone.",
+      "caller": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-0000000000aa",
+        "roles": [
+          "staff"
+        ]
+      },
+      "now": "2026-06-10T12:00:00Z",
+      "value": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+        "name": "Guest 1",
+        "quota": 4,
+        "expires": "2026-06-11T00:00:00Z",
+        "phone": "+201000000001",
+        "email": "g1@example.test",
+        "ratio": 25,
+        "early": "hello",
+        "tags": [
+          "a",
+          "b"
+        ],
+        "home": {
+          "street": "1 Nile St",
+          "city": "Cairo",
+          "door": "D1"
+        },
+        "work": {
+          "street": "2 Nile St",
+          "city": "Cairo",
+          "door": "D2"
+        },
+        "past": [
+          {
+            "street": "3 Nile St",
+            "city": "Cairo",
+            "door": "D3"
+          },
+          {
+            "street": "4 Nile St",
+            "city": "Cairo",
+            "door": "D4"
+          }
+        ],
+        "byYear": {
+          "2024": {
+            "street": "5 Nile St",
+            "city": "Cairo",
+            "door": "D5"
+          },
+          "2025": {
+            "street": "6 Nile St",
+            "city": "Cairo",
+            "door": "D6"
+          }
+        },
+        "vault": {
+          "street": "7 Nile St",
+          "city": "Cairo",
+          "door": "D7"
+        }
+      },
+      "shown": "{\"byYear\":{\"2024\":{\"city\":\"Cairo\",\"door\":\"D5\",\"street\":\"5 Nile St\"},\"2025\":{\"city\":\"Cairo\",\"door\":\"D6\",\"street\":\"6 Nile St\"}},\"early\":\"hello\",\"expires\":\"2026-06-11T00:00:00Z\",\"home\":{\"city\":\"Cairo\",\"door\":\"D1\",\"street\":\"1 Nile St\"},\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"name\":\"Guest 1\",\"past\":[{\"city\":\"Cairo\",\"door\":\"D3\",\"street\":\"3 Nile St\"},{\"city\":\"Cairo\",\"door\":\"D4\",\"street\":\"4 Nile St\"}],\"phone\":\"+201000000001\",\"quota\":4,\"ratio\":25,\"tags\":[\"a\",\"b\"],\"vault\":{\"city\":\"Cairo\",\"door\":\"D7\",\"street\":\"7 Nile St\"},\"work\":{\"city\":\"Cairo\",\"door\":\"D2\",\"street\":\"2 Nile St\"}}",
+      "hidden": [
+        "$.email"
+      ]
+    },
+    {
+      "name": "no caller hides every conditional field",
+      "type": "Guest",
+      "note": "An endpoint with @auth(none) has no caller: every field with @visible is dropped without its expression being evaluated, ratio and early included.",
+      "caller": null,
+      "now": "2026-06-10T12:00:00Z",
+      "value": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+        "name": "Guest 1",
+        "quota": 4,
+        "expires": "2026-06-11T00:00:00Z",
+        "phone": "+201000000001",
+        "email": "g1@example.test",
+        "ratio": 25,
+        "early": "hello",
+        "tags": [
+          "a",
+          "b"
+        ],
+        "home": {
+          "street": "1 Nile St",
+          "city": "Cairo",
+          "door": "D1"
+        },
+        "work": {
+          "street": "2 Nile St",
+          "city": "Cairo",
+          "door": "D2"
+        },
+        "past": [
+          {
+            "street": "3 Nile St",
+            "city": "Cairo",
+            "door": "D3"
+          },
+          {
+            "street": "4 Nile St",
+            "city": "Cairo",
+            "door": "D4"
+          }
+        ],
+        "byYear": {
+          "2024": {
+            "street": "5 Nile St",
+            "city": "Cairo",
+            "door": "D5"
+          },
+          "2025": {
+            "street": "6 Nile St",
+            "city": "Cairo",
+            "door": "D6"
+          }
+        },
+        "vault": {
+          "street": "7 Nile St",
+          "city": "Cairo",
+          "door": "D7"
+        }
+      },
+      "shown": "{\"byYear\":{\"2024\":{\"city\":\"Cairo\",\"street\":\"5 Nile St\"},\"2025\":{\"city\":\"Cairo\",\"street\":\"6 Nile St\"}},\"expires\":\"2026-06-11T00:00:00Z\",\"home\":{\"city\":\"Cairo\",\"street\":\"1 Nile St\"},\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"name\":\"Guest 1\",\"past\":[{\"city\":\"Cairo\",\"street\":\"3 Nile St\"},{\"city\":\"Cairo\",\"street\":\"4 Nile St\"}],\"quota\":4,\"work\":{\"city\":\"Cairo\",\"street\":\"2 Nile St\"}}",
+      "hidden": [
+        "$.byYear.2024.door",
+        "$.byYear.2025.door",
+        "$.early",
+        "$.email",
+        "$.home.door",
+        "$.past[0].door",
+        "$.past[1].door",
+        "$.phone",
+        "$.ratio",
+        "$.tags",
+        "$.vault",
+        "$.work.door"
+      ]
+    },
+    {
+      "name": "an expression that cannot be evaluated drops the field",
+      "type": "Guest",
+      "note": "quota is 0, so 100 / quota divides by zero: ratio is dropped for staff too (fail closed). The others are judged on their own.",
+      "caller": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-0000000000aa",
+        "roles": [
+          "staff"
+        ]
+      },
+      "now": "2026-06-10T12:00:00Z",
+      "value": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+        "name": "Guest 1",
+        "quota": 0,
+        "expires": "2026-06-11T00:00:00Z",
+        "phone": "+201000000001",
+        "email": "g1@example.test",
+        "ratio": 25,
+        "early": "hello",
+        "tags": [
+          "a",
+          "b"
+        ],
+        "home": {
+          "street": "1 Nile St",
+          "city": "Cairo",
+          "door": "D1"
+        },
+        "work": {
+          "street": "2 Nile St",
+          "city": "Cairo",
+          "door": "D2"
+        },
+        "past": [
+          {
+            "street": "3 Nile St",
+            "city": "Cairo",
+            "door": "D3"
+          },
+          {
+            "street": "4 Nile St",
+            "city": "Cairo",
+            "door": "D4"
+          }
+        ],
+        "byYear": {
+          "2024": {
+            "street": "5 Nile St",
+            "city": "Cairo",
+            "door": "D5"
+          },
+          "2025": {
+            "street": "6 Nile St",
+            "city": "Cairo",
+            "door": "D6"
+          }
+        },
+        "vault": {
+          "street": "7 Nile St",
+          "city": "Cairo",
+          "door": "D7"
+        }
+      },
+      "shown": "{\"byYear\":{\"2024\":{\"city\":\"Cairo\",\"door\":\"D5\",\"street\":\"5 Nile St\"},\"2025\":{\"city\":\"Cairo\",\"door\":\"D6\",\"street\":\"6 Nile St\"}},\"early\":\"hello\",\"expires\":\"2026-06-11T00:00:00Z\",\"home\":{\"city\":\"Cairo\",\"door\":\"D1\",\"street\":\"1 Nile St\"},\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"name\":\"Guest 1\",\"past\":[{\"city\":\"Cairo\",\"door\":\"D3\",\"street\":\"3 Nile St\"},{\"city\":\"Cairo\",\"door\":\"D4\",\"street\":\"4 Nile St\"}],\"phone\":\"+201000000001\",\"quota\":0,\"tags\":[\"a\",\"b\"],\"vault\":{\"city\":\"Cairo\",\"door\":\"D7\",\"street\":\"7 Nile St\"},\"work\":{\"city\":\"Cairo\",\"door\":\"D2\",\"street\":\"2 Nile St\"}}",
+      "hidden": [
+        "$.email",
+        "$.ratio"
+      ]
+    },
+    {
+      "name": "the clock decides: before",
+      "type": "Guest",
+      "note": "now is before expires: early is shown.",
+      "caller": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000002",
+        "roles": []
+      },
+      "now": "2026-06-10T12:00:00Z",
+      "value": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+        "name": "Guest 1",
+        "quota": 4,
+        "expires": "2026-06-11T00:00:00Z",
+        "phone": "+201000000001",
+        "email": "g1@example.test",
+        "ratio": 25,
+        "early": "hello",
+        "tags": [
+          "a",
+          "b"
+        ],
+        "home": {
+          "street": "1 Nile St",
+          "city": "Cairo",
+          "door": "D1"
+        },
+        "work": {
+          "street": "2 Nile St",
+          "city": "Cairo",
+          "door": "D2"
+        },
+        "past": [
+          {
+            "street": "3 Nile St",
+            "city": "Cairo",
+            "door": "D3"
+          },
+          {
+            "street": "4 Nile St",
+            "city": "Cairo",
+            "door": "D4"
+          }
+        ],
+        "byYear": {
+          "2024": {
+            "street": "5 Nile St",
+            "city": "Cairo",
+            "door": "D5"
+          },
+          "2025": {
+            "street": "6 Nile St",
+            "city": "Cairo",
+            "door": "D6"
+          }
+        },
+        "vault": {
+          "street": "7 Nile St",
+          "city": "Cairo",
+          "door": "D7"
+        }
+      },
+      "shown": "{\"byYear\":{\"2024\":{\"city\":\"Cairo\",\"street\":\"5 Nile St\"},\"2025\":{\"city\":\"Cairo\",\"street\":\"6 Nile St\"}},\"early\":\"hello\",\"expires\":\"2026-06-11T00:00:00Z\",\"home\":{\"city\":\"Cairo\",\"street\":\"1 Nile St\"},\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"name\":\"Guest 1\",\"past\":[{\"city\":\"Cairo\",\"street\":\"3 Nile St\"},{\"city\":\"Cairo\",\"street\":\"4 Nile St\"}],\"quota\":4,\"ratio\":25,\"tags\":[\"a\",\"b\"],\"work\":{\"city\":\"Cairo\",\"street\":\"2 Nile St\"}}",
+      "hidden": [
+        "$.byYear.2024.door",
+        "$.byYear.2025.door",
+        "$.email",
+        "$.home.door",
+        "$.past[0].door",
+        "$.past[1].door",
+        "$.phone",
+        "$.vault",
+        "$.work.door"
+      ]
+    },
+    {
+      "name": "the clock decides: exactly at the instant",
+      "type": "Guest",
+      "note": "now == expires: now < expires is false, early is dropped. The clock is read to the millisecond.",
+      "caller": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000002",
+        "roles": []
+      },
+      "now": "2026-06-10T12:00:00Z",
+      "value": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+        "name": "Guest 1",
+        "quota": 4,
+        "expires": "2026-06-10T12:00:00Z",
+        "phone": "+201000000001",
+        "email": "g1@example.test",
+        "ratio": 25,
+        "early": "hello",
+        "tags": [
+          "a",
+          "b"
+        ],
+        "home": {
+          "street": "1 Nile St",
+          "city": "Cairo",
+          "door": "D1"
+        },
+        "work": {
+          "street": "2 Nile St",
+          "city": "Cairo",
+          "door": "D2"
+        },
+        "past": [
+          {
+            "street": "3 Nile St",
+            "city": "Cairo",
+            "door": "D3"
+          },
+          {
+            "street": "4 Nile St",
+            "city": "Cairo",
+            "door": "D4"
+          }
+        ],
+        "byYear": {
+          "2024": {
+            "street": "5 Nile St",
+            "city": "Cairo",
+            "door": "D5"
+          },
+          "2025": {
+            "street": "6 Nile St",
+            "city": "Cairo",
+            "door": "D6"
+          }
+        },
+        "vault": {
+          "street": "7 Nile St",
+          "city": "Cairo",
+          "door": "D7"
+        }
+      },
+      "shown": "{\"byYear\":{\"2024\":{\"city\":\"Cairo\",\"street\":\"5 Nile St\"},\"2025\":{\"city\":\"Cairo\",\"street\":\"6 Nile St\"}},\"expires\":\"2026-06-10T12:00:00Z\",\"home\":{\"city\":\"Cairo\",\"street\":\"1 Nile St\"},\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"name\":\"Guest 1\",\"past\":[{\"city\":\"Cairo\",\"street\":\"3 Nile St\"},{\"city\":\"Cairo\",\"street\":\"4 Nile St\"}],\"quota\":4,\"ratio\":25,\"tags\":[\"a\",\"b\"],\"work\":{\"city\":\"Cairo\",\"street\":\"2 Nile St\"}}",
+      "hidden": [
+        "$.byYear.2024.door",
+        "$.byYear.2025.door",
+        "$.early",
+        "$.email",
+        "$.home.door",
+        "$.past[0].door",
+        "$.past[1].door",
+        "$.phone",
+        "$.vault",
+        "$.work.door"
+      ]
+    },
+    {
+      "name": "the clock decides: after",
+      "type": "Guest",
+      "note": "now is after expires: early is dropped.",
+      "caller": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000002",
+        "roles": []
+      },
+      "now": "2026-06-12T00:00:00Z",
+      "value": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+        "name": "Guest 1",
+        "quota": 4,
+        "expires": "2026-06-11T00:00:00Z",
+        "phone": "+201000000001",
+        "email": "g1@example.test",
+        "ratio": 25,
+        "early": "hello",
+        "tags": [
+          "a",
+          "b"
+        ],
+        "home": {
+          "street": "1 Nile St",
+          "city": "Cairo",
+          "door": "D1"
+        },
+        "work": {
+          "street": "2 Nile St",
+          "city": "Cairo",
+          "door": "D2"
+        },
+        "past": [
+          {
+            "street": "3 Nile St",
+            "city": "Cairo",
+            "door": "D3"
+          },
+          {
+            "street": "4 Nile St",
+            "city": "Cairo",
+            "door": "D4"
+          }
+        ],
+        "byYear": {
+          "2024": {
+            "street": "5 Nile St",
+            "city": "Cairo",
+            "door": "D5"
+          },
+          "2025": {
+            "street": "6 Nile St",
+            "city": "Cairo",
+            "door": "D6"
+          }
+        },
+        "vault": {
+          "street": "7 Nile St",
+          "city": "Cairo",
+          "door": "D7"
+        }
+      },
+      "shown": "{\"byYear\":{\"2024\":{\"city\":\"Cairo\",\"street\":\"5 Nile St\"},\"2025\":{\"city\":\"Cairo\",\"street\":\"6 Nile St\"}},\"expires\":\"2026-06-11T00:00:00Z\",\"home\":{\"city\":\"Cairo\",\"street\":\"1 Nile St\"},\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"name\":\"Guest 1\",\"past\":[{\"city\":\"Cairo\",\"street\":\"3 Nile St\"},{\"city\":\"Cairo\",\"street\":\"4 Nile St\"}],\"quota\":4,\"ratio\":25,\"tags\":[\"a\",\"b\"],\"work\":{\"city\":\"Cairo\",\"street\":\"2 Nile St\"}}",
+      "hidden": [
+        "$.byYear.2024.door",
+        "$.byYear.2025.door",
+        "$.early",
+        "$.email",
+        "$.home.door",
+        "$.past[0].door",
+        "$.past[1].door",
+        "$.phone",
+        "$.vault",
+        "$.work.door"
+      ]
+    },
+    {
+      "name": "a field the value lacks is not listed",
+      "type": "Guest",
+      "note": "phone, ratio and the vault are not in the value: nothing to drop, nothing to list. The others are as before.",
+      "caller": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000002",
+        "roles": []
+      },
+      "now": "2026-06-10T12:00:00Z",
+      "value": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+        "name": "Guest 1",
+        "quota": 4,
+        "expires": "2026-06-11T00:00:00Z",
+        "email": "g1@example.test",
+        "early": "hello",
+        "home": {
+          "street": "1 Nile St",
+          "city": "Cairo",
+          "door": "D1"
+        },
+        "work": {
+          "street": "2 Nile St",
+          "city": "Cairo",
+          "door": "D2"
+        },
+        "past": [
+          {
+            "street": "3 Nile St",
+            "city": "Cairo",
+            "door": "D3"
+          },
+          {
+            "street": "4 Nile St",
+            "city": "Cairo",
+            "door": "D4"
+          }
+        ],
+        "byYear": {
+          "2024": {
+            "street": "5 Nile St",
+            "city": "Cairo",
+            "door": "D5"
+          },
+          "2025": {
+            "street": "6 Nile St",
+            "city": "Cairo",
+            "door": "D6"
+          }
+        }
+      },
+      "shown": "{\"byYear\":{\"2024\":{\"city\":\"Cairo\",\"street\":\"5 Nile St\"},\"2025\":{\"city\":\"Cairo\",\"street\":\"6 Nile St\"}},\"early\":\"hello\",\"expires\":\"2026-06-11T00:00:00Z\",\"home\":{\"city\":\"Cairo\",\"street\":\"1 Nile St\"},\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"name\":\"Guest 1\",\"past\":[{\"city\":\"Cairo\",\"street\":\"3 Nile St\"},{\"city\":\"Cairo\",\"street\":\"4 Nile St\"}],\"quota\":4,\"work\":{\"city\":\"Cairo\",\"street\":\"2 Nile St\"}}",
+      "hidden": [
+        "$.byYear.2024.door",
+        "$.byYear.2025.door",
+        "$.email",
+        "$.home.door",
+        "$.past[0].door",
+        "$.past[1].door",
+        "$.work.door"
+      ]
+    },
+    {
+      "name": "a field with the value null is dropped and listed",
+      "type": "Guest",
+      "note": "phone is null: a dropped field is dropped whatever it holds.",
+      "caller": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000002",
+        "roles": []
+      },
+      "now": "2026-06-10T12:00:00Z",
+      "value": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+        "name": "Guest 1",
+        "quota": 4,
+        "expires": "2026-06-11T00:00:00Z",
+        "phone": null,
+        "email": "g1@example.test",
+        "ratio": 25,
+        "early": "hello",
+        "tags": [
+          "a",
+          "b"
+        ],
+        "home": {
+          "street": "1 Nile St",
+          "city": "Cairo",
+          "door": "D1"
+        },
+        "work": {
+          "street": "2 Nile St",
+          "city": "Cairo",
+          "door": "D2"
+        },
+        "past": [
+          {
+            "street": "3 Nile St",
+            "city": "Cairo",
+            "door": "D3"
+          },
+          {
+            "street": "4 Nile St",
+            "city": "Cairo",
+            "door": "D4"
+          }
+        ],
+        "byYear": {
+          "2024": {
+            "street": "5 Nile St",
+            "city": "Cairo",
+            "door": "D5"
+          },
+          "2025": {
+            "street": "6 Nile St",
+            "city": "Cairo",
+            "door": "D6"
+          }
+        },
+        "vault": {
+          "street": "7 Nile St",
+          "city": "Cairo",
+          "door": "D7"
+        }
+      },
+      "shown": "{\"byYear\":{\"2024\":{\"city\":\"Cairo\",\"street\":\"5 Nile St\"},\"2025\":{\"city\":\"Cairo\",\"street\":\"6 Nile St\"}},\"early\":\"hello\",\"expires\":\"2026-06-11T00:00:00Z\",\"home\":{\"city\":\"Cairo\",\"street\":\"1 Nile St\"},\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"name\":\"Guest 1\",\"past\":[{\"city\":\"Cairo\",\"street\":\"3 Nile St\"},{\"city\":\"Cairo\",\"street\":\"4 Nile St\"}],\"quota\":4,\"ratio\":25,\"tags\":[\"a\",\"b\"],\"work\":{\"city\":\"Cairo\",\"street\":\"2 Nile St\"}}",
+      "hidden": [
+        "$.byYear.2024.door",
+        "$.byYear.2025.door",
+        "$.email",
+        "$.home.door",
+        "$.past[0].door",
+        "$.past[1].door",
+        "$.phone",
+        "$.vault",
+        "$.work.door"
+      ]
+    },
+    {
+      "name": "a whole nested model is dropped with one path",
+      "type": "Guest",
+      "note": "The vault holds a model with its own @visible door: it is dropped whole and only $.vault is listed.",
+      "caller": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+        "roles": []
+      },
+      "now": "2026-06-10T12:00:00Z",
+      "value": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+        "name": "Guest 1",
+        "quota": 4,
+        "expires": "2026-06-11T00:00:00Z",
+        "phone": "+201000000001",
+        "email": "g1@example.test",
+        "ratio": 25,
+        "early": "hello",
+        "tags": [
+          "a",
+          "b"
+        ],
+        "home": {
+          "street": "1 Nile St",
+          "city": "Cairo",
+          "door": "D1"
+        },
+        "work": {
+          "street": "2 Nile St",
+          "city": "Cairo",
+          "door": "D2"
+        },
+        "past": [
+          {
+            "street": "3 Nile St",
+            "city": "Cairo",
+            "door": "D3"
+          },
+          {
+            "street": "4 Nile St",
+            "city": "Cairo",
+            "door": "D4"
+          }
+        ],
+        "byYear": {
+          "2024": {
+            "street": "5 Nile St",
+            "city": "Cairo",
+            "door": "D5"
+          },
+          "2025": {
+            "street": "6 Nile St",
+            "city": "Cairo",
+            "door": "D6"
+          }
+        },
+        "vault": {
+          "street": "7 Nile St",
+          "city": "Cairo",
+          "door": "D7"
+        }
+      },
+      "shown": "{\"byYear\":{\"2024\":{\"city\":\"Cairo\",\"street\":\"5 Nile St\"},\"2025\":{\"city\":\"Cairo\",\"street\":\"6 Nile St\"}},\"early\":\"hello\",\"email\":\"g1@example.test\",\"expires\":\"2026-06-11T00:00:00Z\",\"home\":{\"city\":\"Cairo\",\"street\":\"1 Nile St\"},\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"name\":\"Guest 1\",\"past\":[{\"city\":\"Cairo\",\"street\":\"3 Nile St\"},{\"city\":\"Cairo\",\"street\":\"4 Nile St\"}],\"phone\":\"+201000000001\",\"quota\":4,\"ratio\":25,\"tags\":[\"a\",\"b\"],\"work\":{\"city\":\"Cairo\",\"street\":\"2 Nile St\"}}",
+      "hidden": [
+        "$.byYear.2024.door",
+        "$.byYear.2025.door",
+        "$.home.door",
+        "$.past[0].door",
+        "$.past[1].door",
+        "$.vault",
+        "$.work.door"
+      ]
+    },
+    {
+      "name": "a guard on the field itself",
+      "type": "Guest",
+      "note": "tags is shown only when it has more than one entry (has(tags) && len(tags) > 1).",
+      "caller": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+        "roles": []
+      },
+      "now": "2026-06-10T12:00:00Z",
+      "value": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+        "name": "Guest 1",
+        "quota": 4,
+        "expires": "2026-06-11T00:00:00Z",
+        "phone": "+201000000001",
+        "email": "g1@example.test",
+        "ratio": 25,
+        "early": "hello",
+        "tags": [
+          "only"
+        ],
+        "home": {
+          "street": "1 Nile St",
+          "city": "Cairo",
+          "door": "D1"
+        },
+        "work": {
+          "street": "2 Nile St",
+          "city": "Cairo",
+          "door": "D2"
+        },
+        "past": [
+          {
+            "street": "3 Nile St",
+            "city": "Cairo",
+            "door": "D3"
+          },
+          {
+            "street": "4 Nile St",
+            "city": "Cairo",
+            "door": "D4"
+          }
+        ],
+        "byYear": {
+          "2024": {
+            "street": "5 Nile St",
+            "city": "Cairo",
+            "door": "D5"
+          },
+          "2025": {
+            "street": "6 Nile St",
+            "city": "Cairo",
+            "door": "D6"
+          }
+        },
+        "vault": {
+          "street": "7 Nile St",
+          "city": "Cairo",
+          "door": "D7"
+        }
+      },
+      "shown": "{\"byYear\":{\"2024\":{\"city\":\"Cairo\",\"street\":\"5 Nile St\"},\"2025\":{\"city\":\"Cairo\",\"street\":\"6 Nile St\"}},\"early\":\"hello\",\"email\":\"g1@example.test\",\"expires\":\"2026-06-11T00:00:00Z\",\"home\":{\"city\":\"Cairo\",\"street\":\"1 Nile St\"},\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"name\":\"Guest 1\",\"past\":[{\"city\":\"Cairo\",\"street\":\"3 Nile St\"},{\"city\":\"Cairo\",\"street\":\"4 Nile St\"}],\"phone\":\"+201000000001\",\"quota\":4,\"ratio\":25,\"work\":{\"city\":\"Cairo\",\"street\":\"2 Nile St\"}}",
+      "hidden": [
+        "$.byYear.2024.door",
+        "$.byYear.2025.door",
+        "$.home.door",
+        "$.past[0].door",
+        "$.past[1].door",
+        "$.tags",
+        "$.vault",
+        "$.work.door"
+      ]
+    },
+    {
+      "name": "a member the declaration does not know is kept",
+      "type": "Guest",
+      "note": "Members the contract does not declare are not the business of visibility.",
+      "caller": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000002",
+        "roles": []
+      },
+      "now": "2026-06-10T12:00:00Z",
+      "value": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+        "name": "Guest 1",
+        "quota": 4,
+        "expires": "2026-06-11T00:00:00Z",
+        "phone": "+201000000001",
+        "email": "g1@example.test",
+        "ratio": 25,
+        "early": "hello",
+        "tags": [
+          "a",
+          "b"
+        ],
+        "home": {
+          "street": "1 Nile St",
+          "city": "Cairo",
+          "door": "D1"
+        },
+        "work": {
+          "street": "2 Nile St",
+          "city": "Cairo",
+          "door": "D2"
+        },
+        "past": [
+          {
+            "street": "3 Nile St",
+            "city": "Cairo",
+            "door": "D3"
+          },
+          {
+            "street": "4 Nile St",
+            "city": "Cairo",
+            "door": "D4"
+          }
+        ],
+        "byYear": {
+          "2024": {
+            "street": "5 Nile St",
+            "city": "Cairo",
+            "door": "D5"
+          },
+          "2025": {
+            "street": "6 Nile St",
+            "city": "Cairo",
+            "door": "D6"
+          }
+        },
+        "vault": {
+          "street": "7 Nile St",
+          "city": "Cairo",
+          "door": "D7"
+        },
+        "extra": {
+          "x": 1
+        }
+      },
+      "shown": "{\"byYear\":{\"2024\":{\"city\":\"Cairo\",\"street\":\"5 Nile St\"},\"2025\":{\"city\":\"Cairo\",\"street\":\"6 Nile St\"}},\"early\":\"hello\",\"expires\":\"2026-06-11T00:00:00Z\",\"extra\":{\"x\":1},\"home\":{\"city\":\"Cairo\",\"street\":\"1 Nile St\"},\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"name\":\"Guest 1\",\"past\":[{\"city\":\"Cairo\",\"street\":\"3 Nile St\"},{\"city\":\"Cairo\",\"street\":\"4 Nile St\"}],\"quota\":4,\"ratio\":25,\"tags\":[\"a\",\"b\"],\"work\":{\"city\":\"Cairo\",\"street\":\"2 Nile St\"}}",
+      "hidden": [
+        "$.byYear.2024.door",
+        "$.byYear.2025.door",
+        "$.email",
+        "$.home.door",
+        "$.past[0].door",
+        "$.past[1].door",
+        "$.phone",
+        "$.vault",
+        "$.work.door"
+      ]
+    },
+    {
+      "name": "an inherited field and an own one",
+      "type": "Vip",
+      "note": "badge is the own field of Vip, phone comes from Guest.",
+      "caller": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-0000000000aa",
+        "roles": [
+          "staff"
+        ]
+      },
+      "now": "2026-06-10T12:00:00Z",
+      "value": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+        "name": "Guest 1",
+        "quota": 4,
+        "expires": "2026-06-11T00:00:00Z",
+        "phone": "+201000000001",
+        "email": "g1@example.test",
+        "ratio": 25,
+        "early": "hello",
+        "tags": [
+          "a",
+          "b"
+        ],
+        "home": {
+          "street": "1 Nile St",
+          "city": "Cairo",
+          "door": "D1"
+        },
+        "work": {
+          "street": "2 Nile St",
+          "city": "Cairo",
+          "door": "D2"
+        },
+        "past": [
+          {
+            "street": "3 Nile St",
+            "city": "Cairo",
+            "door": "D3"
+          },
+          {
+            "street": "4 Nile St",
+            "city": "Cairo",
+            "door": "D4"
+          }
+        ],
+        "byYear": {
+          "2024": {
+            "street": "5 Nile St",
+            "city": "Cairo",
+            "door": "D5"
+          },
+          "2025": {
+            "street": "6 Nile St",
+            "city": "Cairo",
+            "door": "D6"
+          }
+        },
+        "vault": {
+          "street": "7 Nile St",
+          "city": "Cairo",
+          "door": "D7"
+        },
+        "badge": "gold"
+      },
+      "shown": "{\"badge\":\"gold\",\"byYear\":{\"2024\":{\"city\":\"Cairo\",\"door\":\"D5\",\"street\":\"5 Nile St\"},\"2025\":{\"city\":\"Cairo\",\"door\":\"D6\",\"street\":\"6 Nile St\"}},\"early\":\"hello\",\"expires\":\"2026-06-11T00:00:00Z\",\"home\":{\"city\":\"Cairo\",\"door\":\"D1\",\"street\":\"1 Nile St\"},\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"name\":\"Guest 1\",\"past\":[{\"city\":\"Cairo\",\"door\":\"D3\",\"street\":\"3 Nile St\"},{\"city\":\"Cairo\",\"door\":\"D4\",\"street\":\"4 Nile St\"}],\"phone\":\"+201000000001\",\"quota\":4,\"ratio\":25,\"tags\":[\"a\",\"b\"],\"vault\":{\"city\":\"Cairo\",\"door\":\"D7\",\"street\":\"7 Nile St\"},\"work\":{\"city\":\"Cairo\",\"door\":\"D2\",\"street\":\"2 Nile St\"}}",
+      "hidden": [
+        "$.email"
+      ]
+    },
+    {
+      "name": "an inherited field and an own one for another caller",
+      "type": "Vip",
+      "note": "The same value for a caller that is neither the guest nor staff.",
+      "caller": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000002",
+        "roles": []
+      },
+      "now": "2026-06-10T12:00:00Z",
+      "value": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+        "name": "Guest 1",
+        "quota": 4,
+        "expires": "2026-06-11T00:00:00Z",
+        "phone": "+201000000001",
+        "email": "g1@example.test",
+        "ratio": 25,
+        "early": "hello",
+        "tags": [
+          "a",
+          "b"
+        ],
+        "home": {
+          "street": "1 Nile St",
+          "city": "Cairo",
+          "door": "D1"
+        },
+        "work": {
+          "street": "2 Nile St",
+          "city": "Cairo",
+          "door": "D2"
+        },
+        "past": [
+          {
+            "street": "3 Nile St",
+            "city": "Cairo",
+            "door": "D3"
+          },
+          {
+            "street": "4 Nile St",
+            "city": "Cairo",
+            "door": "D4"
+          }
+        ],
+        "byYear": {
+          "2024": {
+            "street": "5 Nile St",
+            "city": "Cairo",
+            "door": "D5"
+          },
+          "2025": {
+            "street": "6 Nile St",
+            "city": "Cairo",
+            "door": "D6"
+          }
+        },
+        "vault": {
+          "street": "7 Nile St",
+          "city": "Cairo",
+          "door": "D7"
+        },
+        "badge": "gold"
+      },
+      "shown": "{\"byYear\":{\"2024\":{\"city\":\"Cairo\",\"street\":\"5 Nile St\"},\"2025\":{\"city\":\"Cairo\",\"street\":\"6 Nile St\"}},\"early\":\"hello\",\"expires\":\"2026-06-11T00:00:00Z\",\"home\":{\"city\":\"Cairo\",\"street\":\"1 Nile St\"},\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"name\":\"Guest 1\",\"past\":[{\"city\":\"Cairo\",\"street\":\"3 Nile St\"},{\"city\":\"Cairo\",\"street\":\"4 Nile St\"}],\"quota\":4,\"ratio\":25,\"tags\":[\"a\",\"b\"],\"work\":{\"city\":\"Cairo\",\"street\":\"2 Nile St\"}}",
+      "hidden": [
+        "$.badge",
+        "$.byYear.2024.door",
+        "$.byYear.2025.door",
+        "$.email",
+        "$.home.door",
+        "$.past[0].door",
+        "$.past[1].door",
+        "$.phone",
+        "$.vault",
+        "$.work.door"
+      ]
+    },
+    {
+      "name": "a union arm is chosen by its discriminator",
+      "type": "Order",
+      "note": "Both arms have a field for staff. The arm is found by kind, the other arm's fields are not looked at.",
+      "caller": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+        "roles": []
+      },
+      "now": "2026-06-10T12:00:00Z",
+      "value": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-0000000000b1",
+        "guest": {
+          "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+          "name": "Guest 1",
+          "quota": 4,
+          "expires": "2026-06-11T00:00:00Z",
+          "phone": "+201000000001",
+          "email": "g1@example.test",
+          "ratio": 25,
+          "early": "hello",
+          "tags": [
+            "a",
+            "b"
+          ],
+          "home": {
+            "street": "1 Nile St",
+            "city": "Cairo",
+            "door": "D1"
+          },
+          "work": {
+            "street": "2 Nile St",
+            "city": "Cairo",
+            "door": "D2"
+          },
+          "past": [
+            {
+              "street": "3 Nile St",
+              "city": "Cairo",
+              "door": "D3"
+            },
+            {
+              "street": "4 Nile St",
+              "city": "Cairo",
+              "door": "D4"
+            }
+          ],
+          "byYear": {
+            "2024": {
+              "street": "5 Nile St",
+              "city": "Cairo",
+              "door": "D5"
+            },
+            "2025": {
+              "street": "6 Nile St",
+              "city": "Cairo",
+              "door": "D6"
+            }
+          },
+          "vault": {
+            "street": "7 Nile St",
+            "city": "Cairo",
+            "door": "D7"
+          }
+        },
+        "pay": {
+          "kind": "card",
+          "number": "4111",
+          "hint": "visa"
+        },
+        "guests": {
+          "items": [
+            {
+              "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+              "name": "Guest 1",
+              "quota": 4,
+              "expires": "2026-06-11T00:00:00Z",
+              "phone": "+201000000001",
+              "email": "g1@example.test",
+              "ratio": 25,
+              "early": "hello",
+              "tags": [
+                "a",
+                "b"
+              ],
+              "home": {
+                "street": "1 Nile St",
+                "city": "Cairo",
+                "door": "D1"
+              },
+              "work": {
+                "street": "2 Nile St",
+                "city": "Cairo",
+                "door": "D2"
+              },
+              "past": [
+                {
+                  "street": "3 Nile St",
+                  "city": "Cairo",
+                  "door": "D3"
+                },
+                {
+                  "street": "4 Nile St",
+                  "city": "Cairo",
+                  "door": "D4"
+                }
+              ],
+              "byYear": {
+                "2024": {
+                  "street": "5 Nile St",
+                  "city": "Cairo",
+                  "door": "D5"
+                },
+                "2025": {
+                  "street": "6 Nile St",
+                  "city": "Cairo",
+                  "door": "D6"
+                }
+              },
+              "vault": {
+                "street": "7 Nile St",
+                "city": "Cairo",
+                "door": "D7"
+              }
+            },
+            {
+              "id": "0b5c9c3e-1111-4a5b-8c9d-000000000002",
+              "name": "Guest 2",
+              "quota": 4,
+              "expires": "2026-06-11T00:00:00Z",
+              "phone": "+201000000002",
+              "email": "g2@example.test",
+              "ratio": 25,
+              "early": "hello",
+              "tags": [
+                "a",
+                "b"
+              ],
+              "home": {
+                "street": "1 Nile St",
+                "city": "Cairo",
+                "door": "D1"
+              },
+              "work": {
+                "street": "2 Nile St",
+                "city": "Cairo",
+                "door": "D2"
+              },
+              "past": [
+                {
+                  "street": "3 Nile St",
+                  "city": "Cairo",
+                  "door": "D3"
+                },
+                {
+                  "street": "4 Nile St",
+                  "city": "Cairo",
+                  "door": "D4"
+                }
+              ],
+              "byYear": {
+                "2024": {
+                  "street": "5 Nile St",
+                  "city": "Cairo",
+                  "door": "D5"
+                },
+                "2025": {
+                  "street": "6 Nile St",
+                  "city": "Cairo",
+                  "door": "D6"
+                }
+              },
+              "vault": {
+                "street": "7 Nile St",
+                "city": "Cairo",
+                "door": "D7"
+              }
+            }
+          ],
+          "total": 2,
+          "page": 1,
+          "size": 2
+        },
+        "payments": [
+          {
+            "kind": "card",
+            "number": "4111",
+            "hint": "visa"
+          },
+          {
+            "kind": "wire",
+            "iban": "EG00",
+            "memo": "m"
+          }
+        ]
+      },
+      "shown": "{\"guest\":{\"byYear\":{\"2024\":{\"city\":\"Cairo\",\"street\":\"5 Nile St\"},\"2025\":{\"city\":\"Cairo\",\"street\":\"6 Nile St\"}},\"early\":\"hello\",\"email\":\"g1@example.test\",\"expires\":\"2026-06-11T00:00:00Z\",\"home\":{\"city\":\"Cairo\",\"street\":\"1 Nile St\"},\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"name\":\"Guest 1\",\"past\":[{\"city\":\"Cairo\",\"street\":\"3 Nile St\"},{\"city\":\"Cairo\",\"street\":\"4 Nile St\"}],\"phone\":\"+201000000001\",\"quota\":4,\"ratio\":25,\"tags\":[\"a\",\"b\"],\"work\":{\"city\":\"Cairo\",\"street\":\"2 Nile St\"}},\"guests\":{\"items\":[{\"byYear\":{\"2024\":{\"city\":\"Cairo\",\"street\":\"5 Nile St\"},\"2025\":{\"city\":\"Cairo\",\"street\":\"6 Nile St\"}},\"early\":\"hello\",\"email\":\"g1@example.test\",\"expires\":\"2026-06-11T00:00:00Z\",\"home\":{\"city\":\"Cairo\",\"street\":\"1 Nile St\"},\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"name\":\"Guest 1\",\"past\":[{\"city\":\"Cairo\",\"street\":\"3 Nile St\"},{\"city\":\"Cairo\",\"street\":\"4 Nile St\"}],\"phone\":\"+201000000001\",\"quota\":4,\"ratio\":25,\"tags\":[\"a\",\"b\"],\"work\":{\"city\":\"Cairo\",\"street\":\"2 Nile St\"}},{\"byYear\":{\"2024\":{\"city\":\"Cairo\",\"street\":\"5 Nile St\"},\"2025\":{\"city\":\"Cairo\",\"street\":\"6 Nile St\"}},\"early\":\"hello\",\"expires\":\"2026-06-11T00:00:00Z\",\"home\":{\"city\":\"Cairo\",\"street\":\"1 Nile St\"},\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000002\",\"name\":\"Guest 2\",\"past\":[{\"city\":\"Cairo\",\"street\":\"3 Nile St\"},{\"city\":\"Cairo\",\"street\":\"4 Nile St\"}],\"quota\":4,\"ratio\":25,\"tags\":[\"a\",\"b\"],\"work\":{\"city\":\"Cairo\",\"street\":\"2 Nile St\"}}],\"page\":1,\"size\":2,\"total\":2},\"id\":\"0b5c9c3e-1111-4a5b-8c9d-0000000000b1\",\"pay\":{\"kind\":\"card\",\"number\":\"4111\"},\"payments\":[{\"kind\":\"card\",\"number\":\"4111\"},{\"iban\":\"EG00\",\"kind\":\"wire\"}]}",
+      "hidden": [
+        "$.guest.byYear.2024.door",
+        "$.guest.byYear.2025.door",
+        "$.guest.home.door",
+        "$.guest.past[0].door",
+        "$.guest.past[1].door",
+        "$.guest.vault",
+        "$.guest.work.door",
+        "$.guests.items[0].byYear.2024.door",
+        "$.guests.items[0].byYear.2025.door",
+        "$.guests.items[0].home.door",
+        "$.guests.items[0].past[0].door",
+        "$.guests.items[0].past[1].door",
+        "$.guests.items[0].vault",
+        "$.guests.items[0].work.door",
+        "$.guests.items[1].byYear.2024.door",
+        "$.guests.items[1].byYear.2025.door",
+        "$.guests.items[1].email",
+        "$.guests.items[1].home.door",
+        "$.guests.items[1].past[0].door",
+        "$.guests.items[1].past[1].door",
+        "$.guests.items[1].phone",
+        "$.guests.items[1].vault",
+        "$.guests.items[1].work.door",
+        "$.pay.hint",
+        "$.payments[0].hint",
+        "$.payments[1].memo"
+      ]
+    },
+    {
+      "name": "a page and a list inside a model",
+      "type": "Order",
+      "note": "The items of a page and the elements of a list are judged one by one for the caller: Guest 1 sees their own phone in the page, Guest 2 does not.",
+      "caller": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+        "roles": []
+      },
+      "now": "2026-06-10T12:00:00Z",
+      "value": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-0000000000b1",
+        "guest": {
+          "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+          "name": "Guest 1",
+          "quota": 4,
+          "expires": "2026-06-11T00:00:00Z",
+          "phone": "+201000000001",
+          "email": "g1@example.test",
+          "ratio": 25,
+          "early": "hello",
+          "tags": [
+            "a",
+            "b"
+          ],
+          "home": {
+            "street": "1 Nile St",
+            "city": "Cairo",
+            "door": "D1"
+          },
+          "work": {
+            "street": "2 Nile St",
+            "city": "Cairo",
+            "door": "D2"
+          },
+          "past": [
+            {
+              "street": "3 Nile St",
+              "city": "Cairo",
+              "door": "D3"
+            },
+            {
+              "street": "4 Nile St",
+              "city": "Cairo",
+              "door": "D4"
+            }
+          ],
+          "byYear": {
+            "2024": {
+              "street": "5 Nile St",
+              "city": "Cairo",
+              "door": "D5"
+            },
+            "2025": {
+              "street": "6 Nile St",
+              "city": "Cairo",
+              "door": "D6"
+            }
+          },
+          "vault": {
+            "street": "7 Nile St",
+            "city": "Cairo",
+            "door": "D7"
+          }
+        },
+        "pay": {
+          "kind": "card",
+          "number": "4111",
+          "hint": "visa"
+        },
+        "guests": {
+          "items": [
+            {
+              "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+              "name": "Guest 1",
+              "quota": 4,
+              "expires": "2026-06-11T00:00:00Z",
+              "phone": "+201000000001",
+              "email": "g1@example.test",
+              "ratio": 25,
+              "early": "hello",
+              "tags": [
+                "a",
+                "b"
+              ],
+              "home": {
+                "street": "1 Nile St",
+                "city": "Cairo",
+                "door": "D1"
+              },
+              "work": {
+                "street": "2 Nile St",
+                "city": "Cairo",
+                "door": "D2"
+              },
+              "past": [
+                {
+                  "street": "3 Nile St",
+                  "city": "Cairo",
+                  "door": "D3"
+                },
+                {
+                  "street": "4 Nile St",
+                  "city": "Cairo",
+                  "door": "D4"
+                }
+              ],
+              "byYear": {
+                "2024": {
+                  "street": "5 Nile St",
+                  "city": "Cairo",
+                  "door": "D5"
+                },
+                "2025": {
+                  "street": "6 Nile St",
+                  "city": "Cairo",
+                  "door": "D6"
+                }
+              },
+              "vault": {
+                "street": "7 Nile St",
+                "city": "Cairo",
+                "door": "D7"
+              }
+            },
+            {
+              "id": "0b5c9c3e-1111-4a5b-8c9d-000000000002",
+              "name": "Guest 2",
+              "quota": 4,
+              "expires": "2026-06-11T00:00:00Z",
+              "phone": "+201000000002",
+              "email": "g2@example.test",
+              "ratio": 25,
+              "early": "hello",
+              "tags": [
+                "a",
+                "b"
+              ],
+              "home": {
+                "street": "1 Nile St",
+                "city": "Cairo",
+                "door": "D1"
+              },
+              "work": {
+                "street": "2 Nile St",
+                "city": "Cairo",
+                "door": "D2"
+              },
+              "past": [
+                {
+                  "street": "3 Nile St",
+                  "city": "Cairo",
+                  "door": "D3"
+                },
+                {
+                  "street": "4 Nile St",
+                  "city": "Cairo",
+                  "door": "D4"
+                }
+              ],
+              "byYear": {
+                "2024": {
+                  "street": "5 Nile St",
+                  "city": "Cairo",
+                  "door": "D5"
+                },
+                "2025": {
+                  "street": "6 Nile St",
+                  "city": "Cairo",
+                  "door": "D6"
+                }
+              },
+              "vault": {
+                "street": "7 Nile St",
+                "city": "Cairo",
+                "door": "D7"
+              }
+            }
+          ],
+          "total": 2,
+          "page": 1,
+          "size": 2
+        },
+        "payments": [
+          {
+            "kind": "card",
+            "number": "4111",
+            "hint": "visa"
+          },
+          {
+            "kind": "wire",
+            "iban": "EG00",
+            "memo": "m"
+          }
+        ]
+      },
+      "shown": "{\"guest\":{\"byYear\":{\"2024\":{\"city\":\"Cairo\",\"street\":\"5 Nile St\"},\"2025\":{\"city\":\"Cairo\",\"street\":\"6 Nile St\"}},\"early\":\"hello\",\"email\":\"g1@example.test\",\"expires\":\"2026-06-11T00:00:00Z\",\"home\":{\"city\":\"Cairo\",\"street\":\"1 Nile St\"},\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"name\":\"Guest 1\",\"past\":[{\"city\":\"Cairo\",\"street\":\"3 Nile St\"},{\"city\":\"Cairo\",\"street\":\"4 Nile St\"}],\"phone\":\"+201000000001\",\"quota\":4,\"ratio\":25,\"tags\":[\"a\",\"b\"],\"work\":{\"city\":\"Cairo\",\"street\":\"2 Nile St\"}},\"guests\":{\"items\":[{\"byYear\":{\"2024\":{\"city\":\"Cairo\",\"street\":\"5 Nile St\"},\"2025\":{\"city\":\"Cairo\",\"street\":\"6 Nile St\"}},\"early\":\"hello\",\"email\":\"g1@example.test\",\"expires\":\"2026-06-11T00:00:00Z\",\"home\":{\"city\":\"Cairo\",\"street\":\"1 Nile St\"},\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"name\":\"Guest 1\",\"past\":[{\"city\":\"Cairo\",\"street\":\"3 Nile St\"},{\"city\":\"Cairo\",\"street\":\"4 Nile St\"}],\"phone\":\"+201000000001\",\"quota\":4,\"ratio\":25,\"tags\":[\"a\",\"b\"],\"work\":{\"city\":\"Cairo\",\"street\":\"2 Nile St\"}},{\"byYear\":{\"2024\":{\"city\":\"Cairo\",\"street\":\"5 Nile St\"},\"2025\":{\"city\":\"Cairo\",\"street\":\"6 Nile St\"}},\"early\":\"hello\",\"expires\":\"2026-06-11T00:00:00Z\",\"home\":{\"city\":\"Cairo\",\"street\":\"1 Nile St\"},\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000002\",\"name\":\"Guest 2\",\"past\":[{\"city\":\"Cairo\",\"street\":\"3 Nile St\"},{\"city\":\"Cairo\",\"street\":\"4 Nile St\"}],\"quota\":4,\"ratio\":25,\"tags\":[\"a\",\"b\"],\"work\":{\"city\":\"Cairo\",\"street\":\"2 Nile St\"}}],\"page\":1,\"size\":2,\"total\":2},\"id\":\"0b5c9c3e-1111-4a5b-8c9d-0000000000b1\",\"pay\":{\"kind\":\"card\",\"number\":\"4111\"},\"payments\":[{\"kind\":\"card\",\"number\":\"4111\"},{\"iban\":\"EG00\",\"kind\":\"wire\"}]}",
+      "hidden": [
+        "$.guest.byYear.2024.door",
+        "$.guest.byYear.2025.door",
+        "$.guest.home.door",
+        "$.guest.past[0].door",
+        "$.guest.past[1].door",
+        "$.guest.vault",
+        "$.guest.work.door",
+        "$.guests.items[0].byYear.2024.door",
+        "$.guests.items[0].byYear.2025.door",
+        "$.guests.items[0].home.door",
+        "$.guests.items[0].past[0].door",
+        "$.guests.items[0].past[1].door",
+        "$.guests.items[0].vault",
+        "$.guests.items[0].work.door",
+        "$.guests.items[1].byYear.2024.door",
+        "$.guests.items[1].byYear.2025.door",
+        "$.guests.items[1].email",
+        "$.guests.items[1].home.door",
+        "$.guests.items[1].past[0].door",
+        "$.guests.items[1].past[1].door",
+        "$.guests.items[1].phone",
+        "$.guests.items[1].vault",
+        "$.guests.items[1].work.door",
+        "$.pay.hint",
+        "$.payments[0].hint",
+        "$.payments[1].memo"
+      ]
+    },
+    {
+      "name": "staff sees the arms in full",
+      "type": "Order",
+      "note": "The same order for staff: the hints and the memo are shown.",
+      "caller": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-0000000000aa",
+        "roles": [
+          "staff"
+        ]
+      },
+      "now": "2026-06-10T12:00:00Z",
+      "value": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-0000000000b1",
+        "guest": {
+          "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+          "name": "Guest 1",
+          "quota": 4,
+          "expires": "2026-06-11T00:00:00Z",
+          "phone": "+201000000001",
+          "email": "g1@example.test",
+          "ratio": 25,
+          "early": "hello",
+          "tags": [
+            "a",
+            "b"
+          ],
+          "home": {
+            "street": "1 Nile St",
+            "city": "Cairo",
+            "door": "D1"
+          },
+          "work": {
+            "street": "2 Nile St",
+            "city": "Cairo",
+            "door": "D2"
+          },
+          "past": [
+            {
+              "street": "3 Nile St",
+              "city": "Cairo",
+              "door": "D3"
+            },
+            {
+              "street": "4 Nile St",
+              "city": "Cairo",
+              "door": "D4"
+            }
+          ],
+          "byYear": {
+            "2024": {
+              "street": "5 Nile St",
+              "city": "Cairo",
+              "door": "D5"
+            },
+            "2025": {
+              "street": "6 Nile St",
+              "city": "Cairo",
+              "door": "D6"
+            }
+          },
+          "vault": {
+            "street": "7 Nile St",
+            "city": "Cairo",
+            "door": "D7"
+          }
+        },
+        "pay": {
+          "kind": "card",
+          "number": "4111",
+          "hint": "visa"
+        },
+        "guests": {
+          "items": [
+            {
+              "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+              "name": "Guest 1",
+              "quota": 4,
+              "expires": "2026-06-11T00:00:00Z",
+              "phone": "+201000000001",
+              "email": "g1@example.test",
+              "ratio": 25,
+              "early": "hello",
+              "tags": [
+                "a",
+                "b"
+              ],
+              "home": {
+                "street": "1 Nile St",
+                "city": "Cairo",
+                "door": "D1"
+              },
+              "work": {
+                "street": "2 Nile St",
+                "city": "Cairo",
+                "door": "D2"
+              },
+              "past": [
+                {
+                  "street": "3 Nile St",
+                  "city": "Cairo",
+                  "door": "D3"
+                },
+                {
+                  "street": "4 Nile St",
+                  "city": "Cairo",
+                  "door": "D4"
+                }
+              ],
+              "byYear": {
+                "2024": {
+                  "street": "5 Nile St",
+                  "city": "Cairo",
+                  "door": "D5"
+                },
+                "2025": {
+                  "street": "6 Nile St",
+                  "city": "Cairo",
+                  "door": "D6"
+                }
+              },
+              "vault": {
+                "street": "7 Nile St",
+                "city": "Cairo",
+                "door": "D7"
+              }
+            },
+            {
+              "id": "0b5c9c3e-1111-4a5b-8c9d-000000000002",
+              "name": "Guest 2",
+              "quota": 4,
+              "expires": "2026-06-11T00:00:00Z",
+              "phone": "+201000000002",
+              "email": "g2@example.test",
+              "ratio": 25,
+              "early": "hello",
+              "tags": [
+                "a",
+                "b"
+              ],
+              "home": {
+                "street": "1 Nile St",
+                "city": "Cairo",
+                "door": "D1"
+              },
+              "work": {
+                "street": "2 Nile St",
+                "city": "Cairo",
+                "door": "D2"
+              },
+              "past": [
+                {
+                  "street": "3 Nile St",
+                  "city": "Cairo",
+                  "door": "D3"
+                },
+                {
+                  "street": "4 Nile St",
+                  "city": "Cairo",
+                  "door": "D4"
+                }
+              ],
+              "byYear": {
+                "2024": {
+                  "street": "5 Nile St",
+                  "city": "Cairo",
+                  "door": "D5"
+                },
+                "2025": {
+                  "street": "6 Nile St",
+                  "city": "Cairo",
+                  "door": "D6"
+                }
+              },
+              "vault": {
+                "street": "7 Nile St",
+                "city": "Cairo",
+                "door": "D7"
+              }
+            }
+          ],
+          "total": 2,
+          "page": 1,
+          "size": 2
+        },
+        "payments": [
+          {
+            "kind": "card",
+            "number": "4111",
+            "hint": "visa"
+          },
+          {
+            "kind": "wire",
+            "iban": "EG00",
+            "memo": "m"
+          }
+        ]
+      },
+      "shown": "{\"guest\":{\"byYear\":{\"2024\":{\"city\":\"Cairo\",\"door\":\"D5\",\"street\":\"5 Nile St\"},\"2025\":{\"city\":\"Cairo\",\"door\":\"D6\",\"street\":\"6 Nile St\"}},\"early\":\"hello\",\"expires\":\"2026-06-11T00:00:00Z\",\"home\":{\"city\":\"Cairo\",\"door\":\"D1\",\"street\":\"1 Nile St\"},\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"name\":\"Guest 1\",\"past\":[{\"city\":\"Cairo\",\"door\":\"D3\",\"street\":\"3 Nile St\"},{\"city\":\"Cairo\",\"door\":\"D4\",\"street\":\"4 Nile St\"}],\"phone\":\"+201000000001\",\"quota\":4,\"ratio\":25,\"tags\":[\"a\",\"b\"],\"vault\":{\"city\":\"Cairo\",\"door\":\"D7\",\"street\":\"7 Nile St\"},\"work\":{\"city\":\"Cairo\",\"door\":\"D2\",\"street\":\"2 Nile St\"}},\"guests\":{\"items\":[{\"byYear\":{\"2024\":{\"city\":\"Cairo\",\"door\":\"D5\",\"street\":\"5 Nile St\"},\"2025\":{\"city\":\"Cairo\",\"door\":\"D6\",\"street\":\"6 Nile St\"}},\"early\":\"hello\",\"expires\":\"2026-06-11T00:00:00Z\",\"home\":{\"city\":\"Cairo\",\"door\":\"D1\",\"street\":\"1 Nile St\"},\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"name\":\"Guest 1\",\"past\":[{\"city\":\"Cairo\",\"door\":\"D3\",\"street\":\"3 Nile St\"},{\"city\":\"Cairo\",\"door\":\"D4\",\"street\":\"4 Nile St\"}],\"phone\":\"+201000000001\",\"quota\":4,\"ratio\":25,\"tags\":[\"a\",\"b\"],\"vault\":{\"city\":\"Cairo\",\"door\":\"D7\",\"street\":\"7 Nile St\"},\"work\":{\"city\":\"Cairo\",\"door\":\"D2\",\"street\":\"2 Nile St\"}},{\"byYear\":{\"2024\":{\"city\":\"Cairo\",\"door\":\"D5\",\"street\":\"5 Nile St\"},\"2025\":{\"city\":\"Cairo\",\"door\":\"D6\",\"street\":\"6 Nile St\"}},\"early\":\"hello\",\"expires\":\"2026-06-11T00:00:00Z\",\"home\":{\"city\":\"Cairo\",\"door\":\"D1\",\"street\":\"1 Nile St\"},\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000002\",\"name\":\"Guest 2\",\"past\":[{\"city\":\"Cairo\",\"door\":\"D3\",\"street\":\"3 Nile St\"},{\"city\":\"Cairo\",\"door\":\"D4\",\"street\":\"4 Nile St\"}],\"phone\":\"+201000000002\",\"quota\":4,\"ratio\":25,\"tags\":[\"a\",\"b\"],\"vault\":{\"city\":\"Cairo\",\"door\":\"D7\",\"street\":\"7 Nile St\"},\"work\":{\"city\":\"Cairo\",\"door\":\"D2\",\"street\":\"2 Nile St\"}}],\"page\":1,\"size\":2,\"total\":2},\"id\":\"0b5c9c3e-1111-4a5b-8c9d-0000000000b1\",\"pay\":{\"hint\":\"visa\",\"kind\":\"card\",\"number\":\"4111\"},\"payments\":[{\"hint\":\"visa\",\"kind\":\"card\",\"number\":\"4111\"},{\"iban\":\"EG00\",\"kind\":\"wire\",\"memo\":\"m\"}]}",
+      "hidden": [
+        "$.guest.email",
+        "$.guests.items[0].email",
+        "$.guests.items[1].email"
+      ]
+    },
+    {
+      "name": "a page with no items",
+      "type": "Order",
+      "note": "An empty page keeps its other members.",
+      "caller": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+        "roles": []
+      },
+      "now": "2026-06-10T12:00:00Z",
+      "value": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-0000000000b1",
+        "guest": {
+          "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+          "name": "Guest 1",
+          "quota": 4,
+          "expires": "2026-06-11T00:00:00Z",
+          "phone": "+201000000001",
+          "email": "g1@example.test",
+          "ratio": 25,
+          "early": "hello",
+          "tags": [
+            "a",
+            "b"
+          ],
+          "home": {
+            "street": "1 Nile St",
+            "city": "Cairo",
+            "door": "D1"
+          },
+          "work": {
+            "street": "2 Nile St",
+            "city": "Cairo",
+            "door": "D2"
+          },
+          "past": [
+            {
+              "street": "3 Nile St",
+              "city": "Cairo",
+              "door": "D3"
+            },
+            {
+              "street": "4 Nile St",
+              "city": "Cairo",
+              "door": "D4"
+            }
+          ],
+          "byYear": {
+            "2024": {
+              "street": "5 Nile St",
+              "city": "Cairo",
+              "door": "D5"
+            },
+            "2025": {
+              "street": "6 Nile St",
+              "city": "Cairo",
+              "door": "D6"
+            }
+          },
+          "vault": {
+            "street": "7 Nile St",
+            "city": "Cairo",
+            "door": "D7"
+          }
+        },
+        "pay": {
+          "kind": "card",
+          "number": "4111",
+          "hint": "visa"
+        },
+        "guests": {
+          "items": [],
+          "total": 0,
+          "page": 1,
+          "size": 0
+        },
+        "payments": [
+          {
+            "kind": "card",
+            "number": "4111",
+            "hint": "visa"
+          },
+          {
+            "kind": "wire",
+            "iban": "EG00",
+            "memo": "m"
+          }
+        ]
+      },
+      "shown": "{\"guest\":{\"byYear\":{\"2024\":{\"city\":\"Cairo\",\"street\":\"5 Nile St\"},\"2025\":{\"city\":\"Cairo\",\"street\":\"6 Nile St\"}},\"early\":\"hello\",\"email\":\"g1@example.test\",\"expires\":\"2026-06-11T00:00:00Z\",\"home\":{\"city\":\"Cairo\",\"street\":\"1 Nile St\"},\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"name\":\"Guest 1\",\"past\":[{\"city\":\"Cairo\",\"street\":\"3 Nile St\"},{\"city\":\"Cairo\",\"street\":\"4 Nile St\"}],\"phone\":\"+201000000001\",\"quota\":4,\"ratio\":25,\"tags\":[\"a\",\"b\"],\"work\":{\"city\":\"Cairo\",\"street\":\"2 Nile St\"}},\"guests\":{\"items\":[],\"page\":1,\"size\":0,\"total\":0},\"id\":\"0b5c9c3e-1111-4a5b-8c9d-0000000000b1\",\"pay\":{\"kind\":\"card\",\"number\":\"4111\"},\"payments\":[{\"kind\":\"card\",\"number\":\"4111\"},{\"iban\":\"EG00\",\"kind\":\"wire\"}]}",
+      "hidden": [
+        "$.guest.byYear.2024.door",
+        "$.guest.byYear.2025.door",
+        "$.guest.home.door",
+        "$.guest.past[0].door",
+        "$.guest.past[1].door",
+        "$.guest.vault",
+        "$.guest.work.door",
+        "$.pay.hint",
+        "$.payments[0].hint",
+        "$.payments[1].memo"
+      ]
+    },
+    {
+      "name": "a declared error",
+      "type": "Rejected",
+      "note": "The error's optional field is for staff.",
+      "caller": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000002",
+        "roles": []
+      },
+      "now": "2026-06-10T12:00:00Z",
+      "value": {
+        "reason": "closed",
+        "who": "front desk"
+      },
+      "shown": "{\"reason\":\"closed\"}",
+      "hidden": [
+        "$.who"
+      ]
+    },
+    {
+      "name": "a declared error for staff",
+      "type": "Rejected",
+      "note": "Staff is told who.",
+      "caller": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-0000000000aa",
+        "roles": [
+          "staff"
+        ]
+      },
+      "now": "2026-06-10T12:00:00Z",
+      "value": {
+        "reason": "closed",
+        "who": "front desk"
+      },
+      "shown": "{\"reason\":\"closed\",\"who\":\"front desk\"}",
+      "hidden": []
+    },
+    {
+      "name": "nothing to hide",
+      "type": "Address",
+      "note": "An address without a door has nothing for visibility to do, whoever asks.",
+      "caller": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000002",
+        "roles": []
+      },
+      "now": "2026-06-10T12:00:00Z",
+      "value": {
+        "street": "1 Nile St",
+        "city": "Cairo"
+      },
+      "shown": "{\"city\":\"Cairo\",\"street\":\"1 Nile St\"}",
+      "hidden": []
+    },
+    {
+      "name": "paths are sorted as bytes",
+      "type": "Guest",
+      "note": "Twelve addresses in a list: $.past[10] comes before $.past[2].",
+      "caller": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000002",
+        "roles": []
+      },
+      "now": "2026-06-10T12:00:00Z",
+      "value": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+        "name": "Guest 1",
+        "quota": 4,
+        "expires": "2026-06-11T00:00:00Z",
+        "phone": "+201000000001",
+        "email": "g1@example.test",
+        "ratio": 25,
+        "early": "hello",
+        "tags": [
+          "a",
+          "b"
+        ],
+        "home": {
+          "street": "1 Nile St",
+          "city": "Cairo",
+          "door": "D1"
+        },
+        "work": {
+          "street": "2 Nile St",
+          "city": "Cairo",
+          "door": "D2"
+        },
+        "past": [
+          {
+            "street": "0 Nile St",
+            "city": "Cairo",
+            "door": "D0"
+          },
+          {
+            "street": "1 Nile St",
+            "city": "Cairo",
+            "door": "D1"
+          },
+          {
+            "street": "2 Nile St",
+            "city": "Cairo",
+            "door": "D2"
+          },
+          {
+            "street": "3 Nile St",
+            "city": "Cairo",
+            "door": "D3"
+          },
+          {
+            "street": "4 Nile St",
+            "city": "Cairo",
+            "door": "D4"
+          },
+          {
+            "street": "5 Nile St",
+            "city": "Cairo",
+            "door": "D5"
+          },
+          {
+            "street": "6 Nile St",
+            "city": "Cairo",
+            "door": "D6"
+          },
+          {
+            "street": "7 Nile St",
+            "city": "Cairo",
+            "door": "D7"
+          },
+          {
+            "street": "8 Nile St",
+            "city": "Cairo",
+            "door": "D8"
+          },
+          {
+            "street": "9 Nile St",
+            "city": "Cairo",
+            "door": "D9"
+          },
+          {
+            "street": "10 Nile St",
+            "city": "Cairo",
+            "door": "D10"
+          },
+          {
+            "street": "11 Nile St",
+            "city": "Cairo",
+            "door": "D11"
+          }
+        ],
+        "byYear": {
+          "2024": {
+            "street": "5 Nile St",
+            "city": "Cairo",
+            "door": "D5"
+          },
+          "2025": {
+            "street": "6 Nile St",
+            "city": "Cairo",
+            "door": "D6"
+          }
+        },
+        "vault": {
+          "street": "7 Nile St",
+          "city": "Cairo",
+          "door": "D7"
+        }
+      },
+      "shown": "{\"byYear\":{\"2024\":{\"city\":\"Cairo\",\"street\":\"5 Nile St\"},\"2025\":{\"city\":\"Cairo\",\"street\":\"6 Nile St\"}},\"early\":\"hello\",\"expires\":\"2026-06-11T00:00:00Z\",\"home\":{\"city\":\"Cairo\",\"street\":\"1 Nile St\"},\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"name\":\"Guest 1\",\"past\":[{\"city\":\"Cairo\",\"street\":\"0 Nile St\"},{\"city\":\"Cairo\",\"street\":\"1 Nile St\"},{\"city\":\"Cairo\",\"street\":\"2 Nile St\"},{\"city\":\"Cairo\",\"street\":\"3 Nile St\"},{\"city\":\"Cairo\",\"street\":\"4 Nile St\"},{\"city\":\"Cairo\",\"street\":\"5 Nile St\"},{\"city\":\"Cairo\",\"street\":\"6 Nile St\"},{\"city\":\"Cairo\",\"street\":\"7 Nile St\"},{\"city\":\"Cairo\",\"street\":\"8 Nile St\"},{\"city\":\"Cairo\",\"street\":\"9 Nile St\"},{\"city\":\"Cairo\",\"street\":\"10 Nile St\"},{\"city\":\"Cairo\",\"street\":\"11 Nile St\"}],\"quota\":4,\"ratio\":25,\"tags\":[\"a\",\"b\"],\"work\":{\"city\":\"Cairo\",\"street\":\"2 Nile St\"}}",
+      "hidden": [
+        "$.byYear.2024.door",
+        "$.byYear.2025.door",
+        "$.email",
+        "$.home.door",
+        "$.past[0].door",
+        "$.past[10].door",
+        "$.past[11].door",
+        "$.past[1].door",
+        "$.past[2].door",
+        "$.past[3].door",
+        "$.past[4].door",
+        "$.past[5].door",
+        "$.past[6].door",
+        "$.past[7].door",
+        "$.past[8].door",
+        "$.past[9].door",
+        "$.phone",
+        "$.vault",
+        "$.work.door"
+      ]
+    }
+  ]
+}

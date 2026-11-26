@@ -511,6 +511,9 @@ pub enum ExampleValue {
     Ref(ExampleRef),
     Object(Vec<ExampleField>),
     List(Vec<ExampleValue>),
+    /// `field: absent` in a pattern (`spec/platform.md` section 2): the member is not there.
+    /// Only a member of an object in a pattern has it.
+    Absent(crate::rules::Always),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

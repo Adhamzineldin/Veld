@@ -1,0 +1,15 @@
+// @audited on an endpoint and on a service.
+
+model Booking { id: uuid, guests: int }
+
+@audited
+service Bookings at "/bookings" {
+  get "/{id}" getBooking(id: uuid) -> Booking | NotFound
+  get "/ticks" ticks() -> stream Booking
+}
+
+service Rooms at "/rooms" {
+  @audited
+  post "/" book(body: Booking) -> 201 Booking
+  get "/" list() -> Booking[]
+}

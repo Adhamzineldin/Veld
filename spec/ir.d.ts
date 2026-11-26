@@ -162,6 +162,10 @@ export interface Field {
   derived_id?: string;
   pii?: boolean;
   secret?: boolean;
+  visible?: Expr;
+  visible_principal?: DeclId;
+  tenant?: boolean;
+  tenant_id?: string;
   inherited_from: DeclId | null;
   constraints: Constraints;
   example: Literal | null;
@@ -315,6 +319,16 @@ export interface EndpointVersion {
   wire: string;
   origin: Origin;
 }
+
+export interface Limit {
+  count: number;
+  per: LimitWindow;
+  by: LimitSubject;
+}
+
+export type LimitWindow = "second" | "minute" | "hour" | "day";
+
+export type LimitSubject = "user" | "tenant" | "ip";
 
 export interface Slo {
   p50_ms?: string;
@@ -493,6 +507,7 @@ export type ExampleValue =
   | { ref: ExampleRef }
   | { object: ExampleField[] }
   | { list: ExampleValue[] }
+  | { absent: boolean }
 
 export interface ExampleRef {
   given: string;
@@ -681,6 +696,8 @@ export interface Endpoint {
   saga?: Saga;
   timeout_ms?: string;
   slo?: Slo;
+  audited?: boolean;
+  limit?: Limit;
   origin: Origin;
 }
 
@@ -714,7 +731,7 @@ export interface Auth {
 
 export type AuthKind = "none" | "bearer" | "basic" | "api_key";
 
-export type Feature = "unions" | "constraints" | "auth" | "middleware" | "headers" | "streaming_sse" | "streaming_ws" | "page" | "consts" | "bytes" | "rules_invariants" | "rules_endpoint" | "rules_transitions" | "rules_policies" | "rules_rollout" | "rules_version" | "idempotency" | "rules_derived" | "sagas" | "events" | "events_delivery" | "rules_timed" | "rules_flags" | "timeouts" | "slo" | "messages" | "retention" | "events_outbox";
+export type Feature = "unions" | "constraints" | "auth" | "middleware" | "headers" | "streaming_sse" | "streaming_ws" | "page" | "consts" | "bytes" | "rules_invariants" | "rules_endpoint" | "rules_transitions" | "rules_policies" | "rules_rollout" | "rules_version" | "idempotency" | "rules_derived" | "sagas" | "events" | "events_delivery" | "rules_timed" | "rules_flags" | "timeouts" | "slo" | "messages" | "retention" | "events_outbox" | "visibility" | "tenancy" | "audit" | "limits";
 
 export type Role = "server" | "client";
 

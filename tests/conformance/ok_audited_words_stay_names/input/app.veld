@@ -1,0 +1,5 @@
+// `audited` is an ordinary name.
+
+model Log {
+  audited: bool
+}

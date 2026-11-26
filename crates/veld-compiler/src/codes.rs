@@ -456,6 +456,21 @@ pub const CODES: &[CodeInfo] = &[
         "`emits` is wrong: on a flow with several edges, not an event, or a transition whose service publishes no channel that carries it",
     ),
     e(
+        "E1101",
+        C,
+        "`@visible` is wrong: a field that is not optional, a package without a principal, an expression that does not type, or a field an event reaches",
+    ),
+    e(
+        "E1110",
+        C,
+        "`@tenant` is wrong: two in one model, an optional field or a type that cannot be a tenant, a field of an error, a derived field, a principal without one, or a tenant-scoped endpoint without auth",
+    ),
+    e(
+        "E1120",
+        C,
+        "`@limit` is wrong: two on one endpoint, a bad count, window or subject, or a subject the endpoint cannot supply",
+    ),
+    e(
         "E1201",
         C,
         "A step or a `compensate` of a saga names a service that is not consumed, an endpoint that does not exist or cannot be called (a stream or `ws`), or arguments that do not fit",
@@ -521,6 +536,11 @@ pub const CODES: &[CodeInfo] = &[
         "An event of a published channel that no subscription handles",
     ),
     w("W1003", C, "A channel has `@retry` and no `@deadLetter`"),
+    w(
+        "W1101",
+        C,
+        "An endpoint returns a field with `@visible` and has no caller of the principal type: the field is never sent there",
+    ),
     w(
         "W1201",
         C,

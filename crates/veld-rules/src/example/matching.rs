@@ -121,6 +121,9 @@ impl Matcher<'_> {
         for (key, pv) in p {
             let here = format!("{path}.{key}");
             match (a.get(key), ty_of(key)) {
+                // `field: absent` arrives as `null` (`spec/platform.md` section 2).
+                (None, _) if pv.is_null() => {}
+                (Some(av), _) if pv.is_null() => differ(&here, "absent", &show(av), out),
                 (None, _) => differ(&here, &show(pv), "missing", out),
                 (Some(av), Some(t)) => self.walk(t, pv, av, &here, out),
                 (Some(av), None) => structural(pv, av, &here, out),

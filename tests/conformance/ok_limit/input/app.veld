@@ -1,0 +1,33 @@
+// @limit on an endpoint and on a service.
+
+model User {
+  id: uuid
+  tenantId?: uuid @tenant
+}
+
+principal User
+
+model Room {
+  id: uuid
+  tenantId: uuid @tenant
+}
+
+model Pong {
+  ok: bool
+}
+
+@limit(100, per: hour, by: ip)
+@auth(bearer)
+service Rooms at "/rooms" {
+  @limit(10, per: minute, by: user)
+  get "/{id}" getRoom(id: uuid) -> Room
+
+  @limit(1000, per: day, by: tenant)
+  get "/" listRooms() -> Room[]
+
+  get "/ticks" ticks() -> stream Room
+
+  @auth(none)
+  @limit(5, per: second, by: ip)
+  get "/open" open() -> Pong
+}

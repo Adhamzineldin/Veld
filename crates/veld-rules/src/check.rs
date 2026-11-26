@@ -348,7 +348,7 @@ impl Cx<'_> {
         if let Some(lit) = &f.default {
             return Ok(default_json(lit, &f.ty));
         }
-        let may_lack = f.optional || self.opts.partial || (self.opts.request && f.readonly);
+        let may_lack = f.optional || self.opts.partial || (self.opts.request && f.server_set());
         if may_lack {
             Ok(None)
         } else {

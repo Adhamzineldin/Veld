@@ -64,6 +64,14 @@ pub(super) fn success_headers(ir: &Ir, ep: &Endpoint, response: &mut Value) {
 /// The replay header on an error answer that is kept: below `500`, and every answer of a saga,
 /// `SagaFailed` included (`spec/platform.md` section 18).
 pub(super) fn error_headers(ep: &Endpoint, status: u16, response: &mut Value) {
+    if ep.limit.is_some() && status == 429 {
+        let text = "The seconds to wait before the call is allowed again.";
+        put_header(
+            response,
+            "Retry-After",
+            json!({ "description": text, "schema": { "type": "integer", "minimum": 1 } }),
+        );
+    }
     if ep.idempotency.is_some() && (status < 500 || ep.saga.is_some()) {
         put_header(response, REPLAY, replay_entry());
     }
@@ -116,6 +124,17 @@ pub(super) fn decorate_service_levels(ep: &Endpoint, o: &mut Map<String, Value>)
         m.insert("errors".into(), json!(e));
     }
     o.insert("x-veld-slo".into(), Value::Object(m));
+}
+
+/// `x-veld-limit` on an operation (`spec/platform.md` section 5). The `429` answer is the endpoint's
+/// own error and comes from the IR like any other.
+pub(super) fn decorate_limit(ep: &Endpoint, o: &mut Map<String, Value>) {
+    if let Some(l) = &ep.limit {
+        o.insert(
+            "x-veld-limit".into(),
+            json!({ "count": l.count, "per": l.per.word(), "by": l.by.word() }),
+        );
+    }
 }
 
 /// `x-veld-version` on the schema of a model: the wire name of its version field.

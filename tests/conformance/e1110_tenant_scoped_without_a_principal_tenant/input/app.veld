@@ -1,0 +1,18 @@
+// A service that returns a tenant-scoped model needs a principal whose model has a tenant of
+// the same type, and auth on the endpoint.
+
+model User {
+  id: uuid
+}
+
+principal User
+
+model Booking {
+  id: uuid
+  tenantId: uuid @tenant
+}
+
+@auth(bearer)
+service Bookings at "/bookings" {
+  get "/" listBookings() -> Booking[]
+}

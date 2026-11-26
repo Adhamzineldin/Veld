@@ -178,6 +178,10 @@ pub enum ArgShape {
     Slo,
     /// `days(n), since: field, then: delete | anonymize`.
     Retain,
+    /// `when: expression`: a rule expression (`spec/platform.md` section 2).
+    Visible,
+    /// `10, per: minute, by: user` (`spec/platform.md` section 5).
+    Limit,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -199,7 +203,7 @@ const DEPRECATABLE: [Target; 12] = [
 ];
 
 /// The annotation table of `spec/language.md` section 7.
-pub const ANNOTATIONS: [AnnotationSpec; 26] = [
+pub const ANNOTATIONS: [AnnotationSpec; 30] = [
     AnnotationSpec {
         name: "auth",
         targets: &[Service, Endpoint],
@@ -355,6 +359,30 @@ pub const ANNOTATIONS: [AnnotationSpec; 26] = [
         targets: &[Model],
         args: ArgShape::Retain,
         usage: "@retain(days(30), since: checkedOutAt, then: delete | anonymize)",
+    },
+    AnnotationSpec {
+        name: "visible",
+        targets: &[Field],
+        args: ArgShape::Visible,
+        usage: "@visible(when: user.id == ownerId)",
+    },
+    AnnotationSpec {
+        name: "tenant",
+        targets: &[Field],
+        args: ArgShape::None,
+        usage: "@tenant",
+    },
+    AnnotationSpec {
+        name: "audited",
+        targets: &[Service, Endpoint],
+        args: ArgShape::None,
+        usage: "@audited",
+    },
+    AnnotationSpec {
+        name: "limit",
+        targets: &[Service, Endpoint],
+        args: ArgShape::Limit,
+        usage: "@limit(10, per: minute, by: user)",
     },
 ];
 

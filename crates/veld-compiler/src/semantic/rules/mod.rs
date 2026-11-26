@@ -19,11 +19,13 @@ mod saga;
 mod saga_args;
 mod saga_const;
 mod since;
+mod tenant;
 #[cfg(test)]
 mod tests;
 mod transition;
 mod types;
 mod version;
+mod visible;
 
 use std::collections::BTreeSet;
 
@@ -40,10 +42,13 @@ pub(crate) use endpoint::{
 pub(super) use policy::check_policies;
 pub(super) use saga::check as check_sagas;
 pub(crate) use saga::{RArg, RCall, RObjectField, RSaga, RStep, RValue};
+pub(super) use tenant::{check as check_tenant, check_services as check_tenant_services};
 pub(crate) use transition::{REmitted, RTransition};
 use veld_ir::Rollout;
 use veld_ir::rules::Expr;
 pub(crate) use version::{RVersion, guard as version_guard};
+pub(crate) use visible::RVisible;
+pub(super) use visible::{check as check_visible, check_endpoints as check_visible_endpoints};
 
 /// A checked rule of one declaration.
 #[derive(Debug, Clone)]

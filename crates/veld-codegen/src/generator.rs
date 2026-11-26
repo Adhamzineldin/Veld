@@ -305,10 +305,40 @@ pub fn checked_features(ir: &Ir, req: &GenRequest<'_>) -> std::collections::BTre
     // Retention is a server's own: the models of the services it serves, not of those it only
     // calls, and nothing for a client (`spec/platform.md` section 23).
     used.remove(&Feature::Retention);
+    // Visibility and the audit log are enforced by a server, for its own services: a client has
+    // nothing to hide or to record, and a server that only calls a service (`consumes`) enforces
+    // nothing of it (`spec/platform.md` section 1).
+    let own = ir.http_features_used(&req.services);
+    for feature in [Feature::Visibility, Feature::Audit] {
+        used.remove(&feature);
+        if req.role == Role::Server && own.contains(&feature) {
+            used.insert(feature);
+        }
+    }
+    // Tenancy is a server's to enforce for its own services too, but a client is asked as well
+    // when a model it reaches has a `@tenant` field: the field is set by the server, so a request
+    // does not carry it (`spec/platform.md` section 3). A client never sees a fact.
+    used.remove(&Feature::Tenancy);
+    match req.role {
+        Role::Server if own.contains(&Feature::Tenancy) => {
+            used.insert(Feature::Tenancy);
+        }
+        Role::Client if reaches_tenant(ir, &all) => {
+            used.insert(Feature::Tenancy);
+        }
+        Role::Server | Role::Client => {}
+    }
     if req.role == Role::Server && !ir.retention_plan(&req.services).is_empty() {
         used.insert(Feature::Retention);
     }
     used
+}
+
+/// True when an endpoint of `services` reaches a model with a `@tenant` field.
+fn reaches_tenant(ir: &Ir, services: &[ServiceId]) -> bool {
+    ir.reachable_decls(services)
+        .into_iter()
+        .any(|id| ir.decl(id).tenant_field().is_some())
 }
 
 /// True when an endpoint of `services` reaches a model with a derived field.
@@ -328,6 +358,16 @@ fn first_use(
     if feature == Feature::RulesRollout {
         return first_audited_origin(ir, services, event_services(req));
     }
+    // What a server enforces it enforces for its own services only.
+    let services = if req.role == Role::Server
+        && matches!(
+            feature,
+            Feature::Visibility | Feature::Tenancy | Feature::Audit
+        ) {
+        &req.services[..]
+    } else {
+        services
+    };
     for sid in services {
         for ep in &ir.service(*sid).endpoints {
             let hit = match feature {
@@ -351,6 +391,8 @@ fn first_use(
                 Feature::RulesFlags => ir.endpoint_uses_flags(ep),
                 Feature::Timeouts => ep.timeout_ms.is_some(),
                 Feature::Slo => ep.slo.is_some(),
+                Feature::Audit => ep.audited,
+                Feature::Limits => ep.limit.is_some(),
                 Feature::RulesPolicies => ep.rules.first_policy_origin().is_some(),
                 Feature::Unions
                 | Feature::Constraints
@@ -362,6 +404,8 @@ fn first_use(
                 | Feature::Messages
                 | Feature::Retention
                 | Feature::EventsOutbox
+                | Feature::Visibility
+                | Feature::Tenancy
                 | Feature::RulesRollout
                 | Feature::RulesDerived
                 | Feature::RulesInvariants => false,
@@ -435,6 +479,16 @@ fn first_use(
         }
         return first_derived_origin(ir, &ids);
     }
+    if feature == Feature::Visibility {
+        return first_visible_origin(ir, &searched(ir, services, req));
+    }
+    if feature == Feature::Tenancy {
+        let mut ids = searched(ir, services, req);
+        if req.role == Role::Server {
+            ids.extend(ir.fact_type_decls(&req.services));
+        }
+        return first_tenant_origin(ir, &ids);
+    }
     if feature == Feature::RulesTransitions {
         return first_machine_origin(ir, &searched(ir, services, req));
     }
@@ -504,6 +558,30 @@ fn first_machine_origin(ir: &Ir, decls: &[DeclId]) -> Option<Origin> {
         .map(|d| d.origin.clone())
 }
 
+/// The origin of the first field with `@visible` (`spec/platform.md` section 2) of the
+/// declarations, in source order.
+fn first_visible_origin(ir: &Ir, decls: &[DeclId]) -> Option<Origin> {
+    decls
+        .iter()
+        .flat_map(|id| ir.decl(*id).fields().iter())
+        .filter(|f| f.visible.is_some())
+        .map(|f| &f.origin)
+        .min_by_key(|o| (o.file.as_str(), o.line, o.col))
+        .cloned()
+}
+
+/// The origin of the first `@tenant` field (`spec/platform.md` section 3) of the declarations, in
+/// source order.
+fn first_tenant_origin(ir: &Ir, decls: &[DeclId]) -> Option<Origin> {
+    decls
+        .iter()
+        .flat_map(|id| ir.decl(*id).fields().iter())
+        .filter(|f| f.tenant)
+        .map(|f| &f.origin)
+        .min_by_key(|o| (o.file.as_str(), o.line, o.col))
+        .cloned()
+}
+
 /// The origin of the first derived field (`spec/rules.md` section 17.2) of the declarations, in
 /// source order.
 fn first_derived_origin(ir: &Ir, decls: &[DeclId]) -> Option<Origin> {
@@ -566,6 +644,8 @@ mod tests {
         let ep = Endpoint {
             slo: None,
             timeout_ms: None,
+            audited: false,
+            limit: None,
             name: "feed".into(),
             method: Method::Get,
             path: "/feed".into(),

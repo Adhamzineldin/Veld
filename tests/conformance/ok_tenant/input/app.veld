@@ -1,0 +1,40 @@
+// Tenancy: a principal with an optional tenant, tenant-scoped models, an event with a tenant.
+
+model User {
+  id: uuid
+  roles: string[]
+  tenantId?: uuid @tenant
+}
+
+principal User
+
+model Booking {
+  id: uuid @readonly
+  tenantId: uuid @tenant
+  title: string
+  rule titled: len(title) > 0
+}
+
+model Vip extends Booking {
+  level: int
+}
+
+error Taken 409 {
+  other: Booking
+}
+
+event BookingPaid {
+  tenantId: uuid @tenant
+  bookingId: uuid
+}
+
+channel PaidEvents { carries BookingPaid }
+
+@auth(bearer)
+service Bookings at "/bookings" {
+  publishes PaidEvents
+  get "/{id}" getBooking(id: uuid) -> Booking | NotFound {
+    fact booking: Booking = id
+  }
+  post "/" createBooking(body: Booking) -> 201 Vip | Taken
+}

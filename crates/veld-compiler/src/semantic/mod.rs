@@ -21,7 +21,11 @@ mod flags;
 #[cfg(test)]
 mod flags_tests;
 pub use collect::module_path;
+#[cfg(test)]
+mod audited_tests;
 mod inherit;
+#[cfg(test)]
+mod limit_tests;
 mod machine;
 #[cfg(test)]
 mod machine_tests;
@@ -47,6 +51,8 @@ mod service_levels;
 mod service_levels_tests;
 mod services;
 #[cfg(test)]
+mod tenant_tests;
+#[cfg(test)]
 mod tests;
 mod timed;
 #[cfg(test)]
@@ -54,6 +60,8 @@ mod timed_tests;
 mod typeck;
 #[cfg(test)]
 mod version_tests;
+#[cfg(test)]
+mod visible_tests;
 
 use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -138,6 +146,11 @@ pub struct RField {
     /// `@pii` and `@secret` (`spec/rules.md` section 19.3).
     pub pii: bool,
     pub secret: bool,
+    /// `@visible(when: e)` (`spec/platform.md` section 2). Its checked expression is in
+    /// [`Resolved::own_visible`] of the declaration that wrote it.
+    pub visible: bool,
+    /// `@tenant` (`spec/platform.md` section 3).
+    pub tenant: bool,
     pub inherited_from: Option<usize>,
     pub constraints: Constraints,
     pub example: Option<Literal>,
@@ -207,6 +220,9 @@ pub struct Resolved {
     /// Checked expressions of the derived fields the declaration writes itself, by field name
     /// (`spec/rules.md` section 17.2).
     pub own_derived: BTreeMap<String, RDerived>,
+    /// Checked `@visible` expressions of the fields the declaration writes itself, by field name
+    /// (`spec/platform.md` section 2).
+    pub own_visible: BTreeMap<String, rules::RVisible>,
     /// `@retain` on a model (`spec/platform.md` section 23); checked after inheritance.
     pub retain: Option<annotations::RetainAnn>,
 }
@@ -260,6 +276,10 @@ pub struct REndpoint {
     pub timeout_ms: Option<i64>,
     /// `@slo`, from the endpoint or its service (`spec/platform.md` section 13).
     pub slo: Option<service_levels::SloArgs>,
+    /// `@audited`, from the endpoint or its service (`spec/platform.md` section 4).
+    pub audited: bool,
+    /// `@limit`, from the endpoint or its service (`spec/platform.md` section 5).
+    pub limit: Option<veld_ir::Limit>,
     pub span: Span,
 }
 
@@ -385,7 +405,11 @@ pub fn analyze_lenient<'a>(
     emits::resolve_flows(&mut prog, diags);
     rules::check(&mut prog, diags);
     rules::check_policies(&mut prog, diags);
+    rules::check_visible(&mut prog, diags);
+    rules::check_tenant(&prog, diags);
     services::analyze(&mut prog, diags);
+    rules::check_visible_endpoints(&prog, diags);
+    rules::check_tenant_services(&prog, diags);
     rules::check_sagas(&mut prog, consumes, diags);
     timed::check_unused_edges(&prog, diags);
     examples::check(&mut prog, diags);

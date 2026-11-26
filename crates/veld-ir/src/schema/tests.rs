@@ -249,6 +249,10 @@ fn field(name: &str, ty: Type, lit: Literal) -> Field {
         derived_id: Some("veld:p/m.B.f@0".into()),
         pii: true,
         secret: true,
+        visible: Some(int_lit(1)),
+        visible_principal: Some(DeclId(0)),
+        tenant: true,
+        tenant_id: Some("veld:p/m.B.tenant@0".into()),
         inherited_from: Some(DeclId(0)),
         constraints: Constraints {
             min: Some(0.0),
@@ -392,6 +396,12 @@ fn endpoint(method: Method, binding: Binding, auth: AuthKind) -> Endpoint {
             errors: Some("0.1".into()),
         }),
         timeout_ms: Some("2000".into()),
+        audited: true,
+        limit: Some(Limit {
+            count: 10,
+            per: LimitWindow::Minute,
+            by: LimitSubject::User,
+        }),
         name: "op".into(),
         method,
         path: "/x".into(),

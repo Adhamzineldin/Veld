@@ -217,6 +217,7 @@ impl Cx<'_, '_, '_> {
                 in_old: false,
                 lenient: false,
                 principal: None,
+                fields_in_scope: false,
             }),
         };
         f(&mut c)

@@ -107,6 +107,8 @@ fn diff_endpoint(ctx: &Ctx<'_>, o: &Endpoint, n: &Endpoint, out: &mut Vec<Change
     super::conditional::diff_endpoint_conditions(s, o, n, out);
     super::saga::diff_saga(ctx, s, o, n, out);
     super::service_levels::diff_service_levels(s, o, n, out);
+    super::audit::diff_audit(s, o, n, out);
+    super::limits::diff_limit(s, o, n, out);
     diff_docs(
         s,
         &o.name,

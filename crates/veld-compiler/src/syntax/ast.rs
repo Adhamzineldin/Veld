@@ -953,6 +953,9 @@ pub struct Annotation {
     pub name: Ident,
     /// `None` when written without parentheses.
     pub args: Option<Vec<Arg>>,
+    /// The expression of `@visible(when: e)` (`spec/platform.md` section 2). When it is set,
+    /// `args` is `None`: the expression is the only argument.
+    pub when: Option<Expr>,
     pub span: Span,
 }
 

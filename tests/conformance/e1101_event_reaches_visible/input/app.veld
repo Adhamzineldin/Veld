@@ -1,0 +1,18 @@
+// A published event has no caller to decide for: it must not reach a @visible field.
+
+model User {
+  id: uuid
+}
+
+principal User
+
+model Guest {
+  id: uuid
+  phone?: string @visible(when: user.id == id)
+}
+
+event GuestRegistered {
+  guest: Guest
+}
+
+channel GuestEvents { carries GuestRegistered }

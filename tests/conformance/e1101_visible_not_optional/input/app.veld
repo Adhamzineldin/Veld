@@ -1,0 +1,13 @@
+// A field with @visible must be optional: a client already handles its absence.
+
+model User {
+  id: uuid
+  roles: string[]
+}
+
+principal User
+
+model Booking {
+  guestId: uuid
+  guestPhone: string @visible(when: user.id == guestId)
+}

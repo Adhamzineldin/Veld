@@ -144,6 +144,10 @@ const FIELD: Fields = &[
     ("derived_id", T::Optional(&T::Str)),
     ("pii", T::Optional(&T::Bool)),
     ("secret", T::Optional(&T::Bool)),
+    ("visible", T::Optional(&EXPR)),
+    ("visible_principal", T::Optional(&DECL_ID)),
+    ("tenant", T::Optional(&T::Bool)),
+    ("tenant_id", T::Optional(&T::Str)),
     ("inherited_from", T::Nullable(&DECL_ID)),
     ("constraints", T::Ref("Constraints")),
     ("example", T::Nullable(&T::Ref("Literal"))),
@@ -169,6 +173,8 @@ const ENDPOINT: Fields = &[
     ("saga", T::Optional(&T::Ref("Saga"))),
     ("timeout_ms", T::Optional(&T::Str)),
     ("slo", T::Optional(&T::Ref("Slo"))),
+    ("audited", T::Optional(&T::Bool)),
+    ("limit", T::Optional(&T::Ref("Limit"))),
     ("origin", ORIGIN),
 ];
 
@@ -446,6 +452,16 @@ pub const DEFS: &[Def] = &[
         ],
     ),
     Def::Object(
+        "Limit",
+        &[
+            ("count", T::Num),
+            ("per", T::Ref("LimitWindow")),
+            ("by", T::Ref("LimitSubject")),
+        ],
+    ),
+    Def::Strings("LimitWindow", &["second", "minute", "hour", "day"]),
+    Def::Strings("LimitSubject", &["user", "tenant", "ip"]),
+    Def::Object(
         "Slo",
         &[
             ("p50_ms", T::Optional(&T::Str)),
@@ -643,6 +659,7 @@ pub const DEFS: &[Def] = &[
             ("ref", T::Ref("ExampleRef")),
             ("object", T::List(&T::Ref("ExampleField"))),
             ("list", T::List(&T::Ref("ExampleValue"))),
+            ("absent", T::Bool),
         ],
     ),
     Def::Object(
@@ -872,6 +889,10 @@ pub const DEFS: &[Def] = &[
             "messages",
             "retention",
             "events_outbox",
+            "visibility",
+            "tenancy",
+            "audit",
+            "limits",
         ],
     ),
     Def::Strings("Role", &["server", "client"]),

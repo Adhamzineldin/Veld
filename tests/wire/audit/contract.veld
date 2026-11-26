@@ -1,0 +1,98 @@
+// The contract of the audit goldens (`spec/platform.md` section 4), compiled as the file `t.veld`
+// of the package `bookings`. Every endpoint of `Bookings` is audited by its own `@audited`, except
+// `touch`, which leaves it out on purpose; `Public` is audited as a service.
+
+model User {
+  id: uuid
+  roles: string[]
+  email: string @pii
+  token?: string @secret
+}
+
+principal User
+
+enum Status {
+  pending, paid, cancelled
+  flow pending -> paid
+  final paid, cancelled
+}
+
+model Card {
+  number: string @secret
+  brand: string
+}
+
+model Payment {
+  amount: decimal
+  card: Card
+  note?: string @pii
+  rule positive: amount > 0
+}
+
+model Guest {
+  id: uuid
+  name: string @pii
+  phone?: string @visible(when: user.id == id || "support" in user.roles)
+}
+
+model Booking {
+  id: uuid @readonly
+  guest: Guest
+  status: Status = .pending
+  total: decimal
+  version: int @version
+  private?: string @pii @visible(when: "support" in user.roles)
+  rule positiveTotal: total > 0
+}
+
+error AmountMismatch 409 {
+  reason: string
+  card: Card
+}
+
+policy ManageBooking(user: User, booking: Booking) {
+  permit when booking.guest.id == user.id
+  permit when "support" in user.roles
+}
+
+@auth(bearer)
+service Bookings at "/bookings" {
+  @audited
+  post "/{id}/pay" payBooking(id: uuid, body: Payment) -> Booking | AmountMismatch {
+    fact booking: Booking = id
+    allow ManageBooking(user, booking)
+    transition booking.status: pending -> paid
+    require body.amount == booking.total else AmountMismatch { reason: "amount", card: body.card }
+  }
+
+  @audited
+  get "/{id}" getBooking(id: uuid) -> Booking {
+    fact booking: Booking = id
+  }
+
+  @audited
+  get "/" listBookings() -> Booking[]
+
+  @audited
+  get "/page" pageBookings() -> Page<Booking>
+
+  @audited
+  post "/" createBooking(body: Payment) -> 201 Booking
+
+  @audited
+  delete "/{id}" removeBooking(id: uuid) -> 204
+
+  @audited
+  put "/{id}/total" setTotal(id: uuid, body: Payment) -> Booking {
+    fact booking: Booking = id
+  }
+
+  // Not audited.
+  get "/{id}/touch" touch(id: uuid) -> 204
+}
+
+@audited
+@auth(none)
+service Public at "/public" {
+  get "/{id}" publicBooking(id: uuid) -> Booking
+}

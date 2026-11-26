@@ -9,6 +9,7 @@
 //! because the clients that can break are the ones built against it. A type the
 //! old IR never uses falls back to the new IR.
 
+mod audit;
 mod changed;
 mod conditional;
 mod data_marks;
@@ -21,11 +22,14 @@ mod event_fields;
 mod events;
 pub(crate) mod expr_text;
 mod flags;
+mod limits;
 mod retention;
 mod rules;
 mod saga;
 mod service_levels;
+mod tenancy;
 mod usage;
+mod visibility;
 
 pub use changed::{ChangedRule, RuleSite, changed_rules};
 use serde::Serialize;
@@ -150,6 +154,15 @@ pub enum ChangeKind {
     RetentionLengthened,
     RetentionSinceChanged,
     RetentionThenChanged,
+    VisibleAdded,
+    VisibleChanged,
+    VisibleRemoved,
+    TenantAdded,
+    TenantChanged,
+    TenantRemoved,
+    AuditAdded,
+    AuditRemoved,
+    LimitChanged,
 }
 
 /// One difference between the old and the new contract.
@@ -349,6 +362,8 @@ fn diff_plain(old: &Ir, new: &Ir) -> Vec<Change> {
     conditional::diff_version_fields(&ctx, &mut out);
     data_marks::diff_data_marks(&ctx, &mut out);
     retention::diff_retention(&ctx, &mut out);
+    visibility::diff_visibility(&ctx, &mut out);
+    tenancy::diff_tenancy(&ctx, &mut out);
     rules::diff_decl_rules(&ctx, &usage, &mut out);
     endpoints::diff_endpoints(&ctx, &mut out);
     events::diff_events(&ctx, &mut out);
@@ -358,6 +373,8 @@ fn diff_plain(old: &Ir, new: &Ir) -> Vec<Change> {
     out
 }
 
+#[cfg(test)]
+mod audit_tests;
 #[cfg(test)]
 mod changed_tests;
 #[cfg(test)]
@@ -375,6 +392,8 @@ mod event_tests;
 #[cfg(test)]
 mod flags_tests;
 #[cfg(test)]
+mod limits_tests;
+#[cfg(test)]
 mod retention_tests;
 #[cfg(test)]
 mod rollout_tests;
@@ -385,6 +404,10 @@ mod saga_tests;
 #[cfg(test)]
 mod service_levels_tests;
 #[cfg(test)]
+mod tenancy_tests;
+#[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod timed_tests;
+#[cfg(test)]
+mod visibility_tests;

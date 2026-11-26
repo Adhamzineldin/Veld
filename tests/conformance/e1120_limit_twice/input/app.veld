@@ -1,0 +1,9 @@
+// An endpoint has at most one limit.
+
+model Room { id: uuid }
+
+service Rooms at "/rooms" {
+  @limit(10, per: minute, by: ip)
+  @limit(20, per: minute, by: ip)
+  get "/" all() -> Room[]
+}

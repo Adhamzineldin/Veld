@@ -121,6 +121,25 @@ pub struct Reported {
     /// applied and an optional parameter that was not sent left out. Only for an `@idempotent`
     /// endpoint whose request passed step 5.
     pub fingerprint: Option<String>,
+    /// The wire paths that `@visible` dropped from the body of the answer or from the data of a
+    /// declared error, without the `$` (`guestPhone`, `items[0].guestPhone`), sorted. These are
+    /// the `hidden` list of an audit event (`spec/platform.md` section 4). Empty for a replayed
+    /// answer: the stored one was filtered when it was first sent.
+    pub hidden: Vec<String>,
+    /// What the request had reached when it ended (`spec/platform.md` section 4).
+    pub trail: Trail,
+}
+
+/// What a request had reached when it ended: what the audit event records of it
+/// (`spec/platform.md` section 4).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Trail {
+    /// The bound parameters, with their defaults, once step 4 had passed. `None` for a request
+    /// that ended before: nothing was bound.
+    pub parameters: Option<BTreeMap<String, Json>>,
+    /// The facts that were loaded, in wire form with their defaults and derived fields, by name:
+    /// those loaded before the request ended. An optional fact that was absent is not here.
+    pub facts: BTreeMap<String, Json>,
 }
 
 /// Why the pipeline could not give an outcome: the input is not what the IR describes.
@@ -246,7 +265,8 @@ impl<'a> Pipeline<'a> {
     /// [`RunError`] when the parameters, facts or result do not have the shape the IR says.
     pub fn run_reported(&self, request: &Request, mode: OutputMode) -> Result<Reported, RunError> {
         let mut audited = Vec::new();
-        let (before, stage) = self.before_full(request, &mut audited)?;
+        let mut trail = Trail::default();
+        let (before, stage) = self.before_full(request, &mut audited, &mut trail)?;
         let fresh = stage.fresh;
         let mut reported = Reported {
             outcome: Outcome::Passes,
@@ -258,6 +278,8 @@ impl<'a> Pipeline<'a> {
             body: None,
             etag: None,
             fingerprint: stage.fingerprint,
+            hidden: Vec::new(),
+            trail,
         };
         match before {
             Before::Rejected(answer) => reported.outcome = Outcome::Error(answer),
@@ -279,11 +301,15 @@ impl<'a> Pipeline<'a> {
                 }
             }
         }
+        self.guard_tenant(request, &mut reported)?;
         reported.etag = reported
             .body
             .as_ref()
             .filter(|_| matches!(reported.outcome, Outcome::Passes))
             .and_then(|b| version::etag(self.ir, self.endpoint, b));
+        if !reported.replayed {
+            self.show(request, &mut reported)?;
+        }
         if fresh {
             reported.store =
                 self.store_effect(&reported.outcome, reported.store, reported.body.as_ref());
@@ -292,6 +318,202 @@ impl<'a> Pipeline<'a> {
         }
         reported.audited = audited;
         Ok(reported)
+    }
+
+    /// The tenant check of the result (`spec/platform.md` section 3), after the output rules and
+    /// before visibility: a success body or the data of a declared error that holds a value of
+    /// another tenant is never sent. The answer becomes `500 Internal`; the violations, one for
+    /// each such value, are what the hook is told. No output mode turns it off.
+    fn guard_tenant(&self, request: &Request, reported: &mut Reported) -> Result<(), RunError> {
+        if reported.replayed {
+            return Ok(());
+        }
+        let found = match &reported.outcome {
+            Outcome::Passes => match (self.endpoint.success.ty.as_ref(), reported.body.as_ref()) {
+                (Some(ty), Some(body)) if !self.endpoint.success.stream => {
+                    self.refused(request, ty, body, "result")?
+                }
+                _ => Vec::new(),
+            },
+            Outcome::Error(answer) => {
+                let ty = veld_ir::Type::Decl(answer.decl);
+                self.refused(request, &ty, &answer.data, "error")?
+            }
+        };
+        if !found.is_empty() {
+            reported.outcome = internal(self, found)?;
+            reported.body = None;
+        }
+        Ok(())
+    }
+
+    /// The values of `value`, of type `ty`, that are tenant-scoped and not the caller's: the
+    /// tenant check for a response, a declared error's data or a stream item. `root` starts the
+    /// paths of the violations.
+    ///
+    /// # Errors
+    /// [`RunError`] when `value` does not have the shape of `ty`.
+    pub fn refused(
+        &self,
+        request: &Request,
+        ty: &veld_ir::Type,
+        value: &Json,
+        root: &str,
+    ) -> Result<Vec<Violation>, RunError> {
+        if !self.ir.type_reaches_tenant(ty) {
+            return Ok(Vec::new());
+        }
+        let (principal, _) = self.complete_principal(request.principal.as_ref())?;
+        let caller = self.tenant_of(principal.as_ref());
+        Ok(crate::tenant::refused(
+            self.ir,
+            ty,
+            value,
+            caller.as_ref(),
+            root,
+        )?)
+    }
+
+    /// The tenant of the caller, from its principal.
+    fn tenant_of(&self, principal: Option<&Json>) -> Option<Json> {
+        crate::tenant::caller_tenant(self.ir, self.principal?, principal?)
+    }
+
+    /// True when `value`, a loaded fact of type `ty`, holds a value of another tenant.
+    fn is_foreign(
+        &self,
+        ty: &veld_ir::Type,
+        value: &Json,
+        principal: Option<&Json>,
+    ) -> Result<bool, RunError> {
+        if !self.ir.type_reaches_tenant(ty) {
+            return Ok(false);
+        }
+        let caller = self.tenant_of(principal);
+        let found = crate::tenant::refused(self.ir, ty, value, caller.as_ref(), "fact")?;
+        Ok(!found.is_empty())
+    }
+
+    /// The audit event of a request that ran through the pipeline and ended as `reported` says
+    /// (`spec/platform.md` section 4): [`crate::audit::event`] with what the pipeline knows.
+    ///
+    /// # Errors
+    /// [`RunError`] when a value does not have the shape of its type.
+    pub fn audit_event(&self, request: &Request, reported: &Reported) -> Result<Json, RunError> {
+        let (status, error) = match &reported.outcome {
+            Outcome::Passes => (self.endpoint.success.status, None),
+            Outcome::Error(a) => (a.status, Some(a.name.as_str())),
+        };
+        let result: Option<(veld_ir::Type, &Json)> = match &reported.outcome {
+            Outcome::Passes => match (&self.endpoint.success, reported.body.as_ref()) {
+                (s, Some(body)) if !s.stream => s.ty.clone().map(|t| (t, body)),
+                (_, _) => None,
+            },
+            Outcome::Error(a) if !crate::audit::is_prelude(self.ir, a.decl) => {
+                Some((veld_ir::Type::Decl(a.decl), &a.data))
+            }
+            Outcome::Error(_) => None,
+        };
+        let result = result.as_ref().map(|(t, v)| (t, *v));
+        let caller = request
+            .principal
+            .as_ref()
+            .filter(|_| self.endpoint.auth.kind != veld_ir::AuthKind::None);
+        let ended = crate::audit::Ended {
+            time_ms: request.now,
+            principal: caller,
+            status,
+            error,
+            parameters: reported.trail.parameters.as_ref(),
+            facts: &reported.trail.facts,
+            result,
+            hidden: &reported.hidden,
+        };
+        Ok(crate::audit::event(
+            self.ir,
+            self.endpoint,
+            self.principal,
+            &ended,
+        )?)
+    }
+
+    /// Visibility (`spec/platform.md` section 2), after the output rules: the body of a success
+    /// and the data of a declared error lose the fields the caller may not see. The `ETag` was
+    /// taken before, from the whole value.
+    fn show(&self, request: &Request, reported: &mut Reported) -> Result<(), RunError> {
+        let mut hidden = Vec::new();
+        match &mut reported.outcome {
+            Outcome::Passes => {
+                if let (Some(ty), Some(body)) = (
+                    self.endpoint
+                        .success
+                        .ty
+                        .as_ref()
+                        .filter(|_| !self.endpoint.success.stream),
+                    reported.body.as_mut(),
+                ) {
+                    hidden.extend(self.show_value(request, ty, body)?);
+                }
+            }
+            Outcome::Error(answer) => {
+                let ty = veld_ir::Type::Decl(answer.decl);
+                hidden.extend(self.show_value(request, &ty, &mut answer.data)?);
+            }
+        }
+        hidden.sort();
+        hidden.dedup();
+        reported.hidden = hidden;
+        Ok(())
+    }
+
+    /// Applies visibility to `value` in place and returns the unrooted paths it dropped. A type
+    /// that reaches no `@visible` field is not touched, whatever the value looks like.
+    fn show_value(
+        &self,
+        request: &Request,
+        ty: &veld_ir::Type,
+        value: &mut Json,
+    ) -> Result<Vec<String>, RunError> {
+        if !self.ir.type_reaches_visible(ty) {
+            return Ok(Vec::new());
+        }
+        let shown = self.shown(request, ty, value)?;
+        *value = shown.value;
+        Ok(shown
+            .hidden
+            .iter()
+            .map(|p| crate::visibility::unrooted(p))
+            .collect())
+    }
+
+    /// `value`, a response, a declared error's data or a stream item of type `ty`, as the caller
+    /// of `request` may see it: the reference of what a server sends. For a stream item `ty` is
+    /// the type of the endpoint's stream.
+    ///
+    /// # Errors
+    /// [`RunError`] when `value` does not have the shape of `ty`.
+    pub fn shown(
+        &self,
+        request: &Request,
+        ty: &veld_ir::Type,
+        value: &Json,
+    ) -> Result<crate::visibility::Shown, RunError> {
+        let (principal, _) = self.complete_principal(request.principal.as_ref())?;
+        let caller = match (self.principal, principal.as_ref()) {
+            (Some(model), Some(p)) if self.endpoint.auth.kind != veld_ir::AuthKind::None => {
+                crate::visibility::Caller::of(model, p)
+            }
+            _ => crate::visibility::Caller::none(),
+        };
+        // A typed server always has the defaults of what it sends: visibility sees them too.
+        let (full, _) = complete_type(self.ir, ty, value, Options::default())?;
+        Ok(crate::visibility::apply_visibility_type(
+            self.ir,
+            ty,
+            &full,
+            caller,
+            request.now,
+        )?)
     }
 
     /// What the store holds for a new key once the request has its outcome: the answer when it is
@@ -347,7 +569,8 @@ impl<'a> Pipeline<'a> {
         request: &Request,
         audited: &mut Vec<Violation>,
     ) -> Result<Before<'a>, RunError> {
-        self.before_full(request, audited).map(|(before, _)| before)
+        self.before_full(request, audited, &mut Trail::default())
+            .map(|(before, _)| before)
     }
 
     /// Like [`Pipeline::before_audited`], and whether the request had a new key when it ended: the
@@ -356,8 +579,9 @@ impl<'a> Pipeline<'a> {
         &self,
         request: &Request,
         audited: &mut Vec<Violation>,
+        trail: &mut Trail,
     ) -> Result<(Before<'a>, Stage), RunError> {
-        let params = match self.bind(request, audited)? {
+        let params = match self.bind(request, audited, trail)? {
             ControlFlow::Continue(params) => params,
             ControlFlow::Break(answer) => return Ok((Before::Rejected(answer), Stage::default())),
         };
@@ -375,7 +599,7 @@ impl<'a> Pipeline<'a> {
             Lookup::Replay(stored) => return Ok((Before::Replayed(stored), stage)),
             Lookup::Conflict(answer) => return Ok((Before::Rejected(answer), stage)),
         }
-        let before = self.prepare(request, params, audited)?;
+        let before = self.prepare(request, params, audited, trail)?;
         Ok((before, stage))
     }
 
@@ -385,30 +609,43 @@ impl<'a> Pipeline<'a> {
         request: &Request,
         params: BTreeMap<String, Json>,
         audited: &mut Vec<Violation>,
+        trail: &mut Trail,
     ) -> Result<Before<'a>, RunError> {
         let mut env = Env::new(self.ir);
         env.params = params;
         env.now = Some(request.now);
+        let before = self.prepare_in(&mut env, request, audited);
+        trail.facts = std::mem::take(&mut env.facts);
+        before
+    }
+
+    /// Step 6 with the environment of the request, so that what was loaded survives a refusal.
+    fn prepare_in(
+        &self,
+        env: &mut Env<'a>,
+        request: &Request,
+        audited: &mut Vec<Violation>,
+    ) -> Result<Before<'a>, RunError> {
         let (principal, broken) = self.complete_principal(request.principal.as_ref())?;
         if !broken.is_empty() {
             let answer = self.answer("Internal", 500, json!({}), Vec::new(), broken)?;
             return Ok(Before::Rejected(answer));
         }
         env.principal.clone_from(&principal);
-        if let Some(answer) = self.load_facts(&mut env, request)? {
+        if let Some(answer) = self.load_facts(env, request)? {
             return Ok(Before::Rejected(answer));
         }
-        if let Some(answer) = self.policies(&env, request.now)? {
+        if let Some(answer) = self.policies(env, request.now)? {
             return Ok(Before::Rejected(answer));
         }
         let sent = self.if_match(request);
-        if let Some(answer) = self.version_guard(&env, sent)? {
+        if let Some(answer) = self.version_guard(env, sent)? {
             return Ok(Before::Rejected(answer));
         }
-        if let Some(answer) = self.guard(&env)? {
+        if let Some(answer) = self.guard(env)? {
             return Ok(Before::Rejected(answer));
         }
-        if let Some(answer) = self.requires(&env, audited)? {
+        if let Some(answer) = self.requires(env, audited)? {
             return Ok(Before::Rejected(answer));
         }
         let ensures: Vec<&Expr> = self
@@ -418,7 +655,7 @@ impl<'a> Pipeline<'a> {
             .iter()
             .map(|e| &e.expr)
             .collect();
-        let old = save_old(&env, &ensures)?;
+        let old = save_old(env, &ensures)?;
         let compared = self
             .endpoint
             .rules
@@ -427,7 +664,7 @@ impl<'a> Pipeline<'a> {
             .is_some_and(|v| env.facts.contains_key(&v.fact));
         Ok(Before::Ready(Prepared {
             pipeline: *self,
-            params: env.params,
+            params: std::mem::take(&mut env.params),
             now: request.now,
             principal,
             old,
@@ -471,6 +708,7 @@ impl<'a> Pipeline<'a> {
         &self,
         request: &Request,
         audited: &mut Vec<Violation>,
+        trail: &mut Trail,
     ) -> Result<ControlFlow<ErrorAnswer, BTreeMap<String, Json>>, RunError> {
         let opts = Options {
             request: true,
@@ -495,6 +733,7 @@ impl<'a> Pipeline<'a> {
             audited.extend(checked.audited.into_iter().map(|v| reroot(v, &p.name)));
             params.insert(p.name.clone(), full);
         }
+        trail.parameters = Some(params.clone());
         let headers = self.header_issues(request);
         if found.is_empty() && headers.is_empty() {
             Ok(ControlFlow::Continue(params))
@@ -630,7 +869,8 @@ impl<'a> Pipeline<'a> {
             } else {
                 request.facts.get(&fact.name).and_then(Option::as_ref)
             };
-            match value {
+            // A fact of another tenant is not found (`spec/platform.md` section 3).
+            let value = match value {
                 Some(v) => {
                     // A fact has its defaults and its derived fields once it is loaded (17.2).
                     let (v, broken) = self.complete(&fact.ty, v)?;
@@ -639,6 +879,13 @@ impl<'a> Pipeline<'a> {
                             .answer("Internal", 500, json!({}), Vec::new(), broken)
                             .map(Some);
                     }
+                    let theirs = self.is_foreign(&fact.ty, &v, env.principal.as_ref())?;
+                    (!theirs).then_some(v)
+                }
+                None => None,
+            };
+            match value {
+                Some(v) => {
                     env.facts.insert(fact.name.clone(), v);
                 }
                 None if fact.optional => {}

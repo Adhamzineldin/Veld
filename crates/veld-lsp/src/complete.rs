@@ -557,6 +557,12 @@ fn annotation_snippet(name: &str, shape: ArgShape) -> String {
         ArgShape::Retain => {
             format!("{name}(days(${{1:30}}), since: ${{2:field}}, then: ${{3|delete,anonymize|}})")
         }
+        ArgShape::Visible => format!("{name}(when: ${{1:expression}})"),
+        ArgShape::Limit => {
+            format!(
+                "{name}(${{1:10}}, per: ${{2|second,minute,hour,day|}}, by: ${{3|user,tenant,ip|}})"
+            )
+        }
     }
 }
 

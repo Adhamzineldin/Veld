@@ -1,0 +1,18 @@
+// Every tenant-scoped endpoint has auth.
+
+model User {
+  id: uuid
+  tenantId?: uuid @tenant
+}
+
+principal User
+
+model Booking {
+  id: uuid
+  tenantId: uuid @tenant
+}
+
+@auth(none)
+service Bookings at "/bookings" {
+  get "/" listBookings() -> Booking[]
+}

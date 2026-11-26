@@ -352,6 +352,48 @@ impl Ir {
             .any(|id| self.decl(id).has_derived())
     }
 
+    /// True when a value of the type can hold a tenant-scoped value: the declaration of the type
+    /// or any declaration it reaches has a `@tenant` field (`spec/platform.md` section 3).
+    #[must_use]
+    pub fn type_reaches_tenant(&self, ty: &Type) -> bool {
+        let mut stack = Vec::new();
+        ty.collect_decls(&mut stack);
+        self.close_over(stack)
+            .into_iter()
+            .any(|id| self.decl(id).tenant_field().is_some())
+    }
+
+    /// The types of the facts of the services and everything those reach, sorted by id: what
+    /// the application's loaders hand the server. The principal is not among them.
+    #[must_use]
+    pub fn fact_type_decls(&self, services: &[ServiceId]) -> Vec<DeclId> {
+        let mut stack = Vec::new();
+        for sid in services {
+            for fact in &self.service(*sid).facts {
+                fact.ty.collect_decls(&mut stack);
+            }
+        }
+        self.close_over(stack)
+    }
+
+    /// True when a fact of one of the services can be tenant-scoped.
+    fn facts_have_tenant(&self, services: &[ServiceId]) -> bool {
+        self.fact_type_decls(services)
+            .into_iter()
+            .any(|id| self.decl(id).tenant_field().is_some())
+    }
+
+    /// True when a value of the type can have a `@visible` field: on the declaration of the
+    /// type or on any declaration it reaches (`spec/platform.md` section 2).
+    #[must_use]
+    pub fn type_reaches_visible(&self, ty: &Type) -> bool {
+        let mut stack = Vec::new();
+        ty.collect_decls(&mut stack);
+        self.close_over(stack)
+            .into_iter()
+            .any(|id| self.decl(id).fields().iter().any(|f| f.visible.is_some()))
+    }
+
     /// The types of the facts and the principal of the services and everything those reach,
     /// sorted by id. No endpoint reaches them (`reachable_decls` leaves them out), but the
     /// application hands the server values of them.
@@ -386,6 +428,9 @@ impl Ir {
         if self.facts_have_derived(services) {
             f.insert(Feature::RulesDerived);
         }
+        if self.facts_have_tenant(services) {
+            f.insert(Feature::Tenancy);
+        }
         for sid in services {
             let s = self.service(*sid);
             if !self.package(s.package).messages.is_empty() {
@@ -418,6 +463,12 @@ impl Ir {
                 }
                 if ep.slo.is_some() {
                     f.insert(Feature::Slo);
+                }
+                if ep.audited {
+                    f.insert(Feature::Audit);
+                }
+                if ep.limit.is_some() {
+                    f.insert(Feature::Limits);
                 }
                 if ep.rules.transition.is_some() {
                     f.insert(Feature::RulesTransitions);
@@ -603,6 +654,13 @@ impl Decl {
             out.push(left.remove(ready.unwrap_or(0)));
         }
         out
+    }
+
+    /// The `@tenant` field of the declaration, its own or inherited: a declaration that has one is
+    /// tenant-scoped (`spec/platform.md` section 3).
+    #[must_use]
+    pub fn tenant_field(&self) -> Option<&Field> {
+        self.fields().iter().find(|f| f.tenant)
     }
 
     /// True when a field of the declaration is derived.
@@ -882,6 +940,25 @@ pub struct Field {
     /// `@secret` (`spec/rules.md` section 19.3): the value must never be shown. Omitted when false.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub secret: bool,
+    /// `@visible(when: e)` (`spec/platform.md` section 2): the field is sent to a caller only
+    /// when `e` is true for that caller. Omitted from the JSON when absent, so the IR of a
+    /// contract without the annotation is unchanged. Not part of any signature.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub visible: Option<Expr>,
+    /// The principal model `visible` was checked against (`spec/platform.md` section 2): the
+    /// caller it reads is a value of this model. Present exactly when `visible` is. A server
+    /// whose principal is another model has no caller of that type, and hides the field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub visible_principal: Option<DeclId>,
+    /// `@tenant` (`spec/platform.md` section 3): the field holds the tenant of the value and is
+    /// set by the server, never by the caller. Omitted from the JSON when false.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub tenant: bool,
+    /// The identity of a `@tenant` field, `veld:<package>/<Model>.tenant@<hex16>`: the rule that
+    /// `onRuleViolation` is told when a value of another tenant is refused. Set exactly when
+    /// `tenant` is. An inherited field has the id of the model that wrote it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tenant_id: Option<String>,
     pub inherited_from: Option<DeclId>,
     pub constraints: Constraints,
     pub example: Option<Literal>,
@@ -1010,12 +1087,25 @@ fn field_features(fld: &Field, f: &mut BTreeSet<Feature>) {
     if fld.derived.is_some() {
         f.insert(Feature::RulesDerived);
     }
+    if fld.visible.is_some() {
+        f.insert(Feature::Visibility);
+    }
+    if fld.tenant {
+        f.insert(Feature::Tenancy);
+    }
     if !fld.constraints.is_empty() {
         f.insert(Feature::Constraints);
     }
 }
 
 impl Field {
+    /// True when a request does not carry the field and may lack it: the server sets it. That is
+    /// a `@readonly` field and a `@tenant` field (`spec/platform.md` section 3).
+    #[must_use]
+    pub fn server_set(&self) -> bool {
+        self.readonly || self.tenant
+    }
+
     /// Source names of the fields of the declaration that the derived expression reads, first
     /// use first. Empty when the field is not derived.
     #[must_use]
@@ -1236,7 +1326,82 @@ pub struct Endpoint {
     /// `@slo` (`spec/platform.md` section 13). Omitted from the JSON when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub slo: Option<Slo>,
+    /// `@audited` (`spec/platform.md` section 4): the server records one audit event for every
+    /// request that matched the endpoint. Omitted from the JSON when false.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub audited: bool,
+    /// `@limit` (`spec/platform.md` section 5), from the endpoint or its service. Omitted from
+    /// the JSON when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit: Option<Limit>,
     pub origin: Origin,
+}
+
+/// The rate limit of an endpoint (`spec/platform.md` section 5): `@limit(10, per: minute, by: user)`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Limit {
+    /// How many calls one key may make in one window: 1 or more.
+    pub count: u32,
+    pub per: LimitWindow,
+    pub by: LimitSubject,
+}
+
+/// The length of the window of a [`Limit`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LimitWindow {
+    Second,
+    Minute,
+    Hour,
+    Day,
+}
+
+impl LimitWindow {
+    /// The window in seconds: what a limiter is asked for.
+    #[must_use]
+    pub fn seconds(self) -> u32 {
+        match self {
+            LimitWindow::Second => 1,
+            LimitWindow::Minute => 60,
+            LimitWindow::Hour => 3_600,
+            LimitWindow::Day => 86_400,
+        }
+    }
+
+    /// The word of the contract.
+    #[must_use]
+    pub fn word(self) -> &'static str {
+        match self {
+            LimitWindow::Second => "second",
+            LimitWindow::Minute => "minute",
+            LimitWindow::Hour => "hour",
+            LimitWindow::Day => "day",
+        }
+    }
+}
+
+/// Whose calls a [`Limit`] counts together.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LimitSubject {
+    /// One count per caller (`spec/platform.md` section 5).
+    User,
+    /// One count per tenant of the caller.
+    Tenant,
+    /// One count per client address.
+    Ip,
+}
+
+impl LimitSubject {
+    /// The word of the contract, which is also the `k` of the key.
+    #[must_use]
+    pub fn word(self) -> &'static str {
+        match self {
+            LimitSubject::User => "user",
+            LimitSubject::Tenant => "tenant",
+            LimitSubject::Ip => "ip",
+        }
+    }
 }
 
 /// The service level an endpoint states with `@slo` (`spec/platform.md` section 13). Each
@@ -1477,6 +1642,20 @@ pub enum Feature {
     Retention,
     /// A `transition` over a flow that `emits` an event (`spec/events.md` section 11).
     EventsOutbox,
+    /// `@visible(when: e)` on a field (`spec/platform.md` section 2). Opt-in: a generator that
+    /// does not declare it would send a field that must be hidden. Clients generate nothing for
+    /// it, so the gate does not ask them.
+    Visibility,
+    /// `@tenant` on a field (`spec/platform.md` section 3). Opt-in: a generator that does not
+    /// declare it would send a value of another tenant. Clients generate nothing for it, so the
+    /// gate does not ask them.
+    Tenancy,
+    /// `@audited` (`spec/platform.md` section 4). Opt-in: a generator that does not declare it
+    /// would record nothing. Clients generate nothing for it, so the gate does not ask them.
+    Audit,
+    /// `@limit` (`spec/platform.md` section 5). Opt-in: a generator that does not declare it would
+    /// serve without the limit. A client is asked too: it waits when it is refused.
+    Limits,
 }
 
 impl Feature {
@@ -1489,7 +1668,7 @@ impl Feature {
     ];
     /// Features no generator supports unless it says so: [`Feature::ALL`] minus these is what
     /// `all_except` hands out. A feature that changes what a rule means must be opted into.
-    pub const OPT_IN: [Feature; 13] = [
+    pub const OPT_IN: [Feature; 17] = [
         Feature::RulesRollout,
         Feature::RulesVersion,
         Feature::Idempotency,
@@ -1503,8 +1682,12 @@ impl Feature {
         Feature::Messages,
         Feature::Retention,
         Feature::EventsOutbox,
+        Feature::Visibility,
+        Feature::Tenancy,
+        Feature::Audit,
+        Feature::Limits,
     ];
-    pub const ALL: [Feature; 28] = [
+    pub const ALL: [Feature; 32] = [
         Feature::Unions,
         Feature::Constraints,
         Feature::Auth,
@@ -1533,6 +1716,10 @@ impl Feature {
         Feature::Messages,
         Feature::Retention,
         Feature::EventsOutbox,
+        Feature::Visibility,
+        Feature::Tenancy,
+        Feature::Audit,
+        Feature::Limits,
     ];
     #[must_use]
     pub fn name(self) -> &'static str {
@@ -1565,6 +1752,10 @@ impl Feature {
             Feature::Messages => "messages",
             Feature::Retention => "retention",
             Feature::EventsOutbox => "events_outbox",
+            Feature::Visibility => "visibility",
+            Feature::Tenancy => "tenancy",
+            Feature::Audit => "audit",
+            Feature::Limits => "limits",
         }
     }
     #[must_use]
@@ -1610,6 +1801,8 @@ mod tests {
 mod derived_tests;
 #[cfg(test)]
 mod events_tests;
+#[cfg(test)]
+mod platform_p1_tests;
 
 #[cfg(test)]
 mod delivery_tests;

@@ -20,6 +20,7 @@ mod events_delivery;
 mod events_outbox;
 mod fixtures;
 mod messages;
+mod platform_p1;
 mod platform_p2;
 mod retention;
 mod rollout;
@@ -53,6 +54,11 @@ pub use fixtures::{FIXTURES, Fixture};
 pub use messages::{
     CATALOG_FILE, check_messages_are_generated, check_messages_is_refused,
     compiled_messages_contract,
+};
+pub use platform_p1::{
+    check_audit_is_refused, check_limits_are_refused, check_tenancy_is_refused,
+    check_visibility_is_refused, compiled_audit_contracts, compiled_limit_contracts,
+    compiled_tenancy_contracts, compiled_visibility_contracts,
 };
 pub use platform_p2::{
     check_flags_are_refused, check_slo_is_refused, check_timed_is_refused,

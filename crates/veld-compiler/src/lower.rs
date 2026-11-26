@@ -70,6 +70,7 @@ pub fn lower(
     }
     signature::rule_ids(&mut decls, &packages);
     signature::derived_ids(&mut decls, &packages);
+    signature::tenant_ids(&mut decls, &packages);
     let services = lw.services(&decls);
     let policies = lw.policies(&decls);
     let mut ir = Ir {
@@ -237,6 +238,12 @@ impl Lowerer<'_, '_> {
             .then(|| self.prog.decls[writer].res.own_derived.get(&f.name))
             .flatten()
             .map(|r| self.remap_expr(&r.expr));
+        let own_visible = f
+            .visible
+            .then(|| self.prog.decls[writer].res.own_visible.get(&f.name))
+            .flatten();
+        let visible = own_visible.map(|r| self.remap_expr(&r.expr));
+        let visible_principal = own_visible.map(|r| self.decl_id(r.principal));
         Field {
             name: f.name.clone(),
             wire: f.wire.clone(),
@@ -250,6 +257,11 @@ impl Lowerer<'_, '_> {
             derived,
             pii: f.pii,
             secret: f.secret,
+            visible,
+            visible_principal,
+            tenant: f.tenant,
+            // The id needs every declaration in place: `signature::tenant_ids` fills it.
+            tenant_id: f.tenant.then(String::new),
             inherited_from: f.inherited_from.map(|d| self.decl_id(d)),
             constraints: f.constraints.clone(),
             example: f.example.clone(),
@@ -425,6 +437,8 @@ impl Lowerer<'_, '_> {
             (a.status, &decls[a.decl.index()].sig).cmp(&(b.status, &decls[b.decl.index()].sig))
         });
         Endpoint {
+            audited: e.audited,
+            limit: e.limit,
             timeout_ms: e.timeout_ms.map(|ms| ms.to_string()),
             slo: e.slo.as_ref().map(|s| {
                 let text = |v: Option<i64>| v.map(|ms| ms.to_string());

@@ -209,6 +209,7 @@ fn fill_all(
         filler: Filler::new(ir, &ex.name, clock_ms),
         givens: BTreeMap::new(),
     };
+    b.filler.tenant = b.example_tenant()?;
     let facts = b.facts()?;
     let principal = b.principal()?;
     let params = b.params()?;
@@ -272,6 +273,9 @@ pub(super) fn resolve_value(
                 .collect();
             Json::Array(out?)
         }
+        // A pattern says `absent` with `null`: the wire never carries a `null` member
+        // (`spec/platform.md` section 2).
+        ExampleValue::Absent(_) => Json::Null,
     })
 }
 
@@ -350,10 +354,37 @@ impl Build<'_> {
         }
         self.filler.begin();
         let ty = Type::Decl(p.decl);
+        self.filler.keep_absent_tenant = given.is_some();
         let full = self
             .filler
-            .fill(&ty, &veld_ir::Constraints::default(), given.as_ref(), "$")?;
-        Ok(Some(full))
+            .fill(&ty, &veld_ir::Constraints::default(), given.as_ref(), "$");
+        self.filler.keep_absent_tenant = false;
+        Ok(Some(full?))
+    }
+
+    /// The tenant of the example's principal (`spec/platform.md` section 3): the one `as` writes,
+    /// else a fixed value of the type. `None` when the contract has no tenant for this service.
+    fn example_tenant(&self) -> Result<Option<Json>, ExampleError> {
+        let Some(field) = self
+            .service
+            .principal
+            .as_ref()
+            .and_then(|p| self.ir.decls.get(p.decl.index()))
+            .and_then(|d| d.tenant_field())
+        else {
+            return Ok(None);
+        };
+        let written = match &self.ex.principal {
+            // An `as` that reads a given is resolved later, with the facts: here it says nothing.
+            Some(v) => self
+                .resolve(v)
+                .ok()
+                .and_then(|p| p.get(&field.wire).filter(|t| !t.is_null()).cloned()),
+            None => None,
+        };
+        Ok(Some(
+            written.unwrap_or_else(|| fill::default_tenant(&field.ty)),
+        ))
     }
 
     /// The arguments, in the order of the endpoint's parameters.

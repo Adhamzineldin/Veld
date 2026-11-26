@@ -12,6 +12,7 @@
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 
+pub mod audit;
 mod builtins;
 mod check;
 pub mod coverage;
@@ -22,6 +23,7 @@ pub mod example;
 pub mod flags;
 pub mod helpers;
 pub mod idempotency;
+pub mod limits;
 pub mod machine;
 pub mod messages;
 mod old;
@@ -31,9 +33,12 @@ mod pipeline;
 pub mod policy;
 pub mod redact;
 pub mod saga;
+pub mod tenant;
 mod value;
 pub mod vectors;
 pub mod version;
+pub mod visibility;
+mod walk;
 mod wire;
 
 #[cfg(test)]
@@ -57,12 +62,15 @@ pub use machine::{TimedEndpoint, is_final, next_states, timed_endpoints, timed_m
 pub use old::save_old;
 pub use pipeline::{
     After, Before, ErrorAnswer, Outcome, OutputMode, Pipeline, Prepared, Reported, Request,
-    RunError,
+    RunError, Trail,
 };
 pub use policy::{NOT_PERMITTED, PolicyVerdict, eval_policy};
 pub use redact::{Redacted, redact_decl, redact_decl_at, redact_type, redact_type_at};
 pub use value::Value;
 pub use version::{IfMatch, etag, parse_if_match};
+pub use visibility::{
+    Caller, Shown, apply_visibility_decl, apply_visibility_type, apply_visibility_type_at,
+};
 pub use wire::{format_date, format_datetime, format_time};
 
 /// The IR version whose rules this crate evaluates.

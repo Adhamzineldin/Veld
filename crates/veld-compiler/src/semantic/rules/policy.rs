@@ -122,6 +122,8 @@ fn param_field(name: &str, ty: &Type) -> RField {
         version: false,
         pii: false,
         secret: false,
+        visible: false,
+        tenant: false,
         inherited_from: None,
         constraints: veld_ir::Constraints::default(),
         example: None,
@@ -225,6 +227,7 @@ fn check_clause(
             in_old: false,
             lenient: false,
             principal: None,
+            fields_in_scope: false,
         }),
     };
     let what = if clause.forbid {

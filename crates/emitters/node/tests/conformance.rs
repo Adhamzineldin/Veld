@@ -162,6 +162,38 @@ fn node_and_typescript_refuse_deadlines_and_service_levels() {
     veld_emit_conformance::check_slo_is_refused(&TypeScript).unwrap();
 }
 
+/// `visibility` is opt-in (`spec/platform.md` section 2): the Node server refuses a `@visible`
+/// field; the TypeScript client has nothing to hide and is not asked.
+#[test]
+fn node_and_typescript_refuse_visibility_as_a_server_only() {
+    veld_emit_conformance::check_visibility_is_refused(&Node).unwrap();
+    veld_emit_conformance::check_visibility_is_refused(&TypeScript).unwrap();
+}
+
+/// `tenancy` is opt-in (`spec/platform.md` section 3): the Node server refuses a `@tenant` field,
+/// and the TypeScript client one that an endpoint returns (a request does not carry it).
+#[test]
+fn node_and_typescript_refuse_tenancy_as_a_server_only() {
+    veld_emit_conformance::check_tenancy_is_refused(&Node).unwrap();
+    veld_emit_conformance::check_tenancy_is_refused(&TypeScript).unwrap();
+}
+
+/// `audit` is opt-in (`spec/platform.md` section 4): the Node server refuses an `@audited`
+/// endpoint; the TypeScript client is not asked.
+#[test]
+fn node_and_typescript_refuse_audit_as_a_server_only() {
+    veld_emit_conformance::check_audit_is_refused(&Node).unwrap();
+    veld_emit_conformance::check_audit_is_refused(&TypeScript).unwrap();
+}
+
+/// `limits` is opt-in (`spec/platform.md` section 5): the Node server and the TypeScript client,
+/// which waits when it is refused, both refuse an endpoint with `@limit`.
+#[test]
+fn node_and_typescript_refuse_limits() {
+    veld_emit_conformance::check_limits_are_refused(&Node).unwrap();
+    veld_emit_conformance::check_limits_are_refused(&TypeScript).unwrap();
+}
+
 /// Message catalogs (`spec/platform.md` section 22): until a generator implements them, the Node
 /// server and the TypeScript client both refuse a member that has catalogs with `E0801`, at the
 /// first catalog file, and make no files.

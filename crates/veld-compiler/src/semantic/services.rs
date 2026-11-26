@@ -10,7 +10,7 @@ use super::{
 use crate::diagnostics::{Diagnostic, Span};
 use crate::language::{self, Target};
 use crate::syntax::ast::{self, DeclKind, HttpMethod, doc_text};
-use veld_ir::{Auth, Binding, Method, Type};
+use veld_ir::{Auth, Binding, LimitSubject, Method, Type};
 
 type RouteKey = (usize, Method, String);
 
@@ -18,6 +18,8 @@ type RouteKey = (usize, Method, String);
 struct Defaults {
     timeout: Option<service_levels::Timeout>,
     slo: Option<service_levels::SloArgs>,
+    audited: bool,
+    limit: Option<annotations::LimitAnn>,
 }
 
 pub fn analyze(prog: &mut Program<'_>, diags: &mut Vec<Diagnostic>) {
@@ -91,6 +93,8 @@ fn analyze_service(
         let svc = Defaults {
             timeout: anns.timeout,
             slo: anns.slo.clone(),
+            audited: anns.audited,
+            limit: anns.limit,
         };
         if let Some(ep) = ctx.endpoint(e, &prefix, (&auth, &middleware, &svc), diags) {
             check_route(prog, pkg, &s.name.name, &ep, routes, diags);
@@ -261,6 +265,8 @@ impl Ctx<'_, '_> {
             saga: None,
             timeout_ms: None,
             slo: None,
+            audited: false,
+            limit: None,
             span: e.name.span,
         };
         self.responses(e, method, &mut ep, diags);
@@ -796,11 +802,83 @@ impl Ctx<'_, '_> {
         if let (true, Some(s)) = (streams, &anns.slo) {
             refuse("slo", s.span.unwrap_or_else(Span::none), diags);
         }
+        // An endpoint's own `@audited` is kept even where it streams: a generator that implements
+        // the audit log refuses it (`E0801`). A service's `@audited` skips such an endpoint.
+        ep.audited = anns.audited || (svc.audited && !streams);
+        self.limit(anns, svc, streams, ep, diags);
         if streams {
             return;
         }
         ep.timeout_ms = anns.timeout.or(svc.timeout).map(|t| t.ms);
         ep.slo = anns.slo.clone().or_else(|| svc.slo.clone());
+    }
+
+    /// `@limit` (`spec/platform.md` section 5): the endpoint's own, else the service's. An endpoint
+    /// that streams is not counted by call, so a limit of its own is `E1120` and the service's is
+    /// skipped. The subject must be something the endpoint can supply: `user` and `tenant` need a
+    /// caller, so auth, and `tenant` a principal whose model has a `@tenant` field.
+    fn limit(
+        &self,
+        anns: &Anns<'_>,
+        svc: &Defaults,
+        streams: bool,
+        ep: &mut REndpoint,
+        diags: &mut Vec<Diagnostic>,
+    ) {
+        let err = |span: Span, msg: String, diags: &mut Vec<Diagnostic>| {
+            diags.push(Diagnostic::error("E1120", msg, span).with_help(format!(
+                "usage: {}",
+                language::annotation("limit").map_or("", |a| a.usage)
+            )));
+        };
+        if let (true, Some(own)) = (streams, &anns.limit) {
+            err(
+                own.span,
+                "`@limit` counts calls: an endpoint that streams has none to count".to_string(),
+                diags,
+            );
+            return;
+        }
+        let Some(found) = anns.limit.or(svc.limit).filter(|_| !streams) else {
+            return;
+        };
+        let at = if anns.limit.is_some() {
+            found.span
+        } else {
+            ep.span
+        };
+        let by = found.limit.by;
+        let needs_caller = matches!(by, LimitSubject::User | LimitSubject::Tenant);
+        if needs_caller && ep.auth.kind == veld_ir::AuthKind::None {
+            err(
+                at,
+                format!(
+                    "`@limit(.., by: {})` needs a caller, and endpoint `{}` has no auth",
+                    by.word(),
+                    ep.name
+                ),
+                diags,
+            );
+        } else if by == LimitSubject::Tenant && !self.principal_has_tenant() {
+            err(
+                at,
+                format!(
+                    "`@limit(.., by: tenant)` needs a principal whose model has a `@tenant` field, for endpoint `{}`",
+                    ep.name
+                ),
+                diags,
+            );
+        }
+        ep.limit = Some(found.limit);
+    }
+
+    /// True when the package declares a principal whose model has a `@tenant` field.
+    fn principal_has_tenant(&self) -> bool {
+        let pkg = self.prog.modules[self.module].pkg;
+        self.prog
+            .principals
+            .get(&pkg)
+            .is_some_and(|p| self.prog.decls[p.decl].res.fields.iter().any(|f| f.tenant))
     }
 
     /// Adds the implicit errors every server response needs a declaration for:
@@ -818,6 +896,10 @@ impl Ctx<'_, '_> {
         // An `allow` that denies answers `403 Forbidden` (`spec/rules.md` section 11.3).
         if rules::has_allow(e) {
             self.add_implicit(ep, "Forbidden", 403);
+        }
+        // A call the limiter refuses answers `429 TooManyRequests` (`spec/platform.md` section 5).
+        if ep.limit.is_some() {
+            self.add_implicit(ep, "TooManyRequests", 429);
         }
         // A deadline that passes answers `504 DeadlineExceeded` (`spec/platform.md` section 12).
         if ep.timeout_ms.is_some() {

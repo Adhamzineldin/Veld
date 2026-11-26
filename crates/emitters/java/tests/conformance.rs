@@ -173,6 +173,34 @@ fn java_refuses_deadlines_and_service_levels() {
     veld_emit_conformance::check_slo_is_refused(&Java).unwrap();
 }
 
+/// `visibility` is opt-in (`spec/platform.md` section 2): the Java server refuses a `@visible`
+/// field; the Java client is not asked.
+#[test]
+fn java_refuses_visibility_as_a_server() {
+    veld_emit_conformance::check_visibility_is_refused(&Java).unwrap();
+}
+
+/// `tenancy` is opt-in (`spec/platform.md` section 3): Java refuses a `@tenant` field, as a server
+/// and, when an endpoint returns one, as a client.
+#[test]
+fn java_refuses_tenancy_as_a_server() {
+    veld_emit_conformance::check_tenancy_is_refused(&Java).unwrap();
+}
+
+/// `audit` is opt-in (`spec/platform.md` section 4): the Java server refuses an `@audited`
+/// endpoint.
+#[test]
+fn java_refuses_audit_as_a_server() {
+    veld_emit_conformance::check_audit_is_refused(&Java).unwrap();
+}
+
+/// `limits` is opt-in (`spec/platform.md` section 5): Java refuses an endpoint with `@limit`, as
+/// a server and as a client.
+#[test]
+fn java_refuses_limits() {
+    veld_emit_conformance::check_limits_are_refused(&Java).unwrap();
+}
+
 /// Message catalogs (`spec/platform.md` section 22): until Java implements them, it refuses a
 /// member that has catalogs with `E0801`, as a server and as a client.
 #[test]

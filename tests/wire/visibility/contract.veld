@@ -1,0 +1,61 @@
+// The contract of the visibility goldens (`spec/platform.md` section 2), compiled as the package
+// `guests`.
+
+model User {
+  id: uuid
+  roles: string[]
+}
+
+principal User
+
+model Address {
+  street: string
+  city: string
+  door?: string @visible(when: "staff" in user.roles)
+}
+
+model Guest {
+  id: uuid
+  name: string
+  quota: int
+  expires: datetime
+  phone?: string @visible(when: user.id == id || "staff" in user.roles)
+  email?: string @visible(when: user.id == id)
+  ratio?: int @visible(when: 100 / quota > 1)
+  early?: string @visible(when: now < expires)
+  tags?: string[] @visible(when: has(tags) && len(tags) > 1)
+  home: Address
+  work?: Address
+  past: Address[]
+  byYear: Map<string, Address>
+  vault?: Address @visible(when: "staff" in user.roles)
+}
+
+model Vip extends Guest {
+  badge?: string @visible(when: "staff" in user.roles)
+}
+
+model Card {
+  number: string
+  hint?: string @visible(when: "staff" in user.roles)
+}
+
+model Wire {
+  iban: string
+  memo?: string @visible(when: "staff" in user.roles)
+}
+
+union Payment { card: Card, wire: Wire }
+
+model Order {
+  id: uuid
+  guest: Guest
+  pay: Payment
+  guests: Page<Guest>
+  payments: Payment[]
+}
+
+error Rejected 422 {
+  reason: string
+  who?: string @visible(when: "staff" in user.roles)
+}

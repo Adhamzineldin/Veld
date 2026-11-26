@@ -173,6 +173,8 @@ mod event_tests;
 #[cfg(test)]
 mod pii_tests;
 #[cfg(test)]
+mod platform_p1_tests;
+#[cfg(test)]
 mod rollout_tests;
 #[cfg(test)]
 mod saga_tests;

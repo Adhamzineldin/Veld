@@ -29,6 +29,12 @@ pub struct Anns<'a> {
     /// `@pii` and `@secret` on a field (`spec/rules.md` section 19.3).
     pub pii: bool,
     pub secret: bool,
+    /// `@tenant` on a field (`spec/platform.md` section 3).
+    pub tenant: bool,
+    /// `@audited` on a service or an endpoint (`spec/platform.md` section 4).
+    pub audited: bool,
+    /// `@limit` on a service or an endpoint (`spec/platform.md` section 5).
+    pub limit: Option<LimitAnn>,
     /// `@idempotent` on an endpoint.
     pub idempotent: Option<Idempotent>,
     /// `@retry` on a channel.
@@ -43,6 +49,9 @@ pub struct Anns<'a> {
     pub slo: Option<super::service_levels::SloArgs>,
     /// `@retain` on a model (`spec/platform.md` section 23).
     pub retain: Option<RetainAnn>,
+    /// `@visible(when: e)` on a field (`spec/platform.md` section 2): the expression, not yet
+    /// checked.
+    pub visible: Option<&'a crate::syntax::ast::Expr>,
 }
 
 /// What `@retain(days(30), since: f, then: anonymize)` says, before the field is looked up.
@@ -112,7 +121,8 @@ pub fn parse<'a>(
         }
         if seen.contains(&name) {
             diags.push(Diagnostic::error(
-                "E0602",
+                // An endpoint has at most one `@limit` (`spec/platform.md` section 5).
+                if name == "limit" { "E1120" } else { "E0602" },
                 format!("`@{name}` is written more than once"),
                 a.span,
             ));
@@ -139,7 +149,17 @@ fn hidden_from(spec: &language::AnnotationSpec, target: Target) -> bool {
     // unknown annotation on a model or a service reads as it did before they existed.
     let own_target_only = matches!(
         spec.name,
-        "version" | "idempotent" | "timeout" | "slo" | "pii" | "secret" | "retain"
+        "version"
+            | "idempotent"
+            | "timeout"
+            | "slo"
+            | "pii"
+            | "secret"
+            | "retain"
+            | "visible"
+            | "tenant"
+            | "audited"
+            | "limit"
     );
     (!events_only(&target) && spec.targets.iter().all(events_only))
         || (!rules_only(&target) && spec.targets.iter().all(rules_only))
@@ -155,7 +175,12 @@ fn unknown(a: &Annotation, target: Target) -> Diagnostic {
     // misspelling of one of them is still answered with `did you mean`.
     let known: Vec<String> = visible
         .iter()
-        .filter(|s| !matches!(s.name, "pii" | "secret" | "retain"))
+        .filter(|s| {
+            !matches!(
+                s.name,
+                "pii" | "secret" | "retain" | "visible" | "tenant" | "audited" | "limit"
+            )
+        })
         .map(|s| format!("@{}", s.name))
         .collect();
     Diagnostic::error(
@@ -222,6 +247,7 @@ fn apply<'a>(
     let args = a.args.as_deref().unwrap_or(&[]);
     match (spec.name, spec.args) {
         (_, ArgShape::None) => no_args(args, spec.name)?,
+        ("visible", _) => out.visible = Some(visible_arg(a)?),
         ("deprecated", _) => out.deprecated = Some(one_string(args)?),
         ("wire", _) => {
             let w = one_string(args)?;
@@ -268,6 +294,7 @@ fn apply<'a>(
         ("timeout", _) => out.timeout = Some(super::service_levels::timeout_args(args, a.span)?),
         ("slo", _) => out.slo = Some(super::service_levels::slo_args(args, a.span)?),
         ("retain", _) => out.retain = retain_args(args, a.span, diags),
+        ("limit", _) => out.limit = limit_args(args, a.span, diags),
         ("auth", _) => out.auth = Some(auth_arg(args)?.declared()),
         ("middleware", _) => out.middleware = Some(idents(args)?),
         _ => {}
@@ -278,6 +305,8 @@ fn apply<'a>(
         "ordered" => out.ordered = true,
         "pii" => out.pii = true,
         "secret" => out.secret = true,
+        "tenant" => out.tenant = true,
+        "audited" => out.audited = true,
         "version" => {
             require_type(
                 ty,
@@ -290,6 +319,14 @@ fn apply<'a>(
         _ => {}
     }
     Ok(())
+}
+
+/// `@visible` takes `when: expression` and nothing else.
+fn visible_arg(a: &Annotation) -> Result<&crate::syntax::ast::Expr, String> {
+    match (&a.when, &a.args) {
+        (Some(e), None) => Ok(e),
+        (_, _) => Err("`@visible` takes one argument, `when: expression`".to_string()),
+    }
 }
 
 fn no_args(args: &[Arg], name: &str) -> Result<(), String> {
@@ -487,6 +524,116 @@ fn retain_args(args: &[Arg], span: Span, diags: &mut Vec<Diagnostic>) -> Option<
         then,
         span,
     })
+}
+
+/// What `@limit(n, per: w, by: k)` says (`spec/platform.md` section 5).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LimitAnn {
+    pub limit: veld_ir::Limit,
+    pub span: Span,
+}
+
+const LIMIT_USAGE: &str = "@limit(10, per: minute, by: user)";
+
+fn limit_error(span: Span, message: impl Into<String>) -> Diagnostic {
+    Diagnostic::error("E1120", message, span).with_help(format!("usage: {LIMIT_USAGE}"))
+}
+
+/// `@limit(n, per: w, by: k)`: `n` a whole number from 1, `w` one of `second`, `minute`, `hour`,
+/// `day`, `k` one of `user`, `tenant`, `ip`. Every mistake is `E1120` and the annotation has no
+/// meaning when there is one. Whether the endpoint can supply `k` is checked with the endpoint.
+fn limit_args(args: &[Arg], span: Span, diags: &mut Vec<Diagnostic>) -> Option<LimitAnn> {
+    let before = diags.len();
+    let (mut count, mut per, mut by) = (None, None, None);
+    for a in args {
+        match a.name.as_ref().map(|n| n.name.as_str()) {
+            None => take_limit(
+                &mut count,
+                limit_count(a, diags),
+                a.span,
+                "the count",
+                diags,
+            ),
+            Some("per") => take_limit(&mut per, limit_window(a, diags), a.span, "`per:`", diags),
+            Some("by") => take_limit(&mut by, limit_subject(a, diags), a.span, "`by:`", diags),
+            Some(other) => diags.push(limit_error(
+                a.span,
+                format!(
+                    "`{other}:` is not an argument of `@limit`: it takes a count, `per:` and `by:`"
+                ),
+            )),
+        }
+    }
+    if diags.len() == before && (count.is_none() || per.is_none() || by.is_none()) {
+        diags.push(limit_error(
+            span,
+            "`@limit` needs a count, `per:` and `by:`",
+        ));
+    }
+    let (count, per, by) = (count?, per?, by?);
+    (diags.len() == before).then_some(LimitAnn {
+        limit: veld_ir::Limit { count, per, by },
+        span,
+    })
+}
+
+fn take_limit<T>(
+    slot: &mut Option<T>,
+    value: Option<T>,
+    span: Span,
+    what: &str,
+    diags: &mut Vec<Diagnostic>,
+) {
+    if slot.is_some() {
+        diags.push(limit_error(span, format!("{what} is given more than once")));
+    } else if value.is_some() {
+        *slot = value;
+    }
+}
+
+fn limit_count(a: &Arg, diags: &mut Vec<Diagnostic>) -> Option<u32> {
+    let n = match literal_of(a).map(|l| &l.kind) {
+        Some(LitKind::Int(n)) => u32::try_from(*n).ok().filter(|n| *n >= 1),
+        _ => None,
+    };
+    if n.is_none() {
+        diags.push(limit_error(
+            a.span,
+            "the count is a whole number from 1 to 4294967295: `@limit(10, ..)`",
+        ));
+    }
+    n
+}
+
+fn limit_window(a: &Arg, diags: &mut Vec<Diagnostic>) -> Option<veld_ir::LimitWindow> {
+    use veld_ir::LimitWindow as W;
+    let found = match &a.value {
+        ArgValue::Ident(i) => [W::Second, W::Minute, W::Hour, W::Day]
+            .into_iter()
+            .find(|w| w.word() == i.name),
+        ArgValue::Literal(_) | ArgValue::Call { .. } => None,
+    };
+    if found.is_none() {
+        diags.push(limit_error(
+            a.span,
+            "`per:` is `second`, `minute`, `hour` or `day`",
+        ));
+    }
+    found
+}
+
+fn limit_subject(a: &Arg, diags: &mut Vec<Diagnostic>) -> Option<veld_ir::LimitSubject> {
+    use veld_ir::LimitSubject as S;
+    let found = match &a.value {
+        ArgValue::Ident(i) => [S::User, S::Tenant, S::Ip]
+            .into_iter()
+            .find(|s| s.word() == i.name),
+        ArgValue::Literal(_) | ArgValue::Call { .. } => None,
+    };
+    if found.is_none() {
+        diags.push(limit_error(a.span, "`by:` is `user`, `tenant` or `ip`"));
+    }
+    found
 }
 
 /// Keeps the first value and reports a second one.

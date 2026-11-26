@@ -166,6 +166,12 @@ impl Checker<'_, '_, '_> {
             if let Some(found) = self.endpoint_name(&flat, in_has) {
                 return found;
             }
+            let fields_too = self.ep.as_ref().is_some_and(|e| e.fields_in_scope);
+            if let Some(f) = self.fields.iter().find(|f| &f.name == name).cloned()
+                && fields_too
+            {
+                return self.walk(Root::SelfValue, &flat, Start::Field(Box::new(f)), in_has);
+            }
         } else if let Some(f) = self.fields.iter().find(|f| &f.name == name).cloned() {
             return self.walk(Root::SelfValue, &flat, Start::Field(Box::new(f)), in_has);
         }
@@ -311,7 +317,7 @@ impl Checker<'_, '_, '_> {
         let mut ty = match start {
             Start::Var(ty) => ty,
             Start::Field(f) => {
-                self.note_read(&f.name, f.readonly);
+                self.note_read(&f.name, f.readonly || f.tenant);
                 bounded = f.constraints.max_len.is_some();
                 any_optional |= f.optional;
                 self.require_present(f.optional, &key, flat.root.span, in_has)?;
