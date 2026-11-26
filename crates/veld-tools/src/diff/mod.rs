@@ -112,6 +112,9 @@ pub enum ChangeKind {
     IdempotencyRemoved,
     IdempotencyHeaderChanged,
     IdempotencyRequiredChanged,
+    DerivedChanged,
+    FieldBecameDerived,
+    FieldNoLongerDerived,
 }
 
 /// One difference between the old and the new contract.
@@ -307,6 +310,8 @@ pub fn diff(old: &Ir, new: &Ir) -> Vec<Change> {
 mod changed_tests;
 #[cfg(test)]
 mod conditional_tests;
+#[cfg(test)]
+mod derived_tests;
 #[cfg(test)]
 mod event_tests;
 #[cfg(test)]
