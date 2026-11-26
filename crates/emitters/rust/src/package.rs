@@ -146,13 +146,23 @@ pub fn emit_readme(
     );
     s.push_str("## Layout\n\n- `src/veld/`: the runtime (schemas and validation, canonical bytes, identity, problem+json).\n- `src/prelude.rs`: the prelude errors (`NotFound`, `Internal`, `ValidationError`, ...).\n- `src/<package>/<module>.rs`: models, enums, unions, errors and constants of the contract.\n");
     if role == Role::Server {
-        s.push_str(
-            "- `src/<package>/<service>_server.rs`: the service trait, hooks and handler.\n",
-        );
+        if f.server {
+            s.push_str(
+                "- `src/<package>/<service>_server.rs`: the service trait, hooks and handler.\n",
+            );
+        }
+        if f.events {
+            s.push_str("- `src/<package>/<service>_events.rs`: the publisher, the handler trait and `subscribe_<service>_events`.\n- `src/veld/events.rs`: the envelope, the `Transport` trait and `MemoryTransport`.\n");
+        }
         if f.axum {
             s.push_str("- `src/adapters/axum.rs`: `router(handler)`, one route per endpoint.\n");
         }
-        s.push_str("\n## Use\n\nImplement `<Service>Service`, build a handler with `<Service>Handler::create(service, hooks)` (or\n`plain(service)` when no hooks are needed) and mount it with `adapters::axum::router(handler)`.\n");
+        if f.server {
+            s.push_str("\n## Use\n\nImplement `<Service>Service`, build a handler with `<Service>Handler::create(service, hooks)` (or\n`plain(service)` when no hooks are needed) and mount it with `adapters::axum::router(handler)`.\n");
+        }
+        if f.events {
+            s.push_str("\n## Events\n\nA service that publishes gets `create_<service>_publisher(transport, options)`, with one method per\nevent of each channel; a service that subscribes gets `subscribe_<service>_events(transport, handlers, options)`,\nwhere `handlers` implements `<Service>EventHandlers`. `veld::events::MemoryTransport` is the transport that\nships with the crate, for tests and for development: it delivers while a future of `idle()` or `run()` is polled,\nso spawn `transport.run()` once, or await `transport.idle()` in a test.\n");
+        }
         if f.endpoint_rules {
             s.push_str("\nA service whose endpoints declare facts (`fact` in an endpoint block) also needs its\n`<Service>FactLoaders`: build the handler with `create(service, hooks, loaders)` (or `plain(service, loaders)`).\nThe service methods of such endpoints receive the loaded facts after the request.\n");
         }

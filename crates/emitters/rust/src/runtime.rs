@@ -35,6 +35,9 @@ pub struct Features {
     /// The crate has an audited rule (`@rollout(audit)`, `spec/rules.md` section 17.1): the `// #if rollout`
     /// regions of the runtime are kept. Implies `rules`.
     pub rollout: bool,
+    /// A served service publishes or subscribes (`spec/events.md`): `src/veld/events.rs` is
+    /// emitted.
+    pub events: bool,
 }
 
 impl Features {
@@ -50,6 +53,7 @@ impl Features {
             "rollout" => self.rollout,
             "!rollout" => !self.rollout,
             "rollout_endpoint" => self.rollout && self.endpoint_rules,
+            "rules_plain" => self.rules && !self.rollout,
             _ => false,
         }
     }
@@ -103,6 +107,7 @@ const RULES_TEXT: &str = include_str!("../../../veld-rules/src/helpers/text.rs")
 const CANONICAL: &str = include_str!("../runtime/canonical.rs");
 const CLIENT: &str = include_str!("../runtime/client.rs");
 const ERROR: &str = include_str!("../runtime/error.rs");
+const EVENTS: &str = include_str!("../runtime/events.rs");
 const PAGE: &str = include_str!("../runtime/page.rs");
 const REGEX: &str = include_str!("../runtime/regex.rs");
 const SCHEMA: &str = include_str!("../runtime/schema.rs");
@@ -126,6 +131,7 @@ pub fn mod_rs(f: &Features) -> String {
         ("canonical", true),
         ("client", f.client),
         ("error", true),
+        ("events", f.events),
         ("page", true),
         ("regex", true),
         ("rules", f.rules),
@@ -162,6 +168,7 @@ pub fn emit(files: &mut FileSet, f: &Features) -> Result<(), Vec<GenDiagnostic>>
     put("src/veld/canonical.rs", CANONICAL, true)?;
     put("src/veld/client.rs", CLIENT, f.client)?;
     put("src/veld/error.rs", ERROR, true)?;
+    put("src/veld/events.rs", EVENTS, f.events)?;
     put("src/veld/page.rs", PAGE, true)?;
     put("src/veld/regex.rs", REGEX, true)?;
     put("src/veld/rules/mod.rs", RULES, f.rules)?;
