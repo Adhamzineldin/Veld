@@ -473,6 +473,22 @@ A change to an event is judged for both sides of the stream: consumers generated
 
 **Before phase E3** `veld diff` does not look inside an event. It reports an **addition** as compatible: a new event, a new channel, an event a channel newly carries, a new `publishes` line, a new subscription, and a new `on` line of a subscription that keeps its group and its other lines. Every other change to an event, a channel, a `publishes` line or a subscription is one entry, **possibly breaking**, which fails `veld diff --strict`: the tool does not know yet which side of the stream it hurts.
 
+**The annotations of §10.2 (phase E2).** None of the three changes a byte on the wire: a consumer generated from the old contract and one generated from the new read the same messages. What differs is what each does with a message it cannot handle, and the objects the adapter declares on the broker. Each change is judged by what it does to a consumer generated from the old contract and to one generated from the new, and is one entry of its own:
+
+| Change | Result | Why |
+|---|---|---|
+| `@retry` added, and the new channel has `@deadLetter` | compatible | the new consumer gives up after `max + 1` runs and keeps the message on the dead-letter topic; the old one is redelivered by the transport |
+| `@retry` added, no `@deadLetter` | possibly breaking | a message the old consumer would have seen again is gone after its retries (`W1003`) |
+| `@retry` removed | possibly breaking | the transport redelivers a failing message without bound, so one message can block the stream (§10.4) |
+| `max` lowered, and the new channel has no `@deadLetter` | possibly breaking | a message is given up earlier and is gone |
+| `max` raised, or lowered with `@deadLetter` | compatible | what is given up is kept |
+| `backoff` changed | compatible | only the waits differ |
+| `@deadLetter` added | compatible | nothing is read from `<topic>.dlq` yet; on Kafka the topic must exist before the consumer is deployed (§10.7) |
+| `@deadLetter` removed | possibly breaking | rejected messages and exhausted retries are gone, and whoever reads `<topic>.dlq` loses its source |
+| `@ordered` added or removed | possibly breaking | consumers may depend on the order, and the adapter declares the partition or the queue differently (`x-single-active-consumer`, §10.7) |
+
+The new channel decides when two changes meet: `max` lowered while `@deadLetter` is added in the same change is compatible. A channel that is new, or that is removed, is judged as before, not by its annotations.
+
 `veld export asyncapi` writes an AsyncAPI 3.0 document: channels, their messages with the event schemas, and the operations of each service.
 
 ## 17. Diagnostics
