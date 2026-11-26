@@ -32,7 +32,7 @@ pub fn read(path: &str) -> String {
 }
 
 /// Compiles `text` as the package `bookings` from the file `t.veld`: the goldens were made so.
-fn compile_text(text: String) -> Ir {
+pub fn compile_text(text: String) -> Ir {
     let out = compile(&CompileInput {
         packages: vec![PackageInput {
             name: "bookings".into(),

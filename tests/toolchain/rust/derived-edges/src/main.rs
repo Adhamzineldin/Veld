@@ -24,7 +24,7 @@ use edges_server::edges::shop_server::{
 };
 use edges_server::runtime_config::EdgesServerRuntime;
 use edges_server::veld::events::{
-    BoxFuture, ConsumerOptions, Deliver, EventMeta, MemoryTransport, PublisherOptions, Transport, TransportSubscription,
+    BoxFuture, ChannelOptions, ConsumerOptions, Deliver, EventMeta, MemoryTransport, PublisherOptions, Transport, TransportSubscription,
 };
 use edges_server::veld::idempotency::{Begin, MemoryIdempotencyStore, fingerprint};
 use edges_server::veld::server::RequestContext;
@@ -449,9 +449,9 @@ struct Spy {
 }
 
 impl Transport for Spy {
-    fn publish<'a>(&'a self, topic: &'a str, key: Option<&'a str>, bytes: &'a [u8]) -> BoxFuture<'a, Result<(), Error>> {
+    fn publish<'a>(&'a self, topic: &'a str, key: Option<&'a str>, bytes: &'a [u8], options: ChannelOptions) -> BoxFuture<'a, Result<(), Error>> {
         self.sent.lock().unwrap().push(bytes.to_vec());
-        self.inner.publish(topic, key, bytes)
+        self.inner.publish(topic, key, bytes, options)
     }
 
     fn subscribe<'a>(
@@ -459,8 +459,9 @@ impl Transport for Spy {
         topic: &'a str,
         group: &'a str,
         deliver: Deliver,
+        options: ChannelOptions,
     ) -> BoxFuture<'a, Result<Box<dyn TransportSubscription>, Error>> {
-        self.inner.subscribe(topic, group, deliver)
+        self.inner.subscribe(topic, group, deliver, options)
     }
 }
 
@@ -487,7 +488,7 @@ fn events_are_computed_by_both_sides() {
         forged["id"] = json!("forged-1");
         forged["data"]["net"] = json!(999);
         forged["data"]["percent"] = json!("many");
-        memory.publish("edges.Payments", None, forged.to_string().as_bytes()).await.unwrap();
+        memory.publish("edges.Payments", None, forged.to_string().as_bytes(), ChannelOptions::NONE).await.unwrap();
         memory.idle().await;
         assert_eq!(got.lock().unwrap().len(), 2);
         assert_eq!((got.lock().unwrap()[1].net, got.lock().unwrap()[1].percent), (70, 30));

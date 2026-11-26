@@ -345,7 +345,7 @@ use std::future::Future;
 use std::sync::{Arc, Mutex};
 
 use common::*;
-use events_server::veld::events::{ConsumerOptions, EventMeta, MemoryTransport, PublisherOptions, Transport};
+use events_server::veld::events::{ChannelOptions, ConsumerOptions, EventMeta, MemoryTransport, PublisherOptions, Transport};
 use events_server::veld::{Error, VeldDecl, block_on};
 use serde_json::{Value, json};
 
@@ -424,7 +424,7 @@ fn wire_driver(plan: &Plan) -> String {
             snake(&p.service)
         );
     }
-    s += "        _ => panic!(\"no such case\"),\n    }\n    t.publish(case[\"topic\"].as_str().unwrap(), case[\"key\"].as_str(), case[\"message\"].as_str().unwrap().as_bytes()).await.unwrap();\n    transport.idle().await;\n    json!({\n        \"delivered\": seen.delivered.lock().unwrap().clone(),\n        \"rejected\": seen.rejected.lock().unwrap().clone(),\n        \"mismatches\": seen.mismatches.lock().unwrap().clone(),\n        \"dead\": transport.dead_letters().len(),\n    })\n}\n";
+    s += "        _ => panic!(\"no such case\"),\n    }\n    t.publish(case[\"topic\"].as_str().unwrap(), case[\"key\"].as_str(), case[\"message\"].as_str().unwrap().as_bytes(), ChannelOptions::NONE).await.unwrap();\n    transport.idle().await;\n    json!({\n        \"delivered\": seen.delivered.lock().unwrap().clone(),\n        \"rejected\": seen.rejected.lock().unwrap().clone(),\n        \"mismatches\": seen.mismatches.lock().unwrap().clone(),\n        \"dead\": transport.dead_letters().len(),\n    })\n}\n";
     s + WIRE_TAIL
 }
 
