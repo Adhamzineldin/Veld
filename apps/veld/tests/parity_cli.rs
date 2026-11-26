@@ -242,13 +242,11 @@ fn an_added_event_channel_publisher_or_subscriber_does_not_stop_generate() {
                   service Desk {\n  publishes Bookings\n}\n\
                   service Audit {\n  subscribes Bookings as \"audit\" {\n    on Booked -> record\n  }\n}\n";
     write(dir, "contracts/room.veld", &format!("{ROOM}{events}"));
-    // The Node server has no events yet (`E0801`): that the run gets as far as the generator
-    // shows that the gate let the additions through.
+    // Additions are compatible: the gate lets them through and the Node server generates them.
     veld(dir)
         .arg("generate")
         .assert()
-        .code(1)
-        .stderr(predicate::str::contains("E0801"))
+        .success()
         .stderr(predicate::str::contains("possibly breaking").not())
         .stderr(predicate::str::contains("breaking changes (").not())
         .stderr(predicate::str::contains("--accept-breaking").not());
