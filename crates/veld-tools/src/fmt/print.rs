@@ -8,7 +8,7 @@ use veld_compiler::syntax::ast::{
 use veld_compiler::syntax::lexer::CommentKind;
 
 use super::WIDTH;
-use super::expr::rule_lines;
+use super::expr::{derived_text, rule_lines};
 use super::layout::{self, Attached, Layout, Lead, ROOT};
 use super::stmt;
 use super::text::{annotation, literal, quote, type_expr};
@@ -576,6 +576,10 @@ fn field_line(f: &Field) -> String {
     if let Some(d) = &f.default {
         s.push_str(" = ");
         s.push_str(&literal(d));
+    }
+    if let Some(e) = &f.derived {
+        s.push_str(" = ");
+        s.push_str(&derived_text(e));
     }
     for a in &f.annotations {
         s.push(' ');

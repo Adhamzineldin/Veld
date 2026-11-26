@@ -110,6 +110,26 @@ fn arg_text(a: &CallArg) -> String {
     }
 }
 
+/// The expression of a derived field (`spec/rules.md` section 17.2). Written after `=`, one literal
+/// would read as a default, so a literal that was written in parentheses keeps them.
+pub(super) fn derived_text(e: &Expr) -> String {
+    let literal = match &e.kind {
+        ExprKind::Bool(_)
+        | ExprKind::Int(_)
+        | ExprKind::Float { .. }
+        | ExprKind::Str(_)
+        | ExprKind::EnumLit(_) => true,
+        ExprKind::List(items) => items.is_empty(),
+        ExprKind::Name(_)
+        | ExprKind::Field { .. }
+        | ExprKind::Call { .. }
+        | ExprKind::Unary { .. }
+        | ExprKind::Binary { .. } => false,
+    };
+    let text = expr_text(e);
+    if literal { format!("({text})") } else { text }
+}
+
 /// `rule name: expr`, then the message on a continuation line.
 pub(super) fn rule_lines(r: &Rule, ind: usize) -> Vec<String> {
     let pad = " ".repeat(ind);

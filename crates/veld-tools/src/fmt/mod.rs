@@ -44,6 +44,8 @@ mod policy_tests;
 mod event_tests;
 
 #[cfg(test)]
+mod derived_tests;
+#[cfg(test)]
 mod rollout_tests;
 #[cfg(test)]
 mod version_tests;
