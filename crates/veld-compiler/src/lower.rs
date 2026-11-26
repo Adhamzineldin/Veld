@@ -280,6 +280,7 @@ impl Lowerer<'_, '_> {
                     .flows
                     .iter()
                     .map(|f| Flow {
+                        flag: f.flag.clone(),
                         from: f.from.clone(),
                         to: f.to.clone(),
                         after_ms: f.after_ms.map(|ms| ms.to_string()),

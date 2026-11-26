@@ -31,10 +31,20 @@ impl Parser<'_> {
             states.push(self.expect_ident("a state name after `->`")?);
         }
         let after = self.after_clause()?;
+        let at = self.span();
+        let flag = self.flag_suffix()?;
+        if flag.is_some() && states.len() != 2 {
+            self.err(
+                "E0937",
+                "`when flag(..)` belongs to a `flow` with exactly one edge",
+                at,
+            );
+        }
         self.reject_emits();
         Some(FlowStmt {
             states,
             after,
+            flag,
             span: self.end_from(kw),
         })
     }
@@ -59,6 +69,7 @@ impl Parser<'_> {
             }
             states.push(self.expect_ident("a state name")?);
         }
+        self.reject_flag_suffix("`final`");
         Some(FinalStmt {
             states,
             span: self.end_from(kw),
@@ -121,6 +132,7 @@ impl Parser<'_> {
         self.expect(&Tok::Arrow, "`->` before the target state")?;
         let to = self.expect_ident("the target state")?;
         let since = self.since_clause()?;
+        self.reject_flag_suffix("`transition`");
         Some(Stmt::Transition(TransitionStmt {
             path,
             from,

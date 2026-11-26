@@ -21,7 +21,10 @@ pub fn event_rules_digest(ir: &Ir, event: DeclId) -> Option<String> {
             continue;
         }
         let d = ir.decl(id);
-        let enforced = d.rules().iter().filter(|r| !r.is_audited());
+        let enforced = d
+            .rules()
+            .iter()
+            .filter(|r| !r.is_audited() && r.flag.is_none());
         ids.extend(enforced.map(|r| r.id.as_str()));
         for f in d.fields() {
             f.ty.collect_decls(&mut stack);

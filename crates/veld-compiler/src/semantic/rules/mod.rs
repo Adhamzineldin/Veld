@@ -51,6 +51,8 @@ pub struct RRule {
     pub deprecated: Option<String>,
     /// `@rollout(audit)` (`spec/rules.md` section 17.1).
     pub rollout: Option<Rollout>,
+    /// `when flag("name")`.
+    pub flag: Option<String>,
     pub span: Span,
 }
 
@@ -225,6 +227,7 @@ fn check_rule(
         docs: doc_text(&rule.docs),
         deprecated: anns.deprecated,
         rollout: anns.rollout,
+        flag: rule.flag.as_ref().map(|f| f.name.clone()),
         span: rule.name.span,
     })
 }

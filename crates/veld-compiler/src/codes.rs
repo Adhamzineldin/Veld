@@ -352,6 +352,16 @@ pub const CODES: &[CodeInfo] = &[
         C,
         "`since` is wrong: missing on a timed edge, present on another, several sources, or not a required `datetime` field of the fact",
     ),
+    e(
+        "E0937",
+        C,
+        "`when flag(..)` is wrong: a bad name, or on a statement that cannot have it",
+    ),
+    e(
+        "E0938",
+        C,
+        "`given flag` in an example names a flag that no statement of the workspace uses",
+    ),
     e("E0940", C, "The type after `principal` is not a model"),
     e("E0941", C, "More than one `principal` in a package"),
     e(

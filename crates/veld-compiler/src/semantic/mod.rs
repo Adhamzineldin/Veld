@@ -10,6 +10,9 @@ mod events_groundwork_tests;
 #[cfg(test)]
 mod events_tests;
 mod examples;
+mod flags;
+#[cfg(test)]
+mod flags_tests;
 pub use collect::module_path;
 mod inherit;
 mod machine;
@@ -130,6 +133,8 @@ pub struct RFlow {
     pub to: String,
     /// `after d` in milliseconds (`spec/platform.md` section 10); `None` for an ordinary edge.
     pub after_ms: Option<i64>,
+    /// `when flag("name")`.
+    pub flag: Option<String>,
     pub span: Span,
 }
 

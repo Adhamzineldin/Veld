@@ -45,6 +45,8 @@
     "transition",
     "after",
     "since",
+    "flag",
+    "off",
     "policy",
     "permit",
     "forbid",

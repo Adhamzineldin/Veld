@@ -43,6 +43,8 @@ pub struct RClause {
     pub forbid: bool,
     pub expr: Expr,
     pub message: Option<String>,
+    /// `when flag("name")`.
+    pub flag: Option<String>,
     pub span: Span,
 }
 

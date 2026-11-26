@@ -22,6 +22,7 @@ impl Lowerer<'_, '_> {
             let info = &self.prog.decls[decl];
             for r in &info.res.own_rules {
                 out.push(Rule {
+                    flag: r.flag.clone(),
                     name: r.name.clone(),
                     id: String::new(),
                     expr: self.remap_expr(&r.expr),

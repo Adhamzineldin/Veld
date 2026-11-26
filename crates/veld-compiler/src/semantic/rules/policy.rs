@@ -247,6 +247,7 @@ fn check_clause(
         forbid: clause.forbid,
         expr,
         message: clause.message.as_ref().map(|m| m.value.clone()),
+        flag: clause.flag.as_ref().map(|f| f.name.clone()),
         span: clause.span,
     })
 }

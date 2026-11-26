@@ -194,7 +194,7 @@ pub fn rules_digest(ir: &Ir, service: ServiceId) -> Option<String> {
         .reachable_decls(&[service])
         .into_iter()
         .flat_map(|d| ir.decl(d).rules())
-        .filter(|r| !r.is_audited())
+        .filter(|r| !r.is_audited() && r.flag.is_none())
         .map(|r| r.id.as_str())
         .collect();
     if ids.is_empty() {

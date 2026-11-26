@@ -45,6 +45,7 @@ impl Lowerer<'_, '_> {
             .clauses
             .iter()
             .map(|c| PolicyClause {
+                flag: c.flag.clone(),
                 effect: effect(c),
                 expr: self.remap_expr(&c.expr),
                 message: c.message.clone(),

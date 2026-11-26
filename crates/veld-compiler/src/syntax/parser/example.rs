@@ -31,8 +31,12 @@ impl Parser<'_> {
             return self.event_example_rest(docs, name, kw);
         }
         let mut givens = Vec::new();
-        while self.is_given_start() {
-            givens.push(self.parse_given()?);
+        while self.is_given_start() || self.is_flag_given_start() {
+            givens.push(if self.is_flag_given_start() {
+                self.parse_flag_given()?
+            } else {
+                self.parse_given()?
+            });
         }
         let principal = if self.at_word("as") {
             let start = self.advance().span;
@@ -87,6 +91,44 @@ impl Parser<'_> {
         Some(Given {
             name,
             value,
+            flag: None,
+            span: self.end_from(kw),
+        })
+    }
+
+    /// `given flag "name"`: a flag is a name in quotes, so a fact called `flag` (`given flag =`)
+    /// is still a fact.
+    fn is_flag_given_start(&self) -> bool {
+        self.at_word("given")
+            && matches!(self.tok_at(1), Tok::Ident(w) if w == "flag")
+            && matches!(self.tok_at(2), Tok::Str(_))
+    }
+
+    /// `given flag "name" [off]`, with the cursor on `given`.
+    fn parse_flag_given(&mut self) -> Option<Given> {
+        let kw = self.advance().span;
+        self.advance();
+        let text = self.expect_str("the name of a flag, in quotes")?;
+        let off = self.at_word("off")
+            && !self.newline_between(self.prev_end(), self.span().start)
+            && !matches!(self.tok_at(1), Tok::LParen | Tok::Dot);
+        if off {
+            self.advance();
+        }
+        if !super::flags::is_valid_flag_name(&text.value) {
+            self.err(
+                "E0937",
+                format!("`{}` is not a flag name", text.value),
+                text.span,
+            );
+        }
+        Some(Given {
+            name: Ident {
+                name: text.value,
+                span: text.span,
+            },
+            value: None,
+            flag: Some(!off),
             span: self.end_from(kw),
         })
     }

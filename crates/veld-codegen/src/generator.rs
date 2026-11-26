@@ -330,6 +330,7 @@ fn first_use(
                 Feature::Idempotency => ep.idempotency.is_some(),
                 Feature::RulesTransitions => ep.rules.transition.is_some(),
                 Feature::RulesTimed => ep.rules.transition.as_ref().is_some_and(|t| t.is_timed()),
+                Feature::RulesFlags => ir.endpoint_uses_flags(ep),
                 Feature::RulesPolicies => ep.rules.first_policy_origin().is_some(),
                 Feature::Unions
                 | Feature::Constraints
@@ -356,6 +357,9 @@ fn first_use(
                 if feature == Feature::Idempotency {
                     return ep.idempotency.as_ref().map(|i| i.origin.clone());
                 }
+                if feature == Feature::RulesFlags {
+                    return ep.rules.first_flag_origin(ir).cloned();
+                }
                 if feature == Feature::RulesTransitions || feature == Feature::RulesTimed {
                     return ep.rules.transition.as_ref().map(|t| t.origin.clone());
                 }
@@ -381,6 +385,9 @@ fn first_use(
     if feature == Feature::RulesTimed {
         return first_timed_origin(ir, &searched(ir, services, req));
     }
+    if feature == Feature::RulesFlags {
+        return first_flag_origin(ir, &searched(ir, services, req));
+    }
     let wanted_union = feature == Feature::Unions;
     let wanted_const = feature == Feature::Consts;
     searched(ir, services, req)
@@ -402,6 +409,23 @@ fn searched(ir: &Ir, services: &[ServiceId], req: &GenRequest<'_>) -> Vec<DeclId
         ids.extend(ir.event_reachable_decls(&req.services));
     }
     ids
+}
+
+/// The origin of the first flagged invariant of a reachable declaration, else of the first
+/// reachable enum with a flagged flow (`spec/platform.md` section 11).
+fn first_flag_origin(ir: &Ir, decls: &[DeclId]) -> Option<Origin> {
+    let rule = decls.iter().copied().find_map(|id| {
+        let flagged = ir.decl(id).rules().iter().find(|r| r.flag.is_some());
+        flagged.map(|r| r.origin.clone())
+    });
+    rule.or_else(|| {
+        decls
+            .iter()
+            .copied()
+            .map(|id| ir.decl(id))
+            .find(|d| matches!(&d.kind, DeclKind::Enum(e) if e.flows.iter().any(|f| f.flag.is_some())))
+            .map(|d| d.origin.clone())
+    })
 }
 
 /// The origin of the first reachable enum with a timed edge (`spec/platform.md` section 10).
@@ -684,6 +708,7 @@ mod tests {
 
     fn event_rule(audited: bool, line: u32) -> Rule {
         Rule {
+            flag: None,
             name: "r".into(),
             id: "veld:a/Paid.r@0".into(),
             expr: Expr {

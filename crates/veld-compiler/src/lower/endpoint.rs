@@ -78,6 +78,7 @@ impl Lowerer<'_, '_> {
         let expr = self.remap_expr(&r.expr);
         let kind = StatementKind::Require;
         EndpointRequire {
+            flag: r.flag.clone(),
             name: r.name.clone(),
             id: signature::endpoint_rule_id(decls, at, kind, r.name.as_deref(), &expr),
             expr,
@@ -100,6 +101,7 @@ impl Lowerer<'_, '_> {
         let expr = self.remap_expr(&r.expr);
         let kind = StatementKind::Ensure;
         EndpointEnsure {
+            flag: r.flag.clone(),
             name: r.name.clone(),
             id: signature::endpoint_rule_id(decls, at, kind, r.name.as_deref(), &expr),
             expr,

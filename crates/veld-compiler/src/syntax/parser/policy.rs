@@ -115,10 +115,12 @@ impl Parser<'_> {
         }
         let expr = self.parse_expr()?;
         let message = self.message()?;
+        let flag = self.flag_suffix()?;
         Some(PolicyClause {
             forbid,
             expr,
             message,
+            flag,
             span: self.end_from(kw),
         })
     }
@@ -186,6 +188,7 @@ impl Parser<'_> {
             }
         }
         self.expect(&Tok::RParen, "`)` to close the arguments of the policy")?;
+        self.reject_flag_suffix("`allow`");
         Some(Stmt::Allow(AllowStmt {
             policy,
             args,

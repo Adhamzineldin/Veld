@@ -107,6 +107,7 @@ fn add_edge(
         from: a.name.clone(),
         to: b.name.clone(),
         after_ms,
+        flag: stmt.flag.as_ref().map(|f| f.name.clone()),
         span: a.span.to(b.span),
     });
 }
