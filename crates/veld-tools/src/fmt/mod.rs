@@ -46,4 +46,6 @@ mod event_tests;
 #[cfg(test)]
 mod rollout_tests;
 #[cfg(test)]
+mod timed_tests;
+#[cfg(test)]
 mod version_tests;

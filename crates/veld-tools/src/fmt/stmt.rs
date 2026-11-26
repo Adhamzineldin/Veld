@@ -114,8 +114,12 @@ pub(super) fn principal_line(p: &PrincipalDecl) -> String {
 fn transition_text(t: &TransitionStmt) -> String {
     let path: Vec<&str> = t.path.iter().map(|i| i.name.as_str()).collect();
     let from: Vec<&str> = t.from.iter().map(|i| i.name.as_str()).collect();
+    let since = t.since.as_ref().map_or_else(String::new, |s| {
+        let names: Vec<&str> = s.iter().map(|i| i.name.as_str()).collect();
+        format!(" since {}", names.join("."))
+    });
     format!(
-        "transition {}: {} -> {}",
+        "transition {}: {} -> {}{since}",
         path.join("."),
         from.join(", "),
         t.to.name
