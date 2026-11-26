@@ -1,6 +1,6 @@
 # Targets: `node` (server) and `typescript` (client)
 
-Status: normative for the built-in TypeScript generators. Both share one implementation of models, runtime and validation, so the same contract produces byte-identical `runtime/` and `models/` files in both roles.
+Status: normative for the built-in TypeScript generators. Both share one implementation of models, runtime and validation, so the same contract produces byte-identical `runtime/` and `models/` files in both roles. The one exception is events (section 5f): a server that publishes or subscribes also gets `events/`, `runtime/events.ts` and the files of its services, and when only its events have invariants its `runtime/veld.ts` has the `rules` regions that the client's has not.
 
 ## 0. Hard rules
 - **Zero runtime dependencies.** No generated file imports a package, with one exception: the file of the framework the user chose (`nest`, `react`, `vue`, §1a). The WebSocket adapter `server/ws.ts` (§4b) is written against the `ws` package, a declared exception: it is typed structurally and imports nothing, and the server's `package.json` lists `ws` as a peer dependency, but only when the contract has `ws` endpoints. The plain adapters (`express`, `fastify`, `hono`, `node-http`) use *structural* types: a `RouterLike` shape, not `import express`.
@@ -24,7 +24,10 @@ Server target (`role = "server"`, `emitter = "node"`). The server's own package 
   server/<service>.ts            `<Service>Service` interface, request types, `create<Service>Handler`
   server/adapters.ts             toExpress / toFastify / toHono / toNodeHttp (structural types only)
   server/ws.ts                   attachWebSocket (only when the contract has `ws` endpoints, §4b)
-  deps/<package>/models/...      declarations of other packages that the server imports (and errors/...)
+  runtime/events.ts              the event runtime (only when a service publishes or subscribes, §5f)
+  events/<module path>.ts        the events of the home package: interfaces + companion objects (§5f)
+  server/<service>-events.ts     publisher, handler interface and subscribe function (§5f)
+  deps/<package>/models/...      declarations of other packages that the server imports (and errors/...) (and events/...)
   clients/<consumed>/            one client tree for each service in `consumes` (client layout below,
                                  with its own index.ts and prelude.ts):
     index.ts
@@ -403,6 +406,51 @@ Both generators support `rules_policies`. A contract that uses no policy and rea
 - **`can<Endpoint>`** is a static method of `<Service>Client`: `BookingsClient.canPayBooking(booking, user)` takes the facts, the principal and the parameters that the `allow` arguments and the `transition` read, in that order (an optional value is `T | undefined`), reads the system clock, answers `false` on an evaluation error (`veld.guarded`) and never sends anything.
 - **The test handler** sets `ctx.principal` from `Veld-Test-Principal`, decoded as the generated type of the principal's model.
 - **Tests.** `crates/emitters/node/tests/policies.rs` with `policies_serve.ts`, `policies_http.ts` and `guarded_http.ts`: all 10 examples of `tests/rules/endpoints/policies.veld`, `403` and its messages, several `allow` lines, an argument that reads a parameter, the order of the checks, a `require` and an `ensure` that read the caller, `can<Endpoint>` against the server, the Nest server compiled with the decorator flags.
+
+## 5f. Events (`spec/events.md`)
+
+The `node` server generates events (the capability `events`) for every framework; the `typescript` client generates nothing for them and keeps its bytes. A contract without events gets the bytes it got before: `runtime/events.ts` and the files below exist only for a service that publishes or subscribes. This section is the reference for the names the Java and Rust targets mirror.
+
+### Files
+| File | Content |
+|---|---|
+| `runtime/events.ts` | the `Transport` interface, `MemoryTransport`, the envelope, `publishEvent`, `subscribeEvents`, the hook types. Imports `./veld` only (and `./rollout` for an audited rule). Its `rules` and `rollout` regions follow the tree (`// #if rules`, `// #if rollout`, section 5b) |
+| `events/<module path>.ts` | every event of the channels of the server's services and the declarations only they reach: the interface, the companion (`sig`, `schema`, `fromWire`, `toWire`, `check`) and, with rules, the check function and `ruleIds`, as for a model. `deps/<package>/events/…` for another package. `models/` and `errors/` do not change |
+| `server/<service>-events.ts` | per service that publishes or subscribes: the publisher, the handler interface, the subscribe function |
+| `index.ts` | exports every `events/` module and `server/<service>-events`, and `export * as veldEvents from './runtime/events'` (the runtime names are not exported flat: a model may be called `Transport`) |
+
+A service that has events and no endpoints has none of `server/<service>.ts`, `<Service>Service`, `<Service>Hooks`, `create<Service>Handler`, `server/nest/<service>.ts` or a line in the README; a service without events and without endpoints keeps the files it always had. The event files are the same for `express`, `fastify`, `hono`, `node-http` and `nest`.
+
+### The publisher
+```ts
+export type BookingsPublisherOptions = veldEvents.PublisherOptions;   // newId?, clock?, onRuleViolation?
+export interface BookingsPublisher {
+  readonly bookingEvents: {                      // one member per channel the service publishes to
+    bookingPaid(event: BookingPaid): Promise<veldEvents.PublishedEvent>;   // one method per carried event
+  };
+}
+export function createBookingsPublisher(transport: veldEvents.Transport, options?: BookingsPublisherOptions): BookingsPublisher;
+```
+Names: `create<Service>Publisher`, `<Service>Publisher`, `<Service>PublisherOptions`; the member of a channel is its camelCase name, the method of an event its camelCase name. `PublishedEvent` is `{ id, source, type, subject, time }`. The method takes the event in its source form (`invoiceId`, not `invoice_id`; a field with a default is required by the type and applied when absent at run time, so `Event.fromWire(value)` is the way to build one from a wire value). The pipeline of section 7 of `spec/events.md` runs in order: `toWire` (defaults), the canonical scalars, shape (`validate` on the wire value), invariants (`checkValue`, full mode), the key, the envelope, the bytes (`canonical`, then UTF-8) and `transport.publish`. A failure throws the typed `ValidationError`: the prelude class when the contract has one (a service with a parameter has it), otherwise a `VeldError` titled `ValidationError` with the status 422; with `issues`, with `violations` and `local = true` when the package has rules. `newId` defaults to `crypto.randomUUID()`, and to a version 4 UUID built from `Math.random` where there is no `crypto`; `clock` defaults to `new Date()`.
+
+### The subscriber
+```ts
+export interface NotificationsEventHandlers {
+  sendReceipt(event: BookingPaid, meta: veldEvents.EventMeta): Promise<void> | void;   // one method per `on` line
+}
+export type NotificationsSubscriberOptions = veldEvents.ConsumerOptions;
+export function subscribeNotificationsEvents(transport, handlers, options?): Promise<veldEvents.SubscriptionHandle>;
+```
+Names: `<Service>EventHandlers`, `<Service>SubscriberOptions`, `subscribe<Service>Events`. The function subscribes every `subscribes` line of the service, each to its topic under its group, and `handle.close()` closes all. The consume pipeline of section 8 runs per message and answers `done` or `again` to the transport: the envelope is parsed (`TextDecoder` with `fatal`), the event is found by the name of its `type`, the shape is validated on the wire value, the invariants run only when `veldrules` equals the digest in the generated `EventDef`, `onContractMismatch` is called, then the handler. A handler that throws answers `again`.
+
+### Transport and hooks
+`Transport` is `publish(topic, key | null, bytes: Uint8Array): Promise<void>` and `subscribe(topic, group, deliver): Promise<{ close(): Promise<void> }>` where `deliver(message: { key, bytes, attempt })` answers `'done' | 'again'`. `MemoryTransport` (`new MemoryTransport({ maxAttempts })`, default 3) also has `idle()` and `deadLetters()`. The hooks are in `spec/events.md` section 8.1: `onEventRejected(e: EventRejected)`, `onContractMismatch(e: ContractMismatch)`, `onRuleViolation(e: EventRuleViolation)` (the shape of section 5b, with `operation` the signature of the event, `position` `output` for a publisher and `input` for a consumer) and `onHandlerError(e: HandlerFailure)`; the publisher takes `onRuleViolation` only.
+
+### Choices where `spec/events.md` was silent
+The `Transport` has no `connect`/`close`; `subscribe` is asynchronous so that a broker adapter can connect there. The canonical `datetime` is written by `runtime/events.ts` itself and not by `canonicalOf` of `runtime/veld.ts`, whose normaliser trims trailing zeros of the fraction (`.250` becomes `.25`) and would not give the golden `…58.250Z`. `idle()`, `deadLetters()` and `maxAttempts` are the memory transport's. There is no counter or hook for an ignored message. Event types are not exported from `models/` but from `events/`.
+
+### Tests
+`crates/emitters/node/tests/events.rs` with the drivers `tests/toolchain/ts/events_wire.ts` (every case of `tests/wire/events/envelopes.json` and `consume.json`, built from the files, so a new case needs no code), `events_examples.ts` (the 11 event examples of `tests/events/bookings.veld` through the generated publisher and subscribers, compared with the reference evaluator), `events_process.ts` (two services in one process: redelivery, dead letters, two groups, competing consumers, order per key, an invalid event that never leaves the publisher, rejected messages), `events_audit.ts` (an audited event rule, reported on both sides, never rejecting), `events_plain.ts` (events with no rule: no `rules.ts`) and `events_prelude.ts` (the prelude `ValidationError`); all compiled with `tsc --strict` per edition and run with `node`.
 
 ## 6. Tests every change must keep green
 - `tests/toolchain/ts`: generate the conformance workspaces, then compile them with `tsc --strict --noEmit` once per edition (`typescript = "es2020"` with `--target es2020`, and `"es2022"` with `--target es2022`; the matrix is `TARGETS` in `crates/emitters/node/tests/common/mod.rs`). The run must produce zero errors.

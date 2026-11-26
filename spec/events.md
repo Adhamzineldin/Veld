@@ -1,6 +1,6 @@
 # Veld events — v1
 
-Status: **DRAFT. Phase E1 is implemented in the IR, the compiler, the reference evaluator and the tools; no generator emits events yet, and every server generator refuses them with `E0801`.** It is written first so that the compiler, the reference evaluator and the three generators are built from one text. Section 18 lists what each phase builds; section 20 lists what the owner decided and what is still open.
+Status: **DRAFT. Phase E1 is implemented in the IR, the compiler, the reference evaluator, the tools and the Node server generator (`spec/targets/typescript.md` section 5f); the Java and Rust server generators do not emit events yet and refuse them with `E0801`.** It is written first so that the compiler, the reference evaluator and the three generators are built from one text. Section 18 lists what each phase builds; section 20 lists what the owner decided and what is still open.
 
 This file extends `spec/language.md`, `spec/ir.md` and `spec/rules.md`. Where it is silent, those files apply.
 
@@ -173,9 +173,21 @@ A message is one CloudEvents 1.0 event in the JSON format, structured mode:
 - **Unknown fields** of `data` are left in the decoded value; a typed consumer ignores them.
 - **A limit of the reference, not a rule for generators.** As for the examples of §12, the reference checks that required fields are there and that objects, lists and maps have the right shape, and it applies defaults and invariants; it does not check the text of a scalar. A `string` where a `uuid` is expected is not a shape failure in the reference, and is one in a generated consumer (§8, step 3). No golden depends on the difference.
 
+### 6.4 What the first generator settled
+
+The Node generator is the first target; Java and Rust implement the same, in their own naming (`spec/targets/typescript.md` section 5f is the reference list).
+
+- **Canonical scalars are the generator's own.** The `time` and every `datetime` of `data` are written by one function: UTC, the fraction `.fff` only when the milliseconds are not zero. A generator must not reuse a helper that trims zeros (`.250` stays `.250`) or that always writes a fraction.
+- **An empty `string` key** (§7) is one issue with the code `key` and the path `$.<wire name of the key field>`. It has no entry in `violations`: it is not a rule.
+- **`onRuleViolation` for an event** (the hook of `spec/rules.md` §7 with the same event shape): `operation` is the signature of the event, `position` is `output` in a publisher and `input` in a consumer, `outcome` is `rejected` for an enforced rule and `audited` for an audited one. It is called once per violation, enforced ones first, and an exception in the hook never changes what happens. A publisher calls it before it throws the `ValidationError`.
+- **Order of the consumer's hooks.** A message that is rejected is reported to `onEventRejected` and to nothing else. `onContractMismatch` is called for a message that passed steps 1 to 4, before its handler. When the digest differs, step 4 does not run at all, audited rules included, so nothing is reported to `onRuleViolation`.
+- **A handler that fails** is reported to `onHandlerError` with the event, the subscription, the metadata and the error, and then the message is not acknowledged. A failing hook never changes the outcome.
+- **An ignored message** (§8, step 2) is acknowledged and nothing is called: E1 has no counter and no hook for it.
+- **The shape of step 3** is checked on the wire value of `data`, so the paths of its issues use wire names (`$.invoice_id`), before the typed value is built.
+
 ## 7. Publishing
 
-The generated publisher of a channel has one operation per carried event. It runs, in order:
+The generated publisher of a service has one operation per carried event of each channel the service publishes to. It runs, in order:
 
 1. **Shape.** The value is validated against the event's type, as a response is.
 2. **Invariants**, in full mode. A violation, an evaluation error (`spec/rules.md` §3.7, which fails closed) or an empty `string` key ends the call with the target's typed `ValidationError`, raised locally, with `violations` filled. **Nothing is sent.** There is no option to turn this off.
@@ -204,6 +216,19 @@ For every message of a subscription the generated consumer runs, in order:
 - **A rejected message can never succeed for this consumer.** It is acknowledged, so that it does not block the stream, and reported to the hook `onEventRejected` with the reason (`malformed`, `shape` or `rule`), the violations and the raw bytes. With `@deadLetter` (§10.2) it is also copied to the dead-letter topic. Without a dead letter and without a hook that stores it, a rejected message is gone: the documentation says so.
 - **Contract skew.** A consumer and a publisher are often generated from different versions of a contract. The consumer does not require `type` to equal its own signature: it decodes with its own type (step 3), so a message from a publisher that added an optional field is handled, and one that lacks a field the consumer requires is rejected as `shape`. When the hash of `type` or the value of `veldrules` differs from the consumer's own, the consumer calls `onContractMismatch` once per distinct pair it had not seen, with the event's name, its own signature and digest and the message's. A differing digest also switches off step 4 for that message, as a stale client stops its local checks (`spec/rules.md` §9.7): the publisher has already checked the event against the rules it was generated with.
 
+### 8.1 The hooks
+
+Every target names them in its own style and gives them the same content. All of them are optional, and a failing hook is ignored.
+
+| Hook | Called | Content |
+|---|---|---|
+| `onEventRejected` | once per rejected message (§8), after its acknowledgement is decided | the reason (`malformed`, `shape`, `rule`), a text, the topic and the group, the name of the event or none, the issues, the violations, the raw bytes |
+| `onContractMismatch` | once per distinct pair of `type` and `veldrules` of an event that this consumer had not seen | the event's name, its own signature and digest, the message's signature and digest (a digest may be absent) |
+| `onRuleViolation` | once per violation, in a publisher and in a consumer (§6.4) | the rule id, the operation (the event's signature), the position, the outcome, the violation, the elapsed microseconds |
+| `onHandlerError` | when a handler fails | the event's name, the topic and the group, the metadata, the error |
+
+The metadata a handler gets next to the typed event is `id`, `source`, `type` (as the publisher wrote it), `subject` and `time` (absent when the message has none), and `attempt`.
+
 ## 9. The transport
 
 The generated publisher and consumer depend only on a small interface, named by each target's conventions:
@@ -220,8 +245,10 @@ message = { key | none, bytes, attempt }     attempt starts at 1
 
 - A message is delivered to **one** subscriber of **each** group that was subscribed to the topic when it was published. A topic nobody subscribed to drops its messages: there is no retention and no replay.
 - Messages of a topic are delivered to a group in publish order, one at a time.
-- "again" delivers the message again at once, with `attempt` one higher, up to `maxAttempts` (default 3). After that the message goes to the transport's dead-letter list, which a test can read.
-- `idle()` completes when every published message has been delivered or dead-lettered, so a test can wait without sleeping.
+- "again" delivers the message again at once, with `attempt` one higher, up to `maxAttempts` (default 3). The next delivery goes to the next subscriber of the group in rotation, which may be the same one, and nothing else of the group is delivered meanwhile. After the last attempt the message goes to the transport's dead-letter list, which a test can read: the topic, the group, the key, the bytes and the number of attempts.
+- The subscribers of a group take the messages in turn (round robin), so two copies of a service share its load. A subscriber that was closed gets nothing more; a group without subscribers is removed, and what was queued for it is dropped.
+- `publish` completes when the message is queued; handlers run afterwards, never inside the call. The bytes are copied.
+- `idle()` completes when every published message has been delivered or dead-lettered, so a test can wait without sleeping. It also waits for the messages that handlers publish.
 
 It is for tests and for development in one process. It is what `veld test` uses (§12).
 
@@ -326,8 +353,8 @@ The same structure in every target, so the three implementations can be compared
 
 - **Server targets** get, for a service with events:
   - the type of every event its channels carry, with its check function when it has rules;
-  - one **publisher** per published channel, built from a transport and the options of §7, with one operation per carried event;
-  - one **handler interface** per service, with one method per `on` line, and a function that subscribes it: a transport, the handlers, and the options of §8 (the hooks, the inbox);
+  - one **publisher** per service that publishes, built from a transport and the options of §7, with one operation per carried event of each channel it publishes to, grouped by channel (a channel that two services publish to is published to by each, with its own `source`);
+  - one **handler interface** per service, with one method per `on` line (of every subscription of the service), and one function that subscribes it: a transport, the handlers, and the options of §8.1 (the hooks, later the inbox). It subscribes every `subscribes` line of the service, each under its group, and returns one handle that closes them all;
   - a runtime file for the envelope, the transport interface and the memory transport, **emitted only when the service has events**.
 - **Client targets** generate nothing for events, not their types either: a browser or a mobile app does not talk to a broker. A client generator supports the feature by generating nothing, so a client of a service that gains `publishes` keeps its bytes.
 - A target is self-contained (`CLAUDE.md`): a service that subscribes to a channel of another package gets its own copy of the event types. Two copies are the same event because they carry the same signature (`spec/ir.md` §5).
