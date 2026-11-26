@@ -182,12 +182,14 @@ fn node_and_typescript_generate_tenancy() {
     veld_emit_conformance::check_tenancy_is_generated(&TypeScript).unwrap();
 }
 
-/// `audit` is opt-in (`spec/platform.md` section 4): the Node server refuses an `@audited`
-/// endpoint; the TypeScript client is not asked.
+/// `audit` is opt-in (`spec/platform.md` section 4): the Node server declares it and generates an
+/// audited endpoint (and still refuses an audited `ws` endpoint at the endpoint); the TypeScript
+/// client is not asked and still generates.
 #[test]
-fn node_and_typescript_refuse_audit_as_a_server_only() {
-    veld_emit_conformance::check_audit_is_refused(&Node).unwrap();
-    veld_emit_conformance::check_audit_is_refused(&TypeScript).unwrap();
+fn node_generates_audit_and_typescript_is_not_asked() {
+    veld_emit_conformance::check_audit_is_generated(&Node).unwrap();
+    veld_emit_conformance::check_audited_ws_is_refused(&Node).unwrap();
+    veld_emit_conformance::check_audit_is_generated(&TypeScript).unwrap();
 }
 
 /// `limits` is opt-in (`spec/platform.md` section 5): the Node server and the TypeScript client,
