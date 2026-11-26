@@ -94,3 +94,37 @@ FAIL Bookings.createBooking (seed 1234567, boundary request 1)
 ```
 
 Without `--seed`, the seed comes from the clock and is printed first, so any run can be repeated: the same seed and the same contract give the same requests. `--fuzz` needs `--live`, and `--seed` needs `--fuzz`.
+
+## `veld test --coverage`
+
+```bash
+veld test --coverage
+veld test --coverage --fail-under 80
+```
+
+A rule that no example has seen fail is not tested. After the examples, `--coverage` counts every rule of the workspace: each invariant of a declaration a service reaches, each `require`, `ensure`, `allow` line and `transition` line. A rule is **covered** when one example made it hold and another made it fail (for an `allow`, was permitted and was denied; for a `transition`, was a legal move and an illegal one). An audited rule counts like an enforced one. The report says how many are covered and lists the others, with what is missing:
+
+```text
+coverage: 5 of 12 rules held and violated (41%)
+  demo/NewStay.atMost30Days                             never violated
+  demo/Closure.reasonGiven                              never evaluated
+  demo/Bookings.payBooking allow ManageBooking          never denied
+  demo/Bookings.payBooking transition pending -> paid   never illegal
+  demo/Bookings.payBooking ensure paidTotal             never evaluated
+```
+
+`--fail-under N` (0 to 100) makes the run exit 1 when the percentage is below `N`. Three things to know:
+
+- An `ensure` is evaluated only by an example with `returns`; an endpoint whose examples never say what the handler returns leaves its `ensure` lines "never evaluated".
+- `-p` narrows the rules to the selected packages; `--filter` and file arguments narrow only the examples, so the percentage drops.
+- The numbers come from the reference evaluator, also with `--live`. The fuzzer does not count: coverage is about what your own examples show.
+
+## `veld test --from-violation`
+
+A server can be told to put a **capture** (the request it was handling: parameters, facts, principal, clock) in the event it reports to `onRuleViolation`. `veld test --from-violation event.json` turns such an event into an `example` block, the outcome included, to paste into your contract:
+
+```bash
+veld test --from-violation event.json >> contracts/bookings.veld
+```
+
+Standard output holds the block only. Notes go to standard error: the values the server left out of the capture because they are `@pii` or `@secret` are filled in as examples are, each one named, and when the example does not end in the violation of the event (for instance because a filled-in value mattered, or because the rule is one of the server's own output, which needs a `returns` line) the tool says so. An event without a capture, an endpoint the contract does not have and a capture that does not fit the contract's types each exit with code 1. The JSON of the event is in [`spec/rules.md`](../../spec/rules.md) section 17.3. A capture contains whatever the caller sent: handle the file like a request log.

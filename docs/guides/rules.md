@@ -434,6 +434,15 @@ error[E0970]: no value of `Booking` can exist: its rules and constraints contrad
 
 The solver is `--solver <path>`, then `VELD_SOLVER`, then `z3` and `cvc5` on `PATH`; `--prove-timeout <seconds>` limits each question (5 by default). Without a solver, `--prove` says so in one line and the check goes on. Floats, the content of strings, `matches`, comprehensions, `sum` and `now` are left open, so a proved contradiction holds however much was left open, while a value found for an open question may not be real and is confirmed first. The answers are about the rules of the contract, not about handlers, data or deployed code. The exact fragment is in [`spec/rules.md`](../../spec/rules.md) section 18.
 
+## The rule book: `veld export rules`
+
+```bash
+veld export rules                 # to the terminal
+veld export rules -o RULES.md     # to a file you own
+```
+
+The rules of a contract are also the rules of the business, and the people who know them do not read `.veld` files. `veld export rules` writes them as Markdown: for each service package, the models, errors and events that have invariants (each rule by its message, or its name, with its doc comment and its expression), the state machines as tables of moves, the policies, the endpoints that have rules (what they load, who may call them, which move they make, what they require and what they promise) and the examples with their outcomes. Rules that are audited or deprecated are marked. The output is the same for the same contract, so it can be committed and reviewed like code. The file is yours: `generate` and `clean` never touch it, and `veld export rules -o` refuses to overwrite a different file without `--force`. `--service NAME` limits it to one service.
+
 ## What belongs in the contract
 
 Put a rule in the contract when it is about the data or the call and can be said with the fields you have: ranges, relations between fields, "this must exist and be open", a limit that depends on a loaded record, a promise about the result.
