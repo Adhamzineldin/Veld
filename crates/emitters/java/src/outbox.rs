@@ -186,7 +186,20 @@ pub(crate) fn emit_files(
     if !service_emits(svc) {
         return Ok(());
     }
+    let used = Names::of(tree, svc);
     for ep in emitting(svc) {
+        let missing = ep.rules.transition.iter().flat_map(|t| &t.emits).any(|e| {
+            used.channel_const(e.channel).is_none() || used.event_const(e.event).is_none()
+        });
+        if missing {
+            return Err(vec![GenDiagnostic::new(
+                "E0801",
+                format!(
+                    "{}.{}: generator `java` cannot find the channel or the event of a move that emits in the channels the service publishes",
+                    svc.name, ep.name
+                ),
+            )]);
+        }
         let class = emit_name(&names.get(svc.id, &ep.name));
         let mut fc = FileCtx::new(tree, package, &class);
         let mut w = CodeWriter::new();
@@ -244,8 +257,9 @@ fn write_emit_class(
         let decl = ir.decl(e.event);
         doc_comment(w, decl.docs.as_deref(), &[], decl.deprecated.as_deref());
         let ty = fc.decl(e.event);
-        let channel = used.channel_const(e.channel).unwrap_or("CHANNEL");
-        let def = used.event_const(e.event).unwrap_or("EVENT");
+        // `emit_files` has checked that both exist.
+        let channel = used.channel_const(e.channel).unwrap_or_default();
+        let def = used.event_const(e.event).unwrap_or_default();
         w.open(format!(
             "public {runtime_events}.PublishedEvent {method}({ty} event) throws Exception"
         ));
