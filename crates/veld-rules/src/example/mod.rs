@@ -10,6 +10,7 @@ mod event;
 mod fill;
 mod matching;
 mod report;
+mod saga;
 
 use std::collections::BTreeMap;
 
@@ -26,6 +27,7 @@ pub use self::event::{
 use self::fill::Filler;
 pub use self::matching::{Difference, diff_pattern};
 pub use self::report::{ExampleReport, Mismatch, Verdict, describe_actual, describe_expected};
+pub use self::saga::FIXED_ID as SAGA_FIXED_ID;
 use crate::check::{Options, check_type};
 use crate::error::InputError;
 use crate::helpers::instant::parse_datetime;
@@ -168,6 +170,15 @@ struct Build<'a> {
 /// [`ExampleError`]: `E0953` when a value cannot be filled in or breaks an invariant, and the
 /// errors of an example that does not fit the IR.
 pub fn fill_example(ir: &Ir, ex: &Example) -> Result<FilledExample, ExampleError> {
+    fill_all(ir, ex).map(|(filled, _)| filled)
+}
+
+/// [`fill_example`], and for a saga example the script of what its calls answer
+/// (`spec/platform.md` section 18).
+fn fill_all(
+    ir: &Ir,
+    ex: &Example,
+) -> Result<(FilledExample, Option<crate::saga::Script>), ExampleError> {
     if ex.event.is_some() {
         return Err(ExampleError::WrongForm {
             example: ex.name.clone(),
@@ -194,8 +205,9 @@ pub fn fill_example(ir: &Ir, ex: &Example) -> Result<FilledExample, ExampleError
     let result = b.returns()?;
     let key = b.key()?;
     let expected = b.expected()?;
+    let saga = b.saga_script()?;
     let caller = b.caller(principal.as_ref());
-    Ok(FilledExample {
+    let filled = FilledExample {
         name: ex.name.clone(),
         service: service.id,
         endpoint: ex.endpoint.clone(),
@@ -211,7 +223,8 @@ pub fn fill_example(ir: &Ir, ex: &Example) -> Result<FilledExample, ExampleError
         },
         clock,
         expected,
-    })
+    };
+    Ok((filled, saga))
 }
 
 /// An example value as wire JSON, with references read from `givens`.
@@ -527,8 +540,11 @@ pub fn run_example(ir: &Ir, ex: &Example) -> Result<ExampleReport, ExampleError>
     if ex.event.is_some() {
         return run_event_example(ir, ex);
     }
-    let filled = fill_example(ir, ex)?;
     let (service, endpoint) = locate(ir, ex)?;
+    if endpoint.saga.is_some() {
+        return saga::run_saga_example(ir, ex, service, endpoint);
+    }
+    let filled = fill_example(ir, ex)?;
     let reported = Pipeline::new(ir, service, &ex.endpoint)?
         .run_reported(&filled.request, OutputMode::Strict)?;
     let result = reported.body.as_ref().or(filled.request.result.as_ref());

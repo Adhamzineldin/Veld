@@ -1,0 +1,64 @@
+// The contract of the script vectors of this folder (`orchestrator.json`). Every call of a
+// saga goes to an `@idempotent` endpoint, so the sagas compile; the services here have no
+// implementation, the script of a vector says what each call answers.
+
+model Order {
+  roomId: string
+  amount: int
+}
+
+model HoldRequest { roomId: string }
+model ChargeRequest { amount: int }
+model Hold { id: string, bookingId: string }
+model Charge { id: string }
+model Booking { id: string }
+
+error RoomFull 409 { capacity: int }
+error PaymentDeclined 402 { reason: string }
+
+service Rooms at "/rooms" {
+  @idempotent
+  post "/hold" hold(body: HoldRequest) -> Hold | RoomFull
+
+  @idempotent
+  post "/release/{id}" release(id: string) -> 204
+}
+
+service Payments at "/payments" {
+  @idempotent
+  post "/charge" charge(body: ChargeRequest) -> Charge | PaymentDeclined
+
+  @idempotent
+  post "/refund/{id}" refund(id: string) -> 204
+}
+
+service Bookings at "/bookings" {
+  @idempotent
+  post "/confirm/{id}" confirm(id: string) -> Booking | NotFound
+}
+
+service Checkout at "/checkout" {
+  /// Three steps; the last one cannot be undone.
+  saga post "/" checkout(body: Order) -> Booking | RoomFull | PaymentDeclined {
+    step hold    = Rooms.hold(body: { roomId: body.roomId })   compensate Rooms.release(id: hold.id)
+    step charge  = Payments.charge(body: { amount: body.amount }) compensate Payments.refund(id: charge.id)
+    step confirm = Bookings.confirm(id: hold.bookingId)
+    timeout seconds(30)
+  }
+
+  /// A step in the middle that has no compensation.
+  saga post "/review" review(body: Order) -> Booking {
+    step a = Rooms.hold(body: { roomId: body.roomId })       compensate Rooms.release(id: a.id)
+    step b = Payments.charge(body: { amount: body.amount })
+    step c = Rooms.hold(body: { roomId: body.roomId })       compensate Rooms.release(id: c.id)
+    step d = Bookings.confirm(id: c.id)
+    timeout seconds(30)
+  }
+
+  /// A deadline of one second: three attempts of a call that never answers fit in it.
+  saga post "/quick" quick(body: Order) -> Booking {
+    step hold    = Rooms.hold(body: { roomId: body.roomId }) compensate Rooms.release(id: hold.id)
+    step confirm = Bookings.confirm(id: hold.bookingId)
+    timeout ms(1000)
+  }
+}

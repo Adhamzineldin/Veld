@@ -147,6 +147,23 @@ impl Live {
                 audited: Vec::new(),
             });
         }
+        let is_saga = ex
+            .service
+            .and_then(|s| ir.services.get(s.index()))
+            .and_then(|s| s.endpoints.iter().find(|e| e.name == ex.endpoint))
+            .is_some_and(|e| e.saga.is_some());
+        if is_saga {
+            // The steps would call other services; the reference orchestrator runs it offline.
+            return Ok(ExampleReport {
+                name: ex.name.clone(),
+                verdict: Verdict::Skipped(
+                    "a saga example cannot run live in this version: `veld test` runs it offline"
+                        .to_owned(),
+                ),
+                outcome: None,
+                audited: Vec::new(),
+            });
+        }
         let filled = fill_example(ir, ex)?;
         if let Some(service) = ir.services.get(filled.service.index())
             && !self.serves(&service.name)

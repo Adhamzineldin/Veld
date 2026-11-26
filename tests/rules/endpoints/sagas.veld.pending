@@ -1,0 +1,159 @@
+// Sagas (`spec/platform.md` sections 17 and 18), as examples. Every example runs offline through
+// the reference orchestrator: `given step` and `given undo` say what each call answers (a step
+// that is not named answers a filled-in success, an undo answers `ok`), `unavailable` never
+// answers, `expect compensated` names the steps undone in order and `expect stuck` says the saga
+// ended stuck. What an example cannot say (an answer that differs on the n-th attempt, a stop and
+// a restart) is in the script vectors `tests/rules/sagas/orchestrator.json`.
+//
+// The generators are held to these examples when they implement sagas (`sagas` is an opt-in
+// feature): that is why this file is `.pending`.
+
+model Order {
+  roomId: string
+  amount: int
+}
+
+model HoldRequest { roomId: string }
+model ChargeRequest { amount: int }
+model Hold { id: string, bookingId: string }
+model Charge { id: string }
+model Booking { id: string }
+
+error RoomFull 409 { capacity: int }
+error PaymentDeclined 402 { reason: string }
+
+service Rooms at "/rooms" {
+  @idempotent
+  post "/hold" hold(body: HoldRequest) -> Hold | RoomFull
+
+  @idempotent
+  post "/release/{id}" release(id: string) -> 204
+}
+
+service Payments at "/payments" {
+  @idempotent
+  post "/charge" charge(body: ChargeRequest) -> Charge | PaymentDeclined
+
+  @idempotent
+  post "/refund/{id}" refund(id: string) -> 204
+}
+
+service Bookings at "/bookings" {
+  @idempotent
+  post "/confirm/{id}" confirm(id: string) -> Booking | NotFound
+}
+
+service Checkout at "/checkout" {
+  /// Three steps; the last one cannot be undone.
+  saga post "/" checkout(body: Order) -> Booking | RoomFull | PaymentDeclined {
+    step hold    = Rooms.hold(body: { roomId: body.roomId })   compensate Rooms.release(id: hold.id)
+    step charge  = Payments.charge(body: { amount: body.amount }) compensate Payments.refund(id: charge.id)
+    step confirm = Bookings.confirm(id: hold.bookingId)
+    timeout seconds(30)
+  }
+
+  /// A step in the middle that has no compensation.
+  saga post "/review" review(body: Order) -> Booking {
+    step a = Rooms.hold(body: { roomId: body.roomId })       compensate Rooms.release(id: a.id)
+    step b = Payments.charge(body: { amount: body.amount })
+    step c = Rooms.hold(body: { roomId: body.roomId })       compensate Rooms.release(id: c.id)
+    step d = Bookings.confirm(id: c.id)
+    timeout seconds(30)
+  }
+
+  /// A deadline of one second: three attempts of a call that never answers fit in it.
+  saga post "/quick" quick(body: Order) -> Booking {
+    step hold    = Rooms.hold(body: { roomId: body.roomId }) compensate Rooms.release(id: hold.id)
+    step confirm = Bookings.confirm(id: hold.bookingId)
+    timeout ms(1000)
+  }
+}
+
+// ---- every step succeeds -----------------------------------------------------------------------
+
+example "every step succeeds" {
+  given step hold = { id: "h-1", bookingId: "b-1" }
+  given step charge = { id: "c-1" }
+  given step confirm = { id: "b-1" }
+  key "k-1"
+  checkout(body: { roomId: "r-1", amount: 100 }) -> ok { id: "b-1" }
+}
+
+example "steps that are not stated answer filled-in successes, and no key gives the fixed id" {
+  checkout(body: { roomId: "r-1", amount: 100 }) -> ok
+}
+
+// ---- a declared error at each position ----------------------------------------------------------
+
+example "the first step is refused: there is nothing to undo" {
+  given step hold = RoomFull { capacity: 2 }
+  key "k-2"
+  checkout(body: { roomId: "r-1", amount: 100 }) -> RoomFull { capacity: 2 }
+}
+
+example "the second step is refused: the room is released" {
+  given step hold = { id: "h-1", bookingId: "b-1" }
+  given step charge = PaymentDeclined { reason: "funds" }
+  key "k-3"
+  checkout(body: { roomId: "r-1", amount: 100 }) -> PaymentDeclined { reason: "funds" }
+  expect compensated hold
+}
+
+example "the last step is refused: the others are undone in reverse order" {
+  given step confirm = NotFound
+  key "k-4"
+  checkout(body: { roomId: "r-1", amount: 100 }) -> SagaFailed { step: "confirm", compensated: true }
+  expect compensated charge, hold
+}
+
+// ---- which errors pass through ---------------------------------------------------------------------
+
+example "an error the saga declares is answered as the step answered it" {
+  given step charge = PaymentDeclined { reason: "limit" }
+  key "k-5"
+  checkout(body: { roomId: "r-1", amount: 100 }) -> PaymentDeclined { reason: "limit" }
+  expect compensated hold
+}
+
+example "an error the saga does not declare becomes SagaFailed" {
+  given step b = PaymentDeclined { reason: "funds" }
+  key "k-6"
+  review(body: { roomId: "r-1", amount: 100 }) -> SagaFailed { step: "b", compensated: true }
+  expect compensated a
+}
+
+// ---- a step without a compensation ---------------------------------------------------------------------
+
+example "a step without a compensation is skipped" {
+  given step d = NotFound
+  key "k-7"
+  review(body: { roomId: "r-1", amount: 100 }) -> SagaFailed { step: "d", compensated: true }
+  expect compensated c, a
+}
+
+// ---- no answer ------------------------------------------------------------------------------------------
+
+example "a step that gets no answer until the deadline ends the saga stuck" {
+  given step confirm = unavailable
+  key "k-8"
+  quick(body: { roomId: "r-1", amount: 100 }) -> SagaFailed { step: "confirm", compensated: false }
+  expect stuck
+}
+
+// ---- a compensation that fails -------------------------------------------------------------------------
+
+example "a compensation that answers an error ends the saga stuck" {
+  given step charge = PaymentDeclined { reason: "funds" }
+  given undo hold = NotFound
+  key "k-9"
+  checkout(body: { roomId: "r-1", amount: 100 }) -> SagaFailed { step: "charge", compensated: false }
+  expect stuck
+}
+
+example "a compensation that never answers ends the saga stuck" {
+  given step charge = PaymentDeclined { reason: "funds" }
+  given undo hold = unavailable
+  key "k-10"
+  checkout(body: { roomId: "r-1", amount: 100 }) -> SagaFailed { step: "charge", compensated: false }
+  expect stuck
+}
