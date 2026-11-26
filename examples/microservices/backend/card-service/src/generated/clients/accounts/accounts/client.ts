@@ -185,10 +185,8 @@ const accountsBanAccountOp: veld.EndpointSpec = {
 export class AccountsClient {
   readonly #core: veld.ClientCore;
 
-  constructor(opts: veld.ClientOptions = {}) {
+  constructor(opts: veld.ClientOptions) {
     this.#core = new veld.ClientCore(opts, {
-      envVar: 'VELD_ACCOUNTS_URL',
-      baseUrl: 'http://account-service:3002',
       validation: (issues) => new ValidationError({ issues }),
     });
   }

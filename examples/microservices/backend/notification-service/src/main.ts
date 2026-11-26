@@ -4,8 +4,11 @@
 import { randomUUID } from 'node:crypto';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
-import { NotFound, createNotificationsHandler, iam, toHono } from '@veld/notifications-api';
+import { NotFound, createClients, createNotificationsHandler, fromEnv, iam, toHono } from '@veld/notifications-api';
 import type { Notification, NotificationPreferences, NotificationsService } from '@veld/notifications-api';
+
+/** The address of the iam service is a setting of the deployment; the variable name is this service's choice. */
+const runtime = fromEnv({ 'services.iam.url': 'VELD_IAM_URL' });
 
 interface Principal {
   user: iam.User;
@@ -18,7 +21,7 @@ const principalOf = (ctx: { principal: unknown }): Principal => ctx.principal as
 
 async function authenticate(token: string): Promise<Principal | null> {
   try {
-    const user = await new iam.IamClient({ auth: { bearer: () => token } }).getProfile({});
+    const user = await createClients(runtime, { auth: { bearer: () => token } }).iam.getProfile({});
     return { user, token };
   } catch (e) {
     if (iam.Unauthorized.matches(e)) return null;
@@ -83,7 +86,7 @@ const impl: NotificationsService = {
 };
 
 const app = new Hono();
-app.use('*', toHono(createNotificationsHandler(impl, { auth: { bearer: authenticate } })));
+app.use('*', toHono(createNotificationsHandler(impl, { auth: { bearer: authenticate } }, runtime)));
 
 const port = Number(process.env.PORT ?? 3005);
 serve({ fetch: app.fetch, port, hostname: process.env.HOST ?? '127.0.0.1' }, () => {

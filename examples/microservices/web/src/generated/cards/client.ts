@@ -122,10 +122,8 @@ const cardsCancelCardOp: veld.EndpointSpec = {
 export class CardsClient {
   readonly #core: veld.ClientCore;
 
-  constructor(opts: veld.ClientOptions = {}) {
+  constructor(opts: veld.ClientOptions) {
     this.#core = new veld.ClientCore(opts, {
-      envVar: 'VELD_CARDS_URL',
-      baseUrl: 'http://card-service:3004',
       validation: (issues) => new ValidationError({ issues }),
     });
   }

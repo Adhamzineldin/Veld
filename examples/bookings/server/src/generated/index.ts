@@ -6,5 +6,6 @@ export * from './errors/bookings';
 export * from './models/bookings';
 export * from './policies/bookings';
 export * from './prelude';
+export * from './runtime';
 export * from './server/adapters';
 export * from './server/bookings';

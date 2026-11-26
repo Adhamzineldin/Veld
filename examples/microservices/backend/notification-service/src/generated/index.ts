@@ -4,6 +4,7 @@ export * as veld from './runtime/veld';
 export { VeldError, VeldHttpError, VeldTransportError, canonical, canonicalError, matchesError, same } from './runtime/veld';
 export * from './models/notifications';
 export * from './prelude';
+export * from './runtime';
 export * from './server/adapters';
 export * from './server/notifications';
 export * as iam from './clients/iam/index';

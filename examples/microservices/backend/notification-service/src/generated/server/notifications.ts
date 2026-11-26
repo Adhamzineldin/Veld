@@ -3,6 +3,8 @@
 import { Notification, NotificationPreferences, UpdatePreferencesInput } from '../models/notifications';
 import type { InternalData, NotFoundData, UnauthorizedData, ValidationErrorData } from '../prelude';
 import { Internal, NotFound, Unauthorized, ValidationError } from '../prelude';
+import type { NotificationsApiRuntime } from '../runtime';
+import { checkRuntime } from '../runtime';
 import * as veld from '../runtime/veld';
 
 export type ListNotificationsRequest = {};
@@ -38,7 +40,8 @@ export interface NotificationsHooks {
 }
 
 /** Builds the HTTP handler for `Notifications`. Mount it with an adapter from `./adapters`. */
-export function createNotificationsHandler(impl: NotificationsService, hooks: NotificationsHooks): veld.VeldHandler {
+export function createNotificationsHandler(impl: NotificationsService, hooks: NotificationsHooks, runtime: NotificationsApiRuntime): veld.VeldHandler {
+  checkRuntime(runtime);
   const endpoints: veld.ServerEndpoint[] = [
     {
       name: 'listNotifications',

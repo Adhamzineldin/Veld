@@ -81,10 +81,8 @@ const ordersCreateOrderOp: veld.EndpointSpec = {
 export class OrdersClient {
   readonly #core: veld.ClientCore;
 
-  constructor(opts: veld.ClientOptions = {}) {
+  constructor(opts: veld.ClientOptions) {
     this.#core = new veld.ClientCore(opts, {
-      envVar: 'VELD_ORDERS_URL',
-      baseUrl: 'http://orders:3001',
       validation: (issues) => new ValidationError({ issues }),
     });
   }

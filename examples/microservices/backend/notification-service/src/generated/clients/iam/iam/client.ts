@@ -132,10 +132,8 @@ const iamLogoutOp: veld.EndpointSpec = {
 export class IamClient {
   readonly #core: veld.ClientCore;
 
-  constructor(opts: veld.ClientOptions = {}) {
+  constructor(opts: veld.ClientOptions) {
     this.#core = new veld.ClientCore(opts, {
-      envVar: 'VELD_IAM_URL',
-      baseUrl: 'http://iam-service:3001',
       validation: (issues) => new ValidationError({ issues }),
     });
   }
