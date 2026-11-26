@@ -1073,7 +1073,20 @@ model Order {
 - The rules digest (§9.7) also covers the ids of the derived fields a service reaches, because a client's local check reads values it derived itself. A contract with no derived field has the digest it has today.
 - In an example, a derived field is never filled in (§12.2) and MUST NOT be written (`E0952`); it is computed.
 - `veld diff`: a changed derived expression is "possibly breaking". The OpenAPI export marks the field `readOnly` with `x-veld-derived`.
-- In the IR, `Field` gains `"derived": Expr`, omitted when absent. The feature is `rules_derived`.
+- In the IR, `Field` gains `"derived": Expr` and `"derived_id": "<id>"`, both omitted when absent. The feature is `rules_derived`; it is opt-in (§17.1), so every generator refuses a contract with a derived field (`E0801`) until it declares the feature.
+
+What the implementation chose where the text above is silent:
+
+- **Literal or expression.** The text after `=` is a literal when it is one literal (a string, a number with its sign, `true`, `false`, `null`, `.variant`, `[]`) and the next token ends the field; `= -1` is a literal, `= -x` and `= 1 + 1` are expressions. Anything else, a parenthesised literal included, is an expression.
+- **Where the id lives.** Beside `derived` in the IR, so no consumer computes it (the signatures are computed only by `veld-compiler::signature`). The `fields` of a violation are the fields the expression reads, first use first (`Expr::self_reads`).
+- **The same order everywhere.** The values of one declaration are computed in the order of `Decl::derived_fields` of `veld-ir`: a field after every derived field it reads, and in declaration order among the others; inherited fields come first. A value inside a nested declaration, a list, a map, a page or a union arm is computed before the value that contains it, so `sum(items, i => i.line)` reads the `line` of every item already computed.
+- **A value that fails.** When the expression of a derived field raises an evaluation error (§3.7) the field stays absent, and there is one violation: its `rule` is the field's id, its rule name (in vectors) is the field's source name, its `path` is the path of the value that carries the field, its `fields` are the fields the expression reads, its `message` is `field <name> could not be computed`, and its `error` is set. A derived field that reads an absent derived field stays absent without a second violation, and an invariant that reads an absent derived field is skipped: the cause is already reported.
+- **Request position and the partial check.** A derived field whose evaluation reads a field that is absent (a `@readonly` field of a request body, or a field of a draft in `partial`) is left absent, with no violation; the invariants that read it are skipped. A value the caller sent for a derived field is dropped before the value is decoded, so a malformed one cannot raise a shape error.
+- **Facts and the principal.** A fact or a principal is given its defaults and its derived fields when it is handed to the endpoint block (step 6). An evaluation error there is the application's mistake, not the caller's: the answer is `500 Internal`, reported to the hook like an output violation.
+- **Output mode `off`.** Derived fields are values, not rules: they are computed in every mode, and an evaluation error leaves the field absent without a report.
+- **Constraints.** `@min`, `@max`, `@length` and the other constraints of a derived field are not checked, because no caller supplies the value; write an invariant to constrain it.
+- **`else` and examples.** `else E { .. }` never has to give a derived field of `E`. In an example, a derived field is written nowhere (`E0952`) except in the pattern after `ok` or an error, where it is compared like any other field of the computed result.
+- **Order of reports.** The violations of derived fields of a value come before its invariants; tests compare sets.
 
 ### 17.3 From a violation to an example: `veld test --from-violation`
 
