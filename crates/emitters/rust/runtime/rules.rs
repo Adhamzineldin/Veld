@@ -14,7 +14,7 @@ pub mod text;
 use std::time::Instant;
 
 use serde::de::DeserializeOwned;
-use serde_json::{Map, Value};
+use serde_json::Value;
 
 use super::regex::Regex;
 use super::schema::{ModelSchema, Schema, placeholder};
@@ -382,7 +382,7 @@ pub fn request_rejection(validation_sig: &str, op: &str, violation: Violation) -
 pub fn else_rejection(
     ep: &'static super::spec::EndpointSpec,
     sig: &str,
-    payload: Map<String, Value>,
+    payload: serde_json::Map<String, Value>,
     violation: Violation,
 ) -> Result<super::error::Error, Vec<Violation>> {
     let Some(e) = ep.errors.iter().find(|e| e.sig == sig) else {
@@ -447,7 +447,7 @@ pub fn refusal(
     data: &[(&str, &str)],
     violation: Violation,
 ) -> super::server::Halt {
-    let payload: Map<String, Value> = data
+    let payload: serde_json::Map<String, Value> = data
         .iter()
         .map(|(k, v)| ((*k).to_string(), Value::String((*v).to_string())))
         .collect();
