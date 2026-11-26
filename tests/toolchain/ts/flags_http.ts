@@ -20,6 +20,10 @@ const impl: srv.RoomsService = {
     handled.push('publishRoom');
     return { ...req.room, phase: srv.Phase.live };
   },
+  async resizeRoom(req) {
+    handled.push('resizeRoom');
+    return req.room;
+  },
   async archiveRoom(req) {
     handled.push('archiveRoom');
     return { ...req.room, phase: srv.Phase.archived };
@@ -137,6 +141,19 @@ async function main(): Promise<void> {
   // An ordinary edge does not depend on any flag.
   put(true, srv.Phase.draft);
   assert.equal((await answer(off, `/rooms/${ID}/publish`, 'staff')).status, 200);
+
+  // The operand of an `old(..)` that only a flagged `ensure` reads is not evaluated while the flag is
+  // off (the reference removes the statement): it divides by the capacity, which is 0 here.
+  put(true, srv.Phase.draft, 0);
+  errors.length = 0;
+  assert.equal((await answer(off, `/rooms/${ID}/resize`, 'staff')).status, 200, 'flag off: no operand, no failure');
+  assert.equal(handled[handled.length - 1], 'resizeRoom');
+  assert.equal(errors.length, 0);
+  // With the flag on the operand is evaluated, and what cannot be evaluated is a request refused.
+  const guarded = handlerFor(new Counting(['capacityGuard']));
+  assert.notEqual((await answer(guarded, `/rooms/${ID}/resize`, 'staff')).status, 200, 'flag on: the operand is evaluated');
+  put(true, srv.Phase.draft, 2);
+  assert.equal((await answer(guarded, `/rooms/${ID}/resize`, 'staff')).status, 200);
 
   // A server created without the provider does not start.
   assert.throws(

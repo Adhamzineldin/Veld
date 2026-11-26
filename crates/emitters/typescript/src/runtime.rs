@@ -174,6 +174,7 @@ pub fn source_gated(gates: Gates) -> Result<String, GateError> {
         "flags_transitions" => g.flags && g.transitions,
         "not_flags_transitions" => g.transitions && !g.flags,
         "flags_endpoint_rules" => g.flags && g.endpoint_rules,
+        "not_flags_endpoint_rules" => !g.flags && g.endpoint_rules,
         "timed_plain" => g.timed && !(g.timeouts || g.slo),
         "timed_bounded" => g.timed && (g.timeouts || g.slo),
         "policies" => g.policies,

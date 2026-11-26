@@ -1263,6 +1263,15 @@ export interface EndpointRuleSet {
   requires: readonly RequireStep[];
   /** The operands of `old(...)`, evaluated and saved at the end of step 6. */
   old: readonly ((p: never, f: never, now: bigint) => unknown)[];
+  // #endif
+  // #if flags_endpoint_rules
+  /**
+   * By slot of `old`: the flags of the `ensure` statements that read it, when all of them are
+   * flagged. The operand is evaluated only while one of these flags is on.
+   */
+  oldFlags?: readonly (readonly string[] | undefined)[];
+  // #endif
+  // #if endpoint_rules
   ensures: readonly EnsureStep[];
 }
 
@@ -1473,6 +1482,17 @@ async function prepare(
     ruleEvent(hooks, ep, 'input', 'rejected', [violation], started);
     return rulesProblem(ep, [violation], std);
   }
+  // #endif
+  // #if flags_endpoint_rules
+  const old = rules.old.map((operand, slot) => {
+    // The reference removes a flagged `ensure` whose flag is off, and with it the operands that
+    // only it reads (`oldFlags`): they are not evaluated, so an operand that fails does not matter.
+    const gate = rules.oldFlags?.[slot];
+    if (gate !== undefined && !gate.some((flag) => statementOn(hooks, flag, true))) return undefined;
+    return snapshot(operand(p as never, f as never, now));
+  });
+  // #endif
+  // #if not_flags_endpoint_rules
   const old = rules.old.map((operand) => snapshot(operand(p as never, f as never, now)));
   // #endif
   // #if policies

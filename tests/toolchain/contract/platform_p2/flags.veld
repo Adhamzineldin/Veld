@@ -49,4 +49,11 @@ service Rooms at "/rooms" {
     allow Manage(user, room)
     transition room.phase: live -> archived
   }
+
+  // The operand of `old(...)` fails (a division by zero) when the capacity is 0, and only this
+  // flagged `ensure` reads it: with the flag off the statement is gone, and so is the operand.
+  post "/{id}/resize" resizeRoom(id: uuid) -> Room {
+    fact room: Room = id
+    ensure result.capacity * old(100 / room.capacity) > 0 when flag("capacityGuard")
+  }
 }

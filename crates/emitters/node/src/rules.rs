@@ -451,6 +451,71 @@ fn write_old(w: &mut CodeWriter, printer: &EndpointPrinter<'_>, sig: &Sig) {
     w.close_with("],");
 }
 
+/// The slot numbers `o[N]` that the printed condition `cond` reads.
+fn slots_read(cond: &str) -> Vec<usize> {
+    let bytes = cond.as_bytes();
+    let mut slots = Vec::new();
+    for (at, _) in cond.match_indices("o[") {
+        let word =
+            at > 0 && (bytes[at - 1].is_ascii_alphanumeric() || b"_$.".contains(&bytes[at - 1]));
+        if word {
+            continue;
+        }
+        let digits: String = cond[at + 2..]
+            .chars()
+            .take_while(char::is_ascii_digit)
+            .collect();
+        if let Ok(n) = digits.parse() {
+            slots.push(n);
+        }
+    }
+    slots
+}
+
+/// The `oldFlags` member: for each slot of the saved `old(...)` values, the flags of the `ensure`
+/// statements that read it, when all of them are flagged (the operand is then evaluated only while
+/// one of the flags is on, as the reference removes a statement whose flag is off). Nothing when
+/// no slot is gated.
+fn write_old_flags(w: &mut CodeWriter, slots: usize, ensures: &[(&EndpointEnsure, &str)]) {
+    let mut gates: Vec<Option<Vec<&str>>> = vec![Some(Vec::new()); slots];
+    let mut read = vec![false; slots];
+    for (e, cond) in ensures {
+        for slot in slots_read(cond) {
+            let Some(gate) = gates.get_mut(slot) else {
+                continue;
+            };
+            read[slot] = true;
+            match (&e.flag, gate.as_mut()) {
+                (Some(flag), Some(list)) => {
+                    if !list.contains(&flag.as_str()) {
+                        list.push(flag);
+                    }
+                }
+                _ => *gate = None,
+            }
+        }
+    }
+    for (gate, seen) in gates.iter_mut().zip(&read) {
+        if !seen {
+            *gate = None;
+        }
+    }
+    if gates.iter().all(Option::is_none) {
+        return;
+    }
+    let items: Vec<String> = gates
+        .iter()
+        .map(|g| match g {
+            None => "undefined".to_string(),
+            Some(flags) => {
+                let list: Vec<String> = flags.iter().map(|f| ts_str(f)).collect();
+                format!("[{}]", list.join(", "))
+            }
+        })
+        .collect();
+    w.line(format!("oldFlags: [{}],", items.join(", ")));
+}
+
 /// Writes the `rules:` member of the endpoint description of `site`, and the type alias of its
 /// saved values just before the builder that holds it (`pre`).
 pub fn write_rules_member(
@@ -516,6 +581,13 @@ pub fn write_rules_member(
         }
     });
     write_old(w, &printer, &sig);
+    let users: Vec<(&EndpointEnsure, &str)> = ep
+        .rules
+        .ensures
+        .iter()
+        .zip(conds.iter().map(String::as_str))
+        .collect();
+    write_old_flags(w, printer.olds().len(), &users);
     write_list(w, "ensures", |w| {
         for line in ensure_code.finish().lines() {
             w.line(line);
