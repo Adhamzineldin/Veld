@@ -135,3 +135,8 @@ fn java_refuses_version_and_idempotency() {
 fn java_refuses_timed_moves() {
     veld_emit_conformance::check_timed_is_refused(&Java).unwrap();
 }
+
+#[test]
+fn java_refuses_flags() {
+    veld_emit_conformance::check_flags_are_refused(&Java).unwrap();
+}

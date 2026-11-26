@@ -119,3 +119,10 @@ fn node_and_typescript_refuse_timed_moves() {
     veld_emit_conformance::check_timed_is_refused(&Node).unwrap();
     veld_emit_conformance::check_timed_is_refused(&TypeScript).unwrap();
 }
+
+/// `rules_flags` is opt-in: Node and TypeScript refuse a flagged statement.
+#[test]
+fn node_and_typescript_refuse_flags() {
+    veld_emit_conformance::check_flags_are_refused(&Node).unwrap();
+    veld_emit_conformance::check_flags_are_refused(&TypeScript).unwrap();
+}

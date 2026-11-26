@@ -33,7 +33,10 @@ pub use events::{
     compiled_events_contract,
 };
 pub use fixtures::{FIXTURES, Fixture};
-pub use platform_p2::{check_timed_is_refused, compiled_timed_contracts};
+pub use platform_p2::{
+    check_flags_are_refused, check_timed_is_refused, compiled_flag_contracts,
+    compiled_timed_contracts,
+};
 pub use rollout::{
     check_rollout_is_generated, check_rollout_is_refused, compiled_rollout_contracts,
 };
@@ -87,6 +90,7 @@ pub fn ir_with_rule() -> Ir {
         panic!("veld-emit-conformance has no plain fixture");
     };
     let rule = Rule {
+        flag: None,
         name: "alwaysTrue".into(),
         id: "veld:app/Greeting.alwaysTrue@0".into(),
         expr: Expr {
@@ -183,6 +187,7 @@ pub fn ir_with_endpoint_rules() -> Ir {
         panic!("veld-emit-conformance has no plain fixture");
     };
     let ensure = EndpointEnsure {
+        flag: None,
         name: None,
         id: "veld:app/Greeter.hello.ensure@0".into(),
         expr: Expr {

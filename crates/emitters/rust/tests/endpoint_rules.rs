@@ -205,6 +205,7 @@ fn an_endpoint_rule_on_a_ws_endpoint_is_e0801() {
     use veld_ir::{EndpointEnsure, Expr, ExprKind, ExprLit, ExprType, Origin, Scalar, Type};
     let mut ir = streaming_ir();
     let ensure = EndpointEnsure {
+        flag: None,
         name: None,
         id: "veld:live/Live.chat.ensure@0".into(),
         expr: Expr {

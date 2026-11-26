@@ -63,6 +63,59 @@ const TIMED_CASES: [(&str, &str, &str); 2] = [
     ),
 ];
 
+/// A flagged invariant: the first use is the `rule` line.
+const FLAG_RULE_SOURCE: &str = "model Stay {
+  guests: int
+  rule small: guests <= 6 when flag(\"smallGroups\")
+}
+
+service Stays at \"/stays\" {
+  post \"/\" book(body: Stay) -> 204
+}
+";
+
+/// A flagged `require`: the first use is the `require` line.
+const FLAG_REQUIRE_SOURCE: &str = "model Room {
+  id: uuid
+  open: bool
+}
+
+service Rooms at \"/rooms\" {
+  post \"/{id}/book\" book(id: uuid) -> 204 {
+    fact room: Room = id
+    require room.open when flag(\"openOnly\")
+  }
+}
+";
+
+/// A flagged `flow` that no endpoint takes: the first use is the `enum` line.
+const FLAG_FLOW_SOURCE: &str = "enum Phase {
+  draft, live
+  flow draft -> live when flag(\"launch\")
+  final live
+}
+
+model Room {
+  id: uuid
+  phase: Phase
+}
+
+service Rooms at \"/rooms\" {
+  get \"/{id}\" getRoom(id: uuid) -> Room
+}
+";
+
+/// The contracts that use `rules_flags`, each with the line of its first use.
+const FLAG_CASES: [(&str, &str, &str); 3] = [
+    ("compiled_flag_rule", FLAG_RULE_SOURCE, "rule small"),
+    (
+        "compiled_flag_require",
+        FLAG_REQUIRE_SOURCE,
+        "require room.open",
+    ),
+    ("compiled_flag_flow", FLAG_FLOW_SOURCE, "enum Phase"),
+];
+
 fn compiled(cases: &[(&str, &str, &str)]) -> Vec<(Ir, u32)> {
     cases
         .iter()
@@ -84,6 +137,24 @@ fn compiled(cases: &[(&str, &str, &str)]) -> Vec<(Ir, u32)> {
 #[must_use]
 pub fn compiled_timed_contracts() -> Vec<(Ir, u32)> {
     compiled(&TIMED_CASES)
+}
+
+/// The contracts that use `rules_flags`, with the line of the first use in each.
+///
+/// # Panics
+/// When a contract of this crate does not compile.
+#[must_use]
+pub fn compiled_flag_contracts() -> Vec<(Ir, u32)> {
+    compiled(&FLAG_CASES)
+}
+
+/// The generator must not declare `rules_flags` and must refuse a contract with a flagged
+/// statement, in every role (see [`check_timed_is_refused`]).
+///
+/// # Errors
+/// A description of the first role and contract for which the generator does not behave so.
+pub fn check_flags_are_refused(generator: &dyn DynGenerator) -> Result<(), String> {
+    all_refused(generator, Feature::RulesFlags, &compiled_flag_contracts())
 }
 
 /// The generator must not declare `rules_timed` and must refuse a contract with a timed edge or a
@@ -164,6 +235,19 @@ mod tests {
         for (ir, _) in compiled_timed_contracts() {
             let used = ir.features_used(&[ServiceId(0)]);
             assert!(used.contains(&Feature::RulesTimed), "{used:?}");
+        }
+    }
+
+    #[test]
+    fn each_flag_contract_uses_rules_flags_and_the_gate_points_at_it() {
+        let all = Capabilities::all_except(&[]);
+        for (ir, line) in compiled_flag_contracts() {
+            let used = ir.features_used(&[ServiceId(0)]);
+            assert!(used.contains(&Feature::RulesFlags), "{used:?}");
+            let found = gate(&ir, &all);
+            assert_eq!(found.len(), 1, "{found:?}");
+            assert_eq!(found[0].origin.as_ref().map(|o| o.line), Some(line));
+            assert!(gate(&ir, &all.clone().with(Feature::RulesFlags)).is_empty());
         }
     }
 

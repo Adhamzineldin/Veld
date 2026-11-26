@@ -308,3 +308,8 @@ fn rust_refuses_version_and_idempotency() {
 fn rust_refuses_timed_moves() {
     veld_emit_conformance::check_timed_is_refused(&Rust).unwrap();
 }
+
+#[test]
+fn rust_refuses_flags() {
+    veld_emit_conformance::check_flags_are_refused(&Rust).unwrap();
+}
