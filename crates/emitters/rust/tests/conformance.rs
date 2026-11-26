@@ -349,7 +349,8 @@ fn rust_refuses_visibility_as_a_server() {
     veld_emit_conformance::check_visibility_is_refused(&Rust).unwrap();
 }
 
-/// `tenancy` is opt-in (`spec/platform.md` section 3): the Rust server refuses a `@tenant` field.
+/// `tenancy` is opt-in (`spec/platform.md` section 3): Rust refuses a `@tenant` field, as a server
+/// and, when an endpoint returns one, as a client.
 #[test]
 fn rust_refuses_tenancy_as_a_server() {
     veld_emit_conformance::check_tenancy_is_refused(&Rust).unwrap();

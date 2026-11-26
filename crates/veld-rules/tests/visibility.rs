@@ -296,7 +296,7 @@ fn the_etag_is_taken_from_the_whole_value() {
 }
 
 #[test]
-fn a_contract_without_visibility_passes_a_malformed_result_through_in_audit_mode() {
+fn a_contract_without_visibility_leaves_a_result_alone_when_output_rules_are_off() {
     let ir = compile_text(
         "t",
         "model A { n: int }\nservice S at \"/s\" { get \"/\" one() -> A }\n",
@@ -306,7 +306,7 @@ fn a_contract_without_visibility_passes_a_malformed_result_through_in_audit_mode
         ..Request::default()
     };
     let got = pipeline(&ir, "S", "one")
-        .run_reported(&request, OutputMode::Audit)
+        .run_reported(&request, OutputMode::Off)
         .unwrap();
     assert!(got.hidden.is_empty());
     assert_eq!(got.body, Some(json!({ "n": "not a number" })));

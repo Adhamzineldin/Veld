@@ -305,17 +305,40 @@ pub fn checked_features(ir: &Ir, req: &GenRequest<'_>) -> std::collections::BTre
     // Retention is a server's own: the models of the services it serves, not of those it only
     // calls, and nothing for a client (`spec/platform.md` section 23).
     used.remove(&Feature::Retention);
-    // Visibility is enforced by a server only: a client has nothing to hide (`spec/platform.md`
-    // section 1), so it is not asked.
-    if req.role == Role::Client {
-        used.remove(&Feature::Visibility);
-        used.remove(&Feature::Tenancy);
-        used.remove(&Feature::Audit);
+    // Visibility and the audit log are enforced by a server, for its own services: a client has
+    // nothing to hide or to record, and a server that only calls a service (`consumes`) enforces
+    // nothing of it (`spec/platform.md` section 1).
+    let own = ir.http_features_used(&req.services);
+    for feature in [Feature::Visibility, Feature::Audit] {
+        used.remove(&feature);
+        if req.role == Role::Server && own.contains(&feature) {
+            used.insert(feature);
+        }
+    }
+    // Tenancy is a server's to enforce for its own services too, but a client is asked as well
+    // when a model it reaches has a `@tenant` field: the field is set by the server, so a request
+    // does not carry it (`spec/platform.md` section 3). A client never sees a fact.
+    used.remove(&Feature::Tenancy);
+    match req.role {
+        Role::Server if own.contains(&Feature::Tenancy) => {
+            used.insert(Feature::Tenancy);
+        }
+        Role::Client if reaches_tenant(ir, &all) => {
+            used.insert(Feature::Tenancy);
+        }
+        Role::Server | Role::Client => {}
     }
     if req.role == Role::Server && !ir.retention_plan(&req.services).is_empty() {
         used.insert(Feature::Retention);
     }
     used
+}
+
+/// True when an endpoint of `services` reaches a model with a `@tenant` field.
+fn reaches_tenant(ir: &Ir, services: &[ServiceId]) -> bool {
+    ir.reachable_decls(services)
+        .into_iter()
+        .any(|id| ir.decl(id).tenant_field().is_some())
 }
 
 /// True when an endpoint of `services` reaches a model with a derived field.
@@ -335,6 +358,14 @@ fn first_use(
     if feature == Feature::RulesRollout {
         return first_audited_origin(ir, services, event_services(req));
     }
+    // What a server enforces it enforces for its own services only.
+    let services = if req.role == Role::Server
+        && matches!(feature, Feature::Visibility | Feature::Tenancy | Feature::Audit)
+    {
+        &req.services[..]
+    } else {
+        services
+    };
     for sid in services {
         for ep in &ir.service(*sid).endpoints {
             let hit = match feature {
@@ -443,7 +474,9 @@ fn first_use(
     }
     if feature == Feature::Tenancy {
         let mut ids = searched(ir, services, req);
-        ids.extend(ir.fact_type_decls(services));
+        if req.role == Role::Server {
+            ids.extend(ir.fact_type_decls(&req.services));
+        }
         return first_tenant_origin(ir, &ids);
     }
     if feature == Feature::RulesTransitions {
