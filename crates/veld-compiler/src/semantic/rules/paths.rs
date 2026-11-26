@@ -166,6 +166,12 @@ impl Checker<'_, '_, '_> {
             if let Some(found) = self.endpoint_name(&flat, in_has) {
                 return found;
             }
+            let fields_too = self.ep.as_ref().is_some_and(|e| e.fields_in_scope);
+            if let Some(f) = self.fields.iter().find(|f| &f.name == name).cloned()
+                && fields_too
+            {
+                return self.walk(Root::SelfValue, &flat, Start::Field(Box::new(f)), in_has);
+            }
         } else if let Some(f) = self.fields.iter().find(|f| &f.name == name).cloned() {
             return self.walk(Root::SelfValue, &flat, Start::Field(Box::new(f)), in_has);
         }

@@ -161,6 +161,7 @@ export interface Field {
   derived_id?: string;
   pii?: boolean;
   secret?: boolean;
+  visible?: Expr;
   inherited_from: DeclId | null;
   constraints: Constraints;
   example: Literal | null;
@@ -706,7 +707,7 @@ export interface Auth {
 
 export type AuthKind = "none" | "bearer" | "basic" | "api_key";
 
-export type Feature = "unions" | "constraints" | "auth" | "middleware" | "headers" | "streaming_sse" | "streaming_ws" | "page" | "consts" | "bytes" | "rules_invariants" | "rules_endpoint" | "rules_transitions" | "rules_policies" | "rules_rollout" | "rules_version" | "idempotency" | "rules_derived" | "sagas" | "events" | "events_delivery" | "rules_timed" | "rules_flags" | "timeouts" | "slo" | "messages" | "retention";
+export type Feature = "unions" | "constraints" | "auth" | "middleware" | "headers" | "streaming_sse" | "streaming_ws" | "page" | "consts" | "bytes" | "rules_invariants" | "rules_endpoint" | "rules_transitions" | "rules_policies" | "rules_rollout" | "rules_version" | "idempotency" | "rules_derived" | "sagas" | "events" | "events_delivery" | "rules_timed" | "rules_flags" | "timeouts" | "slo" | "messages" | "retention" | "visibility";
 
 export type Role = "server" | "client";
 

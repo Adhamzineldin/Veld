@@ -111,6 +111,7 @@ never reused. The ranges are listed in `language.md` section 9.
 | `E1008` | error | veld-compiler | An `on` line names an event the channel does not carry or names an event twice, or the subscription has no `on` line |
 | `E1009` | error | veld-compiler | A subscription to a channel of this workspace that no service publishes |
 | `E1010` | error | veld-compiler | An event example that is not well formed: the channel cannot be chosen, an `expect` names no handler of that channel, `rejected` is combined with `called`, or `once` follows `not called` or `rejected` |
+| `E1101` | error | veld-compiler | `@visible` is wrong: a field that is not optional, a package without a principal, an expression that does not type, or a field an event reaches |
 | `E1201` | error | veld-compiler | A step or a `compensate` of a saga names a service that is not consumed, an endpoint that does not exist or cannot be called (a stream or `ws`), or arguments that do not fit |
 | `E1202` | error | veld-compiler | The endpoint of a step or of a `compensate` is not `@idempotent` |
 | `E1203` | error | veld-compiler | A saga is not well formed: two steps with one name, a step called like a parameter, an expression that reads a later step, a last step whose type is not the success type, a missing or wrong `timeout`, a saga without a step, or a statement of an endpoint block in it |
@@ -133,6 +134,7 @@ never reused. The ranges are listed in `language.md` section 9.
 | `W1001` | warning | veld-compiler | A published channel that nobody in the workspace subscribes to |
 | `W1002` | warning | veld-compiler | An event of a published channel that no subscription handles |
 | `W1003` | warning | veld-compiler | A channel has `@retry` and no `@deadLetter` |
+| `W1101` | warning | veld-compiler | An endpoint returns a field with `@visible` and has no caller of the principal type: the field is never sent there |
 | `W1201` | warning | veld-compiler | A step of a saga that is not the last has no `compensate`: once it has run, the saga cannot be undone past it |
 | `W1301` | warning | veld-compiler | A message catalog has a key that no rule of the member has |
 | `W1302` | warning | veld-compiler | A message catalog lacks the message of a rule of the member |

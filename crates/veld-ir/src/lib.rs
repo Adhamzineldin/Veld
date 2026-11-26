@@ -872,6 +872,11 @@ pub struct Field {
     /// `@secret` (`spec/rules.md` section 19.3): the value must never be shown. Omitted when false.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub secret: bool,
+    /// `@visible(when: e)` (`spec/platform.md` section 2): the field is sent to a caller only
+    /// when `e` is true for that caller. Omitted from the JSON when absent, so the IR of a
+    /// contract without the annotation is unchanged. Not part of any signature.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub visible: Option<Expr>,
     pub inherited_from: Option<DeclId>,
     pub constraints: Constraints,
     pub example: Option<Literal>,
@@ -999,6 +1004,9 @@ fn field_features(fld: &Field, f: &mut BTreeSet<Feature>) {
     fld.ty.features(f);
     if fld.derived.is_some() {
         f.insert(Feature::RulesDerived);
+    }
+    if fld.visible.is_some() {
+        f.insert(Feature::Visibility);
     }
     if !fld.constraints.is_empty() {
         f.insert(Feature::Constraints);
@@ -1455,6 +1463,10 @@ pub enum Feature {
     /// A server with `@retain` models (`spec/platform.md` section 23). Opt-in, and only a server
     /// is concerned: a client generates nothing for it.
     Retention,
+    /// `@visible(when: e)` on a field (`spec/platform.md` section 2). Opt-in: a generator that
+    /// does not declare it would send a field that must be hidden. Clients generate nothing for
+    /// it, so the gate does not ask them.
+    Visibility,
 }
 
 impl Feature {
@@ -1467,7 +1479,7 @@ impl Feature {
     ];
     /// Features no generator supports unless it says so: [`Feature::ALL`] minus these is what
     /// `all_except` hands out. A feature that changes what a rule means must be opted into.
-    pub const OPT_IN: [Feature; 12] = [
+    pub const OPT_IN: [Feature; 13] = [
         Feature::RulesRollout,
         Feature::RulesVersion,
         Feature::Idempotency,
@@ -1480,8 +1492,9 @@ impl Feature {
         Feature::Slo,
         Feature::Messages,
         Feature::Retention,
+        Feature::Visibility,
     ];
-    pub const ALL: [Feature; 27] = [
+    pub const ALL: [Feature; 28] = [
         Feature::Unions,
         Feature::Constraints,
         Feature::Auth,
@@ -1509,6 +1522,7 @@ impl Feature {
         Feature::Slo,
         Feature::Messages,
         Feature::Retention,
+        Feature::Visibility,
     ];
     #[must_use]
     pub fn name(self) -> &'static str {
@@ -1540,6 +1554,7 @@ impl Feature {
             Feature::Slo => "slo",
             Feature::Messages => "messages",
             Feature::Retention => "retention",
+            Feature::Visibility => "visibility",
         }
     }
     #[must_use]
@@ -1585,6 +1600,8 @@ mod tests {
 mod derived_tests;
 #[cfg(test)]
 mod events_tests;
+#[cfg(test)]
+mod platform_p1_tests;
 
 #[cfg(test)]
 mod delivery_tests;

@@ -151,6 +151,7 @@ pub(super) fn scope_field(
         version: false,
         pii: false,
         secret: false,
+        visible: false,
         inherited_from: None,
         constraints,
         example: None,
@@ -318,6 +319,7 @@ impl BlockChecker<'_, '_, '_> {
                 in_old: false,
                 lenient,
                 principal: self.principal.clone(),
+                fields_in_scope: false,
             }),
         };
         f(&mut c)

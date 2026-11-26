@@ -41,6 +41,8 @@ mod delivery_tests;
 mod endpoint_tests;
 
 #[cfg(test)]
+mod platform_p1_tests;
+#[cfg(test)]
 mod platform_tests;
 #[cfg(test)]
 mod policy_tests;

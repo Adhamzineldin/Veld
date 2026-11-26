@@ -24,6 +24,7 @@ mod tests;
 mod transition;
 mod types;
 mod version;
+mod visible;
 
 use std::collections::BTreeSet;
 
@@ -44,6 +45,8 @@ pub(crate) use transition::RTransition;
 use veld_ir::Rollout;
 use veld_ir::rules::Expr;
 pub(crate) use version::{RVersion, guard as version_guard};
+pub(crate) use visible::RVisible;
+pub(super) use visible::{check as check_visible, check_endpoints as check_visible_endpoints};
 
 /// A checked rule of one declaration.
 #[derive(Debug, Clone)]

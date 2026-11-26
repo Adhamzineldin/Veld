@@ -777,6 +777,7 @@ fn wire_names_come_from_the_fields() {
         derived_id: None,
         pii: false,
         secret: false,
+        visible: None,
         constraints: veld_ir::Constraints::default(),
         docs: None,
         deprecated: None,

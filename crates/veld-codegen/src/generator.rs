@@ -305,6 +305,11 @@ pub fn checked_features(ir: &Ir, req: &GenRequest<'_>) -> std::collections::BTre
     // Retention is a server's own: the models of the services it serves, not of those it only
     // calls, and nothing for a client (`spec/platform.md` section 23).
     used.remove(&Feature::Retention);
+    // Visibility is enforced by a server only: a client has nothing to hide (`spec/platform.md`
+    // section 1), so it is not asked.
+    if req.role == Role::Client {
+        used.remove(&Feature::Visibility);
+    }
     if req.role == Role::Server && !ir.retention_plan(&req.services).is_empty() {
         used.insert(Feature::Retention);
     }
@@ -361,6 +366,7 @@ fn first_use(
                 | Feature::EventsDelivery
                 | Feature::Messages
                 | Feature::Retention
+                | Feature::Visibility
                 | Feature::RulesRollout
                 | Feature::RulesDerived
                 | Feature::RulesInvariants => false,
@@ -426,6 +432,9 @@ fn first_use(
             ids.extend(ir.fact_decls(services));
         }
         return first_derived_origin(ir, &ids);
+    }
+    if feature == Feature::Visibility {
+        return first_visible_origin(ir, &searched(ir, services, req));
     }
     if feature == Feature::RulesTransitions {
         return first_machine_origin(ir, &searched(ir, services, req));
@@ -494,6 +503,18 @@ fn first_machine_origin(ir: &Ir, decls: &[DeclId]) -> Option<Origin> {
         .map(|id| ir.decl(id))
         .find(|d| matches!(&d.kind, DeclKind::Enum(e) if e.is_state_machine()))
         .map(|d| d.origin.clone())
+}
+
+/// The origin of the first field with `@visible` (`spec/platform.md` section 2) of the
+/// declarations, in source order.
+fn first_visible_origin(ir: &Ir, decls: &[DeclId]) -> Option<Origin> {
+    decls
+        .iter()
+        .flat_map(|id| ir.decl(*id).fields().iter())
+        .filter(|f| f.visible.is_some())
+        .map(|f| &f.origin)
+        .min_by_key(|o| (o.file.as_str(), o.line, o.col))
+        .cloned()
 }
 
 /// The origin of the first derived field (`spec/rules.md` section 17.2) of the declarations, in

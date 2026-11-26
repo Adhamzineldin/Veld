@@ -451,6 +451,11 @@ pub const CODES: &[CodeInfo] = &[
         "An event example that is not well formed: the channel cannot be chosen, an `expect` names no handler of that channel, `rejected` is combined with `called`, or `once` follows `not called` or `rejected`",
     ),
     e(
+        "E1101",
+        C,
+        "`@visible` is wrong: a field that is not optional, a package without a principal, an expression that does not type, or a field an event reaches",
+    ),
+    e(
         "E1201",
         C,
         "A step or a `compensate` of a saga names a service that is not consumed, an endpoint that does not exist or cannot be called (a stream or `ws`), or arguments that do not fit",
@@ -516,6 +521,11 @@ pub const CODES: &[CodeInfo] = &[
         "An event of a published channel that no subscription handles",
     ),
     w("W1003", C, "A channel has `@retry` and no `@deadLetter`"),
+    w(
+        "W1101",
+        C,
+        "An endpoint returns a field with `@visible` and has no caller of the principal type: the field is never sent there",
+    ),
     w(
         "W1201",
         C,

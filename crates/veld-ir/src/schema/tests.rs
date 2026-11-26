@@ -249,6 +249,7 @@ fn field(name: &str, ty: Type, lit: Literal) -> Field {
         derived_id: Some("veld:p/m.B.f@0".into()),
         pii: true,
         secret: true,
+        visible: Some(int_lit(1)),
         inherited_from: Some(DeclId(0)),
         constraints: Constraints {
             min: Some(0.0),

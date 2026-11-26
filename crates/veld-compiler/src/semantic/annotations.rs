@@ -43,6 +43,9 @@ pub struct Anns<'a> {
     pub slo: Option<super::service_levels::SloArgs>,
     /// `@retain` on a model (`spec/platform.md` section 23).
     pub retain: Option<RetainAnn>,
+    /// `@visible(when: e)` on a field (`spec/platform.md` section 2): the expression, not yet
+    /// checked.
+    pub visible: Option<&'a crate::syntax::ast::Expr>,
 }
 
 /// What `@retain(days(30), since: f, then: anonymize)` says, before the field is looked up.
@@ -139,7 +142,7 @@ fn hidden_from(spec: &language::AnnotationSpec, target: Target) -> bool {
     // unknown annotation on a model or a service reads as it did before they existed.
     let own_target_only = matches!(
         spec.name,
-        "version" | "idempotent" | "timeout" | "slo" | "pii" | "secret" | "retain"
+        "version" | "idempotent" | "timeout" | "slo" | "pii" | "secret" | "retain" | "visible"
     );
     (!events_only(&target) && spec.targets.iter().all(events_only))
         || (!rules_only(&target) && spec.targets.iter().all(rules_only))
@@ -155,7 +158,7 @@ fn unknown(a: &Annotation, target: Target) -> Diagnostic {
     // misspelling of one of them is still answered with `did you mean`.
     let known: Vec<String> = visible
         .iter()
-        .filter(|s| !matches!(s.name, "pii" | "secret" | "retain"))
+        .filter(|s| !matches!(s.name, "pii" | "secret" | "retain" | "visible"))
         .map(|s| format!("@{}", s.name))
         .collect();
     Diagnostic::error(
@@ -222,6 +225,7 @@ fn apply<'a>(
     let args = a.args.as_deref().unwrap_or(&[]);
     match (spec.name, spec.args) {
         (_, ArgShape::None) => no_args(args, spec.name)?,
+        ("visible", _) => out.visible = Some(visible_arg(a)?),
         ("deprecated", _) => out.deprecated = Some(one_string(args)?),
         ("wire", _) => {
             let w = one_string(args)?;
@@ -290,6 +294,14 @@ fn apply<'a>(
         _ => {}
     }
     Ok(())
+}
+
+/// `@visible` takes `when: expression` and nothing else.
+fn visible_arg(a: &Annotation) -> Result<&crate::syntax::ast::Expr, String> {
+    match (&a.when, &a.args) {
+        (Some(e), None) => Ok(e),
+        (_, _) => Err("`@visible` takes one argument, `when: expression`".to_string()),
+    }
 }
 
 fn no_args(args: &[Arg], name: &str) -> Result<(), String> {

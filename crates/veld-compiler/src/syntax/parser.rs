@@ -25,6 +25,8 @@ mod flags_tests;
 #[cfg(test)]
 mod idempotency_tests;
 mod machine;
+#[cfg(test)]
+mod platform_p1_tests;
 mod policy;
 #[cfg(test)]
 mod policy_tests;
@@ -561,19 +563,37 @@ impl Parser<'_> {
         let at = self.advance().span;
         let name = self.expect_ident("an annotation name")?;
         let mut end = name.span;
+        let mut when = None;
         let args = if matches!(self.peek(), Tok::LParen) {
             self.advance();
-            let args = self.parse_args()?;
-            end = self.expect(&Tok::RParen, "`)` to close the annotation arguments")?;
-            Some(args)
+            if self.at_when_argument(&name) {
+                self.advance();
+                self.advance();
+                when = Some(self.parse_expr()?);
+                end = self.expect(&Tok::RParen, "`)` to close the annotation arguments")?;
+                None
+            } else {
+                let args = self.parse_args()?;
+                end = self.expect(&Tok::RParen, "`)` to close the annotation arguments")?;
+                Some(args)
+            }
         } else {
             None
         };
         Some(Annotation {
             name,
             args,
+            when,
             span: at.to(end),
         })
+    }
+
+    /// True after the `(` of `@visible` when `when:` follows: the argument is an expression
+    /// (`spec/platform.md` section 2). `when` stays an ordinary name everywhere else.
+    fn at_when_argument(&self, name: &Ident) -> bool {
+        name.name == "visible"
+            && matches!(self.peek(), Tok::Ident(w) if w == "when")
+            && matches!(self.tok_at(1), Tok::Colon)
     }
 
     fn parse_args(&mut self) -> Option<Vec<Arg>> {

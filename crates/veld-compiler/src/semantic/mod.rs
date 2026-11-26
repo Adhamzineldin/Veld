@@ -51,6 +51,8 @@ mod timed_tests;
 mod typeck;
 #[cfg(test)]
 mod version_tests;
+#[cfg(test)]
+mod visible_tests;
 
 use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -135,6 +137,9 @@ pub struct RField {
     /// `@pii` and `@secret` (`spec/rules.md` section 19.3).
     pub pii: bool,
     pub secret: bool,
+    /// `@visible(when: e)` (`spec/platform.md` section 2). Its checked expression is in
+    /// [`Resolved::own_visible`] of the declaration that wrote it.
+    pub visible: bool,
     pub inherited_from: Option<usize>,
     pub constraints: Constraints,
     pub example: Option<Literal>,
@@ -193,6 +198,9 @@ pub struct Resolved {
     /// Checked expressions of the derived fields the declaration writes itself, by field name
     /// (`spec/rules.md` section 17.2).
     pub own_derived: BTreeMap<String, RDerived>,
+    /// Checked `@visible` expressions of the fields the declaration writes itself, by field name
+    /// (`spec/platform.md` section 2).
+    pub own_visible: BTreeMap<String, rules::RVisible>,
     /// `@retain` on a model (`spec/platform.md` section 23); checked after inheritance.
     pub retain: Option<annotations::RetainAnn>,
 }
@@ -370,7 +378,9 @@ pub fn analyze_lenient<'a>(
     events::check_channels(&mut prog, diags);
     rules::check(&mut prog, diags);
     rules::check_policies(&mut prog, diags);
+    rules::check_visible(&mut prog, diags);
     services::analyze(&mut prog, diags);
+    rules::check_visible_endpoints(&prog, diags);
     rules::check_sagas(&mut prog, consumes, diags);
     timed::check_unused_edges(&prog, diags);
     examples::check(&mut prog, diags);
