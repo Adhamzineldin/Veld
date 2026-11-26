@@ -664,6 +664,9 @@ public final class Router implements VeldHandler {
     // #if rules
     RuleWalk.checkItem(spec, hooks, wire);
     // #endif
+    // #if tenancy
+    Platform.tenantItem(hooks, spec, wire, Platform.current().ctx());
+    // #endif
     // #if visibility
     wire = Platform.shown(spec.success(), wire, Platform.current().ctx());
     // #endif
@@ -844,6 +847,13 @@ public final class Router implements VeldHandler {
     VeldResponse unmet = EndpointRules.ensureFailure(spec, hooks, wire, std);
     if (unmet != null) {
       return unmet;
+    }
+    // #endif
+    // #if tenancy
+    VeldResponse foreign =
+        Platform.tenantFailure(hooks, spec, spec.success(), wire, "result", Platform.current().ctx(), std);
+    if (foreign != null) {
+      return foreign;
     }
     // #endif
     if (hooks.validateResponses()) {

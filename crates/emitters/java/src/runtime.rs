@@ -313,6 +313,8 @@ pub struct Flags {
     pub limits: bool,
     /// A declaration of the tree has a `@tenant` field (a client's request may lack it).
     pub tenant_fields: bool,
+    /// A server publishes an event with a `@tenant` field: `veldtenant`. Needs `tenancy` and `events`.
+    pub tenant_events: bool,
 }
 
 impl Flags {
@@ -415,6 +417,12 @@ pub fn emit_with(
         "marks_rules" => flags.marks() && flags.rules,
         "marks_derived" => flags.marks() && flags.derived,
         "visibility" => flags.visibility,
+        "tenancy" => flags.tenancy,
+        "tenant_events" => flags.tenant_events,
+        "not_tenant_events" => !flags.tenant_events,
+        "tenant_fields" => flags.tenant_fields,
+        "not_tenant_fields" => !flags.tenant_fields,
+        "platform_facts" => flags.tenancy || flags.audit,
         "platform_conditional" => flags.platform() && flags.conditional,
         "testing_platform" => flags.testing && flags.platform(),
         "fin_flags" => flags.flags && !flags.platform(),

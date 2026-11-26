@@ -173,6 +173,33 @@ public final class EndpointRules {
       throw new Early(Router.problem(error.sig(), error.title(), 404, spec.sig(), error.dataWire()));
     }
 
+    // #if platform_facts
+    /**
+     * A fact the application loaded, with its defaults applied and its derived fields computed, before
+     * any policy: a tenant-scoped value of another tenant anywhere in it makes the fact not found
+     * ({@code 404 NotFound} naming it, or absent for an optional one), never {@code 403}
+     * (spec/platform.md section 3); what is kept is recorded for the audit event of the request.
+     */
+    public <T> T kept(RequestContext ctx, String name, Schema schema, Codec<T> codec, T value, boolean optional) {
+      if (value == null) {
+        return null;
+      }
+      Json wire = codec.encode(value);
+      // #endif
+      // #if tenancy
+      if (!Platform.foreign(schema, wire, Platform.callerTenant(hooks, ctx), name).isEmpty()) {
+        if (optional) {
+          return null;
+        }
+        VeldError error = notFound.apply(name);
+        throw new Early(Router.problem(error.sig(), error.title(), 404, spec.sig(), error.dataWire()));
+      }
+      // #endif
+      // #if platform_facts
+      return value;
+    }
+
+    // #endif
     /**
      * One {@code require}. A failure ends the request: with {@code otherwise}, the declared error
      * it builds (only now), else {@code 422 ValidationError}; both carry the one violation.

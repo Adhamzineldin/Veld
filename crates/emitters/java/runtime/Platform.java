@@ -189,6 +189,11 @@ public final class Platform {
     // #if visibility
     Show show;
     // #endif
+    // #if tenancy
+    String tenantWire;
+    String tenantRule;
+    TenantKind tenantKind;
+    // #endif
     // #if marks
 
     private Marks() {}
@@ -203,6 +208,22 @@ public final class Platform {
     /** The fields of this record that the caller may not see (spec/platform.md section 2). */
     public Marks show(Show value) {
       this.show = value;
+      return this;
+    }
+    // #endif
+    // #if tenancy
+
+    /**
+     * This record is tenant-scoped (spec/platform.md section 3).
+     *
+     * @param wire the wire name of its {@code @tenant} field
+     * @param rule the id of the tenant rule ({@code Field.tenant_id}), what {@code onRuleViolation} hears
+     * @param kind the type of the field
+     */
+    public Marks tenant(String wire, String rule, TenantKind kind) {
+      this.tenantWire = wire;
+      this.tenantRule = rule;
+      this.tenantKind = kind;
       return this;
     }
     // #endif
@@ -453,12 +474,209 @@ public final class Platform {
     return path.isEmpty() ? name : path + "." + name;
   }
 
-  private static IllegalStateException shape(String path, String expected) {
-    return new IllegalStateException("visibility: the value at `" + (path.isEmpty() ? "$" : path) + "` is not " + expected);
-  }
   // #endif
 
+  // #if tenancy
+
+  // -- tenancy ---------------------------------------------------------------------------------
+
+  /** The type of a {@code @tenant} field: how two values of it are compared and written. */
+  public enum TenantKind {
+    /** A {@code uuid}: compared in any case. */
+    UUID,
+    /** A {@code string}: compared as it is. */
+    STRING,
+    /** An {@code int}: a JSON number. */
+    INT,
+    /** A {@code long}: a decimal string, compared by its number. */
+    LONG
+  }
+
+  private static final Map<Schema, Boolean> TENANTS = Collections.synchronizedMap(new IdentityHashMap<>());
+
+  /** Whether a value of {@code schema} can hold a tenant-scoped value. */
+  static boolean reachesTenant(Schema schema) {
+    Boolean known = TENANTS.get(schema);
+    if (known == null) {
+      known = search(schema, new IdentityHashMap<>(), s -> s.marks != null && s.marks.tenantWire != null);
+      TENANTS.put(schema, known);
+    }
+    return known;
+  }
+
+  /**
+   * The tenant of the caller of this request: the {@code @tenant} member of its principal. {@code
+   * null} when the service has no principal, the caller is not a value of it, or it has no tenant: a
+   * caller without a tenant owns nothing.
+   */
+  static Json callerTenant(HandlerHooks hooks, RequestContext ctx) {
+    Principal principal = hooks.principal();
+    if (principal == null || principal.tenant == null) {
+      return null;
+    }
+    Json wire = principal.wireOf(ctx.principal());
+    Json tenant = wire instanceof Json.Obj obj ? obj.get(principal.tenant) : null;
+    return tenant == null || tenant instanceof Json.Null ? null : tenant;
+  }
+
+  /** Whether the tenant {@code have} of a value is the caller's tenant {@code caller}, as values of {@code kind}. */
+  static boolean sameTenant(TenantKind kind, Json have, Json caller) {
+    try {
+      switch (kind) {
+        case UUID:
+          return have instanceof Json.Str a
+              && caller instanceof Json.Str b
+              && java.util.UUID.fromString(a.value()).equals(java.util.UUID.fromString(b.value()));
+        case STRING:
+          return have instanceof Json.Str a && caller instanceof Json.Str b && a.value().equals(b.value());
+        default:
+          return number(have).compareTo(number(caller)) == 0;
+      }
+    } catch (IllegalArgumentException | ArithmeticException err) {
+      return false;
+    }
+  }
+
+  private static java.math.BigDecimal number(Json v) {
+    if (v instanceof Json.Str s) {
+      return new java.math.BigDecimal(s.value());
+    }
+    if (v instanceof Json.Num n) {
+      return java.math.BigDecimal.valueOf(n.value());
+    }
+    throw new IllegalArgumentException("not a number");
+  }
+
+  /**
+   * The text of a tenant (the envelope attribute {@code veldtenant}, the key of a limit): a {@code
+   * string} as it is, a {@code uuid} in lower case, an {@code int} or a {@code long} in decimal
+   * digits (a {@code long} is already the text of its digits on the wire).
+   */
+  static String tenantText(TenantKind kind, Json value) {
+    return switch (kind) {
+      case UUID -> ((Json.Str) value).value().toLowerCase(java.util.Locale.ROOT);
+      case STRING -> ((Json.Str) value).value();
+      case LONG -> value instanceof Json.Str text ? text.value() : number(value).toBigInteger().toString();
+      case INT -> number(value).toBigInteger().toString();
+    };
+  }
+
+  /**
+   * Every tenant-scoped value of {@code wire}, a value of {@code schema}, that is not the caller's
+   * ({@code caller} is the caller's tenant, or {@code null}), in the order of the walk. Each is a
+   * violation of the rule of its model's {@code @tenant} field; its path starts at {@code root}
+   * ({@code result}, {@code error}, {@code item}) and goes on as the paths of violations do:
+   * {@code result[1]}, {@code result.items[0].guest}.
+   */
+  static List<Violation> foreign(Schema schema, Json wire, Json caller, String root) {
+    List<Violation> found = new ArrayList<>();
+    if (reachesTenant(schema)) {
+      foreignWalk(schema, wire, caller, root, "", found);
+    }
+    return found;
+  }
+
+  private static void foreignWalk(Schema schema, Json v, Json caller, String root, String path, List<Violation> out) {
+    if (v == null || v instanceof Json.Null) {
+      return;
+    }
+    Schema s = schema.resolve();
+    switch (s.kind) {
+      case LIST -> {
+        if (!(v instanceof Json.Arr arr)) {
+          throw shape(path, "an array");
+        }
+        for (int i = 0; i < arr.items().size(); i++) {
+          foreignWalk(s.of, arr.items().get(i), caller, root, path + "[" + i + "]", out);
+        }
+      }
+      case MAP -> {
+        if (!(v instanceof Json.Obj obj)) {
+          throw shape(path, "an object");
+        }
+        for (Map.Entry<String, Json> e : obj.fields().entrySet()) {
+          foreignWalk(s.of, e.getValue(), caller, root, path + "." + e.getKey(), out);
+        }
+      }
+      case PAGE -> {
+        if (!(v instanceof Json.Obj obj)) {
+          throw shape(path, "an object");
+        }
+        if (obj.get("items") != null) {
+          foreignWalk(Schema.list(s.of), obj.get("items"), caller, root, path + ".items", out);
+        }
+      }
+      case UNION -> {
+        Json label = v instanceof Json.Obj obj ? obj.get(s.discriminator) : null;
+        Schema arm = label instanceof Json.Str str ? s.armFor(str.value()) : null;
+        if (arm == null) {
+          throw shape(path, "a value that names an arm of the union");
+        }
+        foreignWalk(arm, v, caller, root, path, out);
+      }
+      case OBJECT -> {
+        if (!(v instanceof Json.Obj obj)) {
+          throw shape(path, "an object");
+        }
+        if (s.marks != null && s.marks.tenantWire != null) {
+          Json have = obj.get(s.marks.tenantWire);
+          boolean mine = have != null
+              && !(have instanceof Json.Null)
+              && caller != null
+              && sameTenant(s.marks.tenantKind, have, caller);
+          if (!mine) {
+            out.add(new Violation(
+                s.marks.tenantRule, root + path, List.of(s.marks.tenantWire), "violates rule tenant", null));
+          }
+        }
+        for (Schema.Field f : s.fields) {
+          if (obj.get(f.wire()) != null) {
+            foreignWalk(f.type(), obj.get(f.wire()), caller, root, path + "." + f.wire(), out);
+          }
+        }
+      }
+      default -> {
+      }
+    }
+  }
+
+  /**
+   * The tenant check of a value that is about to be sent (a result, a declared error's data): the
+   * {@code 500 Internal} with no detail when it holds a value of another tenant, after one {@code
+   * onRuleViolation} event for each; {@code null} when it is all the caller's. No output mode turns
+   * it off.
+   */
+  static VeldResponse tenantFailure(
+      HandlerHooks hooks, EndpointSpec spec, Schema schema, Json wire, String root, RequestContext ctx, Router.StdSigs std) {
+    if (schema == null || !reachesTenant(schema)) {
+      return null;
+    }
+    List<Violation> found = foreign(schema, wire, callerTenant(hooks, ctx), root);
+    if (found.isEmpty()) {
+      return null;
+    }
+    RuleWalk.report(hooks, spec, RuleWalk.Position.OUTPUT, RuleWalk.Outcome.REJECTED, found, System.nanoTime());
+    return Router.problem(std.internal(), "Internal", 500, spec.sig(), Json.object().build());
+  }
+
+  /**
+   * The tenant check of an item of a stream: a value of another tenant ends the stream as any server
+   * failure does, after its events.
+   */
+  static void tenantItem(HandlerHooks hooks, EndpointSpec spec, Json wire, RequestContext ctx) {
+    List<Violation> found = foreign(spec.success(), wire, callerTenant(hooks, ctx), "item");
+    if (!found.isEmpty()) {
+      RuleWalk.report(hooks, spec, RuleWalk.Position.OUTPUT, RuleWalk.Outcome.REJECTED, found, System.nanoTime());
+      throw new RuleWalk.Rejected();
+    }
+  }
+  // #endif
   // #if shapes
+
+  private static IllegalStateException shape(String path, String expected) {
+    return new IllegalStateException(
+        "the value at `" + (path.isEmpty() ? "$" : path) + "` is not " + expected + " as its type says");
+  }
 
   // -- a declared error ------------------------------------------------------------------------
 
@@ -484,17 +702,24 @@ public final class Platform {
     }
     Json data = body.get("data");
     RequestContext ctx = state.ctx();
+    boolean changed = false;
+    // #endif
+    // #if tenancy
+    VeldResponse foreign = tenantFailure(hooks, spec, declared.schema(), data, "error", ctx, std);
+    if (foreign != null) {
+      return foreign;
+    }
     // #endif
     // #if visibility
     List<String> dropped = new ArrayList<>();
     data = showInto(declared.schema(), data, ctx, dropped);
-    if (dropped.isEmpty()) {
-      return response;
+    if (!dropped.isEmpty()) {
+      state.hide(dropped);
+      changed = true;
     }
-    state.hide(dropped);
     // #endif
     // #if shapes
-    return new VeldResponse(response.status(), response.headers(), body.with("data", data).write());
+    return changed ? new VeldResponse(response.status(), response.headers(), body.with("data", data).write()) : response;
   }
 
   private static EndpointSpec.Declared declaredOf(EndpointSpec spec, Json type) {
@@ -523,6 +748,11 @@ public final class Platform {
     // #endif
     // #if visibility
     if (reachesShow(schema)) {
+      return true;
+    }
+    // #endif
+    // #if tenancy
+    if (reachesTenant(schema)) {
       return true;
     }
     // #endif

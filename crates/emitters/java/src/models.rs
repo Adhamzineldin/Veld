@@ -202,8 +202,10 @@ fn write_object_schema(
             (true, true) => ");".to_string(),
             (true, false) => format!("){checked};"),
         };
+        // A `@tenant` field is set by the server: a request may lack it (`spec/platform.md` section 3).
+        let tenant = if f.tenant { ", true" } else { "" };
         w.line(format!(
-            "{schema}.field({}, {}, {ty}, {}, {default}, {}){sep}",
+            "{schema}.field({}, {}, {ty}, {}, {default}, {}{tenant}){sep}",
             java_str(&f.name),
             java_str(&f.wire),
             f.optional || f.derived.is_some(),

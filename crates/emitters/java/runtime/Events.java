@@ -138,8 +138,23 @@ public final class Events {
    * @param subject the key text, or {@code null} when the message has none
    * @param time the time the publisher wrote, as text, or {@code null}
    * @param attempt the delivery attempt, 1 for the first
+   // #if tenant_events
+   * @param veldtenant the tenant text of the event ({@code veldtenant}, spec/platform.md section 3), or
+   *     {@code null}: a consumer reads it and does not check it
+   // #endif
    */
+  // #if not_tenant_events
   public record EventMeta(String id, String source, String type, String subject, String time, int attempt) {}
+  // #endif
+  // #if tenant_events
+  public record EventMeta(
+      String id, String source, String type, String subject, String time, int attempt, String veldtenant) {
+    /** Meta of an event without a tenant. */
+    public EventMeta(String id, String source, String type, String subject, String time, int attempt) {
+      this(id, source, type, subject, time, attempt, null);
+    }
+  }
+  // #endif
 
   /**
    * What a publisher call returns: the message it sent, without the data.
@@ -634,6 +649,15 @@ public final class Events {
     if (def.digest() != null) {
       envelope.put("veldrules", Json.of(def.digest()));
     }
+    // #if tenant_events
+    Schema root = def.schema().resolve();
+    if (root.marks != null
+        && root.marks.tenantWire != null
+        && wire instanceof Json.Obj member
+        && member.get(root.marks.tenantWire) != null) {
+      envelope.put("veldtenant", Json.of(Platform.tenantText(root.marks.tenantKind, member.get(root.marks.tenantWire))));
+    }
+    // #endif
     // #if not_outbox
     ctx.transport()
         .publish(
@@ -754,8 +778,21 @@ public final class Events {
 
   // -- consuming (section 8) ------------------------------------------------------------------
 
+  // #if not_tenant_events
   private record Envelope(
       String id, String source, String type, String subject, String time, String veldrules, Json.Obj data) {}
+  // #endif
+  // #if tenant_events
+  private record Envelope(
+      String id,
+      String source,
+      String type,
+      String subject,
+      String time,
+      String veldrules,
+      Json.Obj data,
+      String veldtenant) {}
+  // #endif
 
   /** Step 1: the envelope, or the reason it is malformed. */
   private record Parsed(Envelope envelope, String problem) {}
@@ -817,7 +854,13 @@ public final class Events {
             text(o, "subject"),
             text(o, "time"),
             text(o, "veldrules"),
+            // #if not_tenant_events
             data),
+            // #endif
+            // #if tenant_events
+            data,
+            text(o, "veldtenant")),
+            // #endif
         null);
   }
 
@@ -1054,9 +1097,22 @@ public final class Events {
       RetryPolicy retry = sub.retry();
       int allowed = retry == null ? 1 : retry.max() + 1;
       for (int run = 1; ; run++) {
+        // #if not_tenant_events
         EventMeta meta =
             new EventMeta(
                 env.id(), env.source(), env.type(), env.subject(), env.time(), message.attempt() + run - 1);
+        // #endif
+        // #if tenant_events
+        EventMeta meta =
+            new EventMeta(
+                env.id(),
+                env.source(),
+                env.type(),
+                env.subject(),
+                env.time(),
+                message.attempt() + run - 1,
+                env.veldtenant());
+        // #endif
         try {
           runOnce(binding, typed, env, meta);
           return Transport.Outcome.DONE;

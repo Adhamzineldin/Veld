@@ -308,6 +308,18 @@ fn write_fact(
     } else {
         loaded
     };
+    // A fact of another tenant is not found, and an audited request keeps what it loaded
+    // (`spec/platform.md` sections 3 and 4): after the defaults and the derived fields, before any
+    // policy.
+    let loaded = if crate::platform::walks_fact(printer.file(), site.ep, fact) {
+        let (schema, codec) = value_codec(printer.file(), &fact.ty);
+        format!(
+            "run.kept(ctx, {name}, {schema}, {codec}, {loaded}, {})",
+            fact.optional
+        )
+    } else {
+        loaded
+    };
     w.line(format!("{ty} fact_{ident} = {loaded};"));
 }
 

@@ -277,7 +277,14 @@ impl Generator for Java {
             audit: p1.audit,
             limits_server: p1.limits,
             limits: false,
-            tenant_fields: false,
+            tenant_events: tree.events && p1.tenant_events,
+            // A declaration with a `@tenant` field, of the tree or of a consumed service: a request
+            // may lack it (`spec/platform.md` section 3).
+            tenant_fields: declares_tenant(&tree)
+                || (req.role == Role::Server
+                    && req.consumes.iter().any(|sid| {
+                        declares_tenant(&Tree::new(req.ir, &base, &runtime_package, vec![*sid]))
+                    })),
             derived,
             runtime_config: runtime_config.is_some(),
             endpoint,
@@ -466,6 +473,13 @@ fn declares_derived(tree: &Tree<'_>) -> bool {
     tree.decls()
         .iter()
         .any(|id| derived::has_derived(tree.ir.decl(*id)))
+}
+
+/// Whether a declaration the tree emits has a `@tenant` field (`spec/platform.md` section 3).
+fn declares_tenant(tree: &Tree<'_>) -> bool {
+    tree.decls()
+        .iter()
+        .any(|id| tree.ir.decl(*id).tenant_field().is_some())
 }
 
 /// Whether a declaration the tree emits has an audited invariant (`@rollout(audit)`), reachable from a

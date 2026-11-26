@@ -25,8 +25,23 @@ public final class Schema {
    * @param optional whether the field may be absent
    * @param defaultValue the default (wire form), or {@code null}
    * @param readonly whether the field is ignored in request bodies
+   // #if tenant_fields
+   * @param tenant whether the field is the {@code @tenant} field of its model: set by the server, a
+   *     request may lack it and keeps it as received (spec/platform.md section 3)
+   // #endif
    */
+  // #if not_tenant_fields
   public record Field(String name, String wire, Schema type, boolean optional, Json defaultValue, boolean readonly) {}
+  // #endif
+  // #if tenant_fields
+  public record Field(
+      String name, String wire, Schema type, boolean optional, Json defaultValue, boolean readonly, boolean tenant) {
+    /** A field that is not a {@code @tenant} field. */
+    public Field(String name, String wire, Schema type, boolean optional, Json defaultValue, boolean readonly) {
+      this(name, wire, type, optional, defaultValue, readonly, false);
+    }
+  }
+  // #endif
 
   /**
    * An arm of a union schema.
@@ -174,6 +189,14 @@ public final class Schema {
     return new Field(name, wire, type, optional, defaultValue, readonly);
   }
 
+  // #if tenant_fields
+  /** A field of an object schema that may be the {@code @tenant} field of its model. */
+  public static Field field(String name, String wire, Schema type, boolean optional, Json defaultValue,
+      boolean readonly, boolean tenant) {
+    return new Field(name, wire, type, optional, defaultValue, readonly, tenant);
+  }
+
+  // #endif
   /** An arm of a union schema. */
   public static Arm arm(String label, Supplier<Schema> schema) {
     return new Arm(label, schema);

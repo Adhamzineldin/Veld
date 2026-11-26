@@ -107,6 +107,15 @@ final class Canon {
   private static Json object(Schema s, Json.Obj obj, boolean longs) {
     Json.Obj out = obj;
     for (Schema.Field f : s.fields) {
+      // #if tenant_fields
+      if (longs && f.tenant()) {
+        // The fingerprint of a request leaves out the tenant: the server sets it (spec/platform.md section 3).
+        java.util.Map<String, Json> kept = new java.util.LinkedHashMap<>(out.fields());
+        kept.remove(f.wire());
+        out = new Json.Obj(kept);
+        continue;
+      }
+      // #endif
       Json x = out.get(f.wire());
       if (x != null) {
         out = out.with(f.wire(), scalars(f.type(), x, longs));

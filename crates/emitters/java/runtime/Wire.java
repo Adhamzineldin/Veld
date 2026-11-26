@@ -147,7 +147,12 @@ public final class Wire {
       Json x = obj.get(f.wire());
       String at = path + "." + f.wire();
       if (x == null) {
+        // #if not_tenant_fields
         if (!f.optional() && f.defaultValue() == null && !(request && f.readonly())) {
+          // #endif
+          // #if tenant_fields
+        if (!f.optional() && f.defaultValue() == null && !(request && (f.readonly() || f.tenant()))) {
+          // #endif
           push(out, at, "required", "is required");
         }
         continue;

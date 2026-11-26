@@ -118,7 +118,7 @@ fn path_reads_readonly(ir: &Ir, p: &PathRef, start: Option<DeclId>) -> bool {
         let Some(field) = ir.decl(id).fields().iter().find(|g| g.name == step.name) else {
             return false;
         };
-        if field.readonly {
+        if field.server_set() {
             return true;
         }
         at = element_decl(&field.ty);

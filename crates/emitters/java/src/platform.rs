@@ -5,7 +5,7 @@
 //! is the runtime's (`runtime/Platform.java` and the `// #if platform` regions of the router).
 
 use veld_codegen::{CodeWriter, GenDiagnostic, print_expr};
-use veld_ir::{Decl, Endpoint, Ir, Service, ServiceId, Type};
+use veld_ir::{Decl, Endpoint, EndpointFact, Ir, Scalar, Service, ServiceId, Type};
 
 use crate::rule_expr::JavaExpr;
 use crate::tree::FileCtx;
@@ -16,8 +16,11 @@ use crate::util::java_str;
 pub struct Uses {
     /// A response, a declared error or a stream item can reach a `@visible` field.
     pub visibility: bool,
-    /// A response, a declared error, a stream item or a fact can be tenant-scoped.
+    /// A response, a declared error, a stream item or a fact can be tenant-scoped, or an event
+    /// the server publishes has a `@tenant` field.
     pub tenancy: bool,
+    /// An event the server publishes has a `@tenant` field (`veldtenant`).
+    pub tenant_events: bool,
     /// An endpoint is `@audited`.
     pub audit: bool,
     /// An endpoint has a `@limit`.
@@ -43,6 +46,12 @@ pub fn uses(ir: &Ir, services: &[ServiceId]) -> Uses {
         out.audit |= one.audit;
         out.limits |= one.limits;
     }
+    let events = ir
+        .events_of(services)
+        .into_iter()
+        .any(|id| ir.decl(id).tenant_field().is_some());
+    out.tenant_events = events;
+    out.tenancy |= events;
     out
 }
 
@@ -73,6 +82,14 @@ fn answers_reach(ir: &Ir, ep: &Endpoint, reaches: impl Fn(&Ir, &Type) -> bool) -
         || ep.errors.iter().any(|e| reaches(ir, &Type::Decl(e.decl)))
 }
 
+/// Whether a fact is walked when it is loaded: the tenant check, or the audit trail of an audited
+/// endpoint.
+#[must_use]
+pub fn walks_fact(fc: &FileCtx<'_, '_>, ep: &Endpoint, fact: &EndpointFact) -> bool {
+    (fc.tree.platform.tenancy && fc.tree.ir.type_reaches_tenant(&fact.ty))
+        || (fc.tree.platform.audit && ep.audited)
+}
+
 /// Whether a declaration has a `@visible` field.
 fn has_visible(d: &Decl) -> bool {
     d.fields().iter().any(|f| f.visible.is_some())
@@ -86,6 +103,24 @@ pub fn schema_suffix(fc: &mut FileCtx<'_, '_>, d: &Decl, class: &str) -> String 
     let mut marks = String::new();
     if fc.tree.platform.visibility && has_visible(d) {
         marks.push_str(&format!(".show({class}::showWire)"));
+    }
+    if fc.tree.platform.tenancy
+        && let Some(field) = d.tenant_field()
+    {
+        let platform = fc.rt("Platform");
+        let kind = match &field.ty {
+            Type::Scalar(Scalar::Uuid) => "UUID",
+            Type::Scalar(Scalar::String) => "STRING",
+            Type::Scalar(Scalar::Int) => "INT",
+            Type::Scalar(_) | Type::List(_) | Type::Map(_) | Type::Page(_) | Type::Decl(_) => {
+                "LONG"
+            }
+        };
+        marks.push_str(&format!(
+            ".tenant({}, {}, {platform}.TenantKind.{kind})",
+            java_str(&field.wire),
+            java_str(field.tenant_id.as_deref().unwrap_or_default())
+        ));
     }
     if marks.is_empty() {
         return String::new();
