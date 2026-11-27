@@ -25,25 +25,23 @@ service Hello at "/hello" {
 }
 "#;
 
-const TOML: &str = r#"[project]
+const TOML: &str = r#"[service]
 name = "demo"
 
-[[targets]]
+[server]
 name = "api"
-role = "server"
 emitter = "java"
 out = "gen/server"
 
-[targets.options]
+[server.options]
 package = "com.example.hello"
 
-[[targets]]
+[client]
 name = "sdk"
-role = "client"
 emitter = "java"
 out = "gen/client"
 
-[targets.options]
+[client.options]
 package = "com.example.hello.client"
 "#;
 
@@ -164,8 +162,8 @@ fn spring_framework_adds_the_spring_adapter() {
     let tmp = tempdir().unwrap();
     project(tmp.path());
     let toml = TOML.replacen(
-        "role = \"server\"\n",
-        "role = \"server\"\nframework = \"spring\"\n",
+        "emitter = \"java\"\n",
+        "emitter = \"java\"\nframework = \"spring\"\n",
         1,
     );
     write(tmp.path(), "veld.toml", &toml);

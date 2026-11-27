@@ -25,8 +25,23 @@ public final class Schema {
    * @param optional whether the field may be absent
    * @param defaultValue the default (wire form), or {@code null}
    * @param readonly whether the field is ignored in request bodies
+   // #if tenant_fields
+   * @param tenant whether the field is the {@code @tenant} field of its model: set by the server, a
+   *     request may lack it and keeps it as received (spec/platform.md section 3)
+   // #endif
    */
+  // #if not_tenant_fields
   public record Field(String name, String wire, Schema type, boolean optional, Json defaultValue, boolean readonly) {}
+  // #endif
+  // #if tenant_fields
+  public record Field(
+      String name, String wire, Schema type, boolean optional, Json defaultValue, boolean readonly, boolean tenant) {
+    /** A field that is not a {@code @tenant} field. */
+    public Field(String name, String wire, Schema type, boolean optional, Json defaultValue, boolean readonly) {
+      this(name, wire, type, optional, defaultValue, readonly, false);
+    }
+  }
+  // #endif
 
   /**
    * An arm of a union schema.
@@ -49,6 +64,9 @@ public final class Schema {
   final List<Arm> arms;
   final Supplier<Schema> target;
   final Bounds bounds;
+  // #if rules
+  Rules.Check check;
+  // #endif
 
   private Schema(Kind kind, Schema of, List<String> values, List<Field> fields, String discriminator,
       List<Arm> arms, Supplier<Schema> target, Bounds bounds) {
@@ -171,6 +189,14 @@ public final class Schema {
     return new Field(name, wire, type, optional, defaultValue, readonly);
   }
 
+  // #if tenant_fields
+  /** A field of an object schema that may be the {@code @tenant} field of its model. */
+  public static Field field(String name, String wire, Schema type, boolean optional, Json defaultValue,
+      boolean readonly, boolean tenant) {
+    return new Field(name, wire, type, optional, defaultValue, readonly, tenant);
+  }
+
+  // #endif
   /** An arm of a union schema. */
   public static Arm arm(String label, Supplier<Schema> schema) {
     return new Arm(label, schema);
@@ -206,6 +232,61 @@ public final class Schema {
     return withBounds(new Bounds(bounds.min(), bounds.max(), bounds.minLen(), bounds.maxLen(), bounds.pattern(), name));
   }
 
+  // #if rules
+  /** A copy of this object schema that runs {@code check} for every object it describes. */
+  public Schema checked(Rules.Check check) {
+    Schema copy = withBounds(bounds);
+    copy.check = check;
+    return copy;
+  }
+
+  // #endif
+  // #if derived
+  /** The derived fields of this object schema, or {@code null}. */
+  Derive.Compute derive;
+
+  /** The wire names of the derived fields of this object schema. */
+  List<String> derivedWires = List.of();
+
+  /**
+   * A copy of this object schema whose derived fields (spec/rules.md section 17.2) are
+   * {@code wires}: nobody supplies them, they are not validated, and {@code compute} computes them.
+   */
+  public Schema derived(Derive.Compute compute, String... wires) {
+    Schema copy = withBounds(bounds);
+    copy.check = check;
+    copy.derive = compute;
+    copy.derivedWires = List.of(wires);
+    return copy;
+  }
+
+  /** Whether the member {@code wire} of this object is a derived field. */
+  boolean derives(String wire) {
+    return derivedWires.contains(wire);
+  }
+
+  // #endif
+  // #if marks
+  /** The platform marks of this object schema (spec/platform.md sections 2 and 3), or {@code null}. */
+  Platform.Marks marks;
+
+  /** A copy of this object schema with the platform marks of its declaration. */
+  public Schema marked(Platform.Marks value) {
+    Schema copy = withBounds(bounds);
+    // #endif
+    // #if marks_rules
+    copy.check = check;
+    // #endif
+    // #if marks_derived
+    copy.derive = derive;
+    copy.derivedWires = derivedWires;
+    // #endif
+    // #if marks
+    copy.marks = value;
+    return copy;
+  }
+
+  // #endif
   /** Follows references until a concrete node is reached. */
   Schema resolve() {
     Schema cur = this;

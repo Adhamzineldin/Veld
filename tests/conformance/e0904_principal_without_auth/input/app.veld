@@ -1,0 +1,21 @@
+// The principal exists only where the endpoint's auth is not `none`: here `user` is read on an
+// `@auth(none)` endpoint and on one that has no `@auth` at all.
+
+model User { id: uuid, banned: bool }
+principal User
+
+service Public at "/public" {
+  @auth(none)
+  get "/a" a() -> User {
+    require not user.banned
+  }
+
+  get "/b" b() -> User {
+    require not user.banned
+  }
+
+  @auth(bearer)
+  get "/c" c() -> User {
+    require not user.banned
+  }
+}

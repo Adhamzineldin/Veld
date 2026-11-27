@@ -25,6 +25,69 @@
     "options",
     "ws"
   ],
+  "rule_words": [
+    "rule",
+    "message",
+    "implies",
+    "not",
+    "in",
+    "has",
+    "fact",
+    "require",
+    "else",
+    "ensure",
+    "old",
+    "now",
+    "result",
+    "flow",
+    "final",
+    "emits",
+    "transition",
+    "after",
+    "since",
+    "flag",
+    "off",
+    "policy",
+    "permit",
+    "forbid",
+    "when",
+    "allow",
+    "principal",
+    "example",
+    "given",
+    "expect",
+    "absent",
+    "returns",
+    "ok",
+    "ifMatch",
+    "any",
+    "stored",
+    "other",
+    "running"
+  ],
+  "event_words": [
+    "event",
+    "channel",
+    "carries",
+    "key",
+    "publishes",
+    "subscribes",
+    "on",
+    "called",
+    "rejected",
+    "once",
+    "emitted"
+  ],
+  "saga_words": [
+    "saga",
+    "step",
+    "compensate",
+    "timeout",
+    "undo",
+    "unavailable",
+    "compensated",
+    "stuck"
+  ],
   "scalars": [
     "string",
     "int",
@@ -73,7 +136,10 @@
         "const",
         "endpoint",
         "field",
-        "variant"
+        "variant",
+        "rule",
+        "event",
+        "channel"
       ],
       "args": "one_string",
       "usage": "@deprecated(\"message\")"
@@ -171,7 +237,141 @@
       ],
       "args": "one_string",
       "usage": "@header(\"Name\")"
+    },
+    {
+      "name": "topic",
+      "targets": [
+        "channel"
+      ],
+      "args": "one_string",
+      "usage": "@topic(\"name\")"
+    },
+    {
+      "name": "retry",
+      "targets": [
+        "channel"
+      ],
+      "args": "retry",
+      "usage": "@retry(max: 5, backoff: exponential)"
+    },
+    {
+      "name": "deadLetter",
+      "targets": [
+        "channel"
+      ],
+      "args": "none",
+      "usage": "@deadLetter"
+    },
+    {
+      "name": "ordered",
+      "targets": [
+        "channel"
+      ],
+      "args": "none",
+      "usage": "@ordered"
+    },
+    {
+      "name": "rollout",
+      "targets": [
+        "rule",
+        "require",
+        "ensure"
+      ],
+      "args": "rollout",
+      "usage": "@rollout(audit)"
+    },
+    {
+      "name": "version",
+      "targets": [
+        "field"
+      ],
+      "args": "none",
+      "usage": "@version"
+    },
+    {
+      "name": "idempotent",
+      "targets": [
+        "endpoint"
+      ],
+      "args": "idempotent",
+      "usage": "@idempotent(header: \"Idempotency-Key\", required: true)"
+    },
+    {
+      "name": "timeout",
+      "targets": [
+        "service",
+        "endpoint"
+      ],
+      "args": "timeout",
+      "usage": "@timeout(seconds(2))"
+    },
+    {
+      "name": "slo",
+      "targets": [
+        "service",
+        "endpoint"
+      ],
+      "args": "slo",
+      "usage": "@slo(p99: ms(300), errors: 0.1)"
+    },
+    {
+      "name": "pii",
+      "targets": [
+        "field"
+      ],
+      "args": "none",
+      "usage": "@pii"
+    },
+    {
+      "name": "secret",
+      "targets": [
+        "field"
+      ],
+      "args": "none",
+      "usage": "@secret"
+    },
+    {
+      "name": "retain",
+      "targets": [
+        "model"
+      ],
+      "args": "retain",
+      "usage": "@retain(days(30), since: checkedOutAt, then: delete | anonymize)"
+    },
+    {
+      "name": "visible",
+      "targets": [
+        "field"
+      ],
+      "args": "visible",
+      "usage": "@visible(when: user.id == ownerId)"
+    },
+    {
+      "name": "tenant",
+      "targets": [
+        "field"
+      ],
+      "args": "none",
+      "usage": "@tenant"
+    },
+    {
+      "name": "audited",
+      "targets": [
+        "service",
+        "endpoint"
+      ],
+      "args": "none",
+      "usage": "@audited"
+    },
+    {
+      "name": "limit",
+      "targets": [
+        "service",
+        "endpoint"
+      ],
+      "args": "limit",
+      "usage": "@limit(10, per: minute, by: user)"
     }
   ],
-  "prelude": "error BadRequest 400      { message: string }\nerror Unauthorized 401    { message?: string }\nerror Forbidden 403       { message?: string }\nerror NotFound 404        { resource?: string }\nerror Conflict 409        { message: string }\nerror ValidationError 422 { issues: ValidationIssue[] }\nerror TooManyRequests 429 { retryAfter?: int }\nerror Internal 500        { message?: string }\nmodel ValidationIssue     { path: string, code: string, message: string }\n"
+  "prelude": "error BadRequest 400      { message: string }\nerror Unauthorized 401    { message?: string }\nerror Forbidden 403       { message?: string }\nerror NotFound 404        { resource?: string }\nerror Conflict 409        { message: string }\nerror ValidationError 422 { issues: ValidationIssue[] }\nerror TooManyRequests 429 { retryAfter?: int }\nerror Internal 500        { message?: string }\nmodel ValidationIssue     { path: string, code: string, message: string }\nerror InvalidTransition 409 { field: string, from: string, to: string }\nerror PreconditionFailed 412 { expected: long, actual: long }\nerror SagaFailed 502 { step: string, compensated: bool }\nerror DeadlineExceeded 504 { timeoutMs: long }\n"
 }

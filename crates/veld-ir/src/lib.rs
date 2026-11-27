@@ -8,10 +8,34 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::fmt;
 
+pub mod endpoint_rules;
+pub mod flags;
+pub use flags::FlagUsage;
+pub mod exposure;
+pub mod message_keys;
+pub mod retention;
+pub mod rules;
+pub mod saga;
 pub mod schema;
 pub mod suggest;
 
-pub const IR_VERSION: &str = "1.0";
+pub use endpoint_rules::{
+    ElseError, ElseField, EndpointAllow, EndpointEnsure, EndpointFact, EndpointRequire,
+    EndpointRules, EndpointTransition, EndpointVersion, EventExpect, Example, ExampleArg,
+    ExampleErrorOutcome, ExampleEvent, ExampleField, ExampleGiven, ExampleIfMatch, ExampleKey,
+    ExampleOutcome, ExampleRef, ExampleValue, ExpectedCall, KeyStore, Policy, PolicyClause,
+    PolicyEffect, PolicyParam, ServiceFact, ServicePrincipal,
+};
+pub use rules::{
+    Always, BinExpr, Builtin, CallExpr, EnumLit, Expr, ExprKind, ExprLit, ExprType, Op, PathRef,
+    QuantExpr, Quantifier, Rollout, Root, Rule, Step,
+};
+pub use saga::{
+    ExampleSaga, Saga, SagaAnswer, SagaArg, SagaCall, SagaExpect, SagaField, SagaGiven, SagaStep,
+    SagaValue,
+};
+
+pub const IR_VERSION: &str = "1.1";
 
 macro_rules! id_type {
     ($name:ident) => {
@@ -31,6 +55,8 @@ macro_rules! id_type {
 id_type!(PackageId);
 id_type!(DeclId);
 id_type!(ServiceId);
+id_type!(PolicyId);
+id_type!(ChannelId);
 
 /// A whole compiled workspace.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -41,12 +67,32 @@ pub struct Ir {
     pub services: Vec<Service>,
     /// service name -> consumed service names (sorted). May contain cycles.
     pub consumes: std::collections::BTreeMap<String, Vec<String>>,
+    /// Examples of the workspace (`spec/rules.md` section 12). Omitted from the JSON when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub examples: Vec<Example>,
+    /// Policies of the workspace, sorted by qualified name (`spec/rules.md` section 11.5).
+    /// Omitted from the JSON when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub policies: Vec<Policy>,
+    /// Channels of the workspace, sorted by qualified name (`spec/events.md` section 13).
+    /// Omitted from the JSON when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub channels: Vec<Channel>,
 }
 
 impl Ir {
     #[must_use]
+    pub fn channel(&self, id: ChannelId) -> &Channel {
+        &self.channels[id.index()]
+    }
+
+    #[must_use]
     pub fn decl(&self, id: DeclId) -> &Decl {
         &self.decls[id.index()]
+    }
+    #[must_use]
+    pub fn policy(&self, id: PolicyId) -> &Policy {
+        &self.policies[id.index()]
     }
     #[must_use]
     pub fn service(&self, id: ServiceId) -> &Service {
@@ -78,7 +124,6 @@ impl Ir {
     /// errors and field types, transitively.
     #[must_use]
     pub fn reachable_decls(&self, services: &[ServiceId]) -> Vec<DeclId> {
-        let mut seen = BTreeSet::new();
         let mut stack = Vec::new();
         for sid in services {
             for ep in &self.service(*sid).endpoints {
@@ -93,6 +138,12 @@ impl Ir {
                 }
             }
         }
+        self.close_over(stack)
+    }
+
+    /// Every declaration reachable from `stack`, itself included, sorted by id.
+    fn close_over(&self, mut stack: Vec<DeclId>) -> Vec<DeclId> {
+        let mut seen = BTreeSet::new();
         while let Some(id) = stack.pop() {
             if !seen.insert(id) {
                 continue;
@@ -102,6 +153,111 @@ impl Ir {
         seen.into_iter().collect()
     }
 
+    /// The channels the given services publish to or subscribe to, in id order, once each.
+    #[must_use]
+    pub fn event_channels(&self, services: &[ServiceId]) -> Vec<ChannelId> {
+        let all: BTreeSet<ChannelId> = services
+            .iter()
+            .flat_map(|s| self.service(*s).channels_used())
+            .collect();
+        all.into_iter().collect()
+    }
+
+    /// The events of the given services: every event carried by a channel one of them publishes
+    /// to or subscribes to (not only the ones a subscription handles), sorted by id, once each.
+    #[must_use]
+    pub fn events_of(&self, services: &[ServiceId]) -> Vec<DeclId> {
+        let all: BTreeSet<DeclId> = self
+            .event_channels(services)
+            .into_iter()
+            .flat_map(|c| self.channel(c).events.iter().copied())
+            .collect();
+        all.into_iter().collect()
+    }
+
+    /// The declarations the events of [`Ir::events_of`] reach through field types, parents and
+    /// union arms, to any depth, sorted by id. The events themselves are not in the list.
+    #[must_use]
+    pub fn event_reachable_decls(&self, services: &[ServiceId]) -> Vec<DeclId> {
+        let events = self.events_of(services);
+        let mut stack = Vec::new();
+        for id in &events {
+            self.decl(*id).collect_refs(&mut stack);
+        }
+        let mut reached = self.close_over(stack);
+        reached.retain(|id| !events.contains(id));
+        reached
+    }
+
+    /// The declarations that exist only because of events: reached by an event of the services
+    /// and by no endpoint of them. Sorted by id.
+    #[must_use]
+    pub fn event_only_decls(&self, services: &[ServiceId]) -> Vec<DeclId> {
+        let by_endpoints: BTreeSet<DeclId> = self.reachable_decls(services).into_iter().collect();
+        let mut only = self.event_reachable_decls(services);
+        only.retain(|id| !by_endpoints.contains(id));
+        only
+    }
+
+    /// Where the first audited invariant of the events of the services stands, in source order:
+    /// a rule of an event or of a declaration an event reaches. `None` when there is none.
+    #[must_use]
+    pub fn first_event_audited_origin(&self, services: &[ServiceId]) -> Option<&Origin> {
+        let mut ids = self.events_of(services);
+        ids.extend(self.event_reachable_decls(services));
+        ids.into_iter()
+            .flat_map(|id| self.decl(id).rules().iter())
+            .filter(|r| r.is_audited())
+            .map(|r| &r.origin)
+            .min_by_key(|o| (o.file.as_str(), o.line, o.col))
+    }
+
+    /// The features only the events of the services use: `events` when one of them publishes or
+    /// subscribes, and, for the events of their channels and everything those reach, what the
+    /// declarations use: unions, constraints, `bytes`, pages, invariants and audited invariants
+    /// (`spec/rules.md` section 17.1). A client generates nothing for events and keeps only
+    /// `events` from these (`check_capabilities`).
+    #[must_use]
+    pub fn event_features(&self, services: &[ServiceId]) -> BTreeSet<Feature> {
+        let mut f = BTreeSet::new();
+        if services.iter().any(|s| self.service(*s).uses_events()) {
+            f.insert(Feature::Events);
+        }
+        if services
+            .iter()
+            .any(|s| self.first_delivery_origin(*s).is_some())
+        {
+            f.insert(Feature::EventsDelivery);
+        }
+        if services
+            .iter()
+            .any(|s| self.service(*s).first_emitting_transition().is_some())
+        {
+            f.insert(Feature::EventsOutbox);
+        }
+        let mut ids = self.events_of(services);
+        ids.extend(self.event_reachable_decls(services));
+        for id in ids {
+            self.decl_features(id, &mut f);
+        }
+        f
+    }
+
+    /// The origin of the first channel with `@retry`, `@deadLetter` or `@ordered` that the
+    /// service publishes to or subscribes to: its `publishes` lines first, in source order, then
+    /// its subscriptions. This is where the gate of `events_delivery` points.
+    #[must_use]
+    pub fn first_delivery_origin(&self, service: ServiceId) -> Option<&Origin> {
+        let s = self.service(service);
+        let published = s.publishes.iter().map(|p| p.channel);
+        let subscribed = s.subscriptions.iter().map(|x| x.channel);
+        published
+            .chain(subscribed)
+            .map(|c| self.channel(c))
+            .find(|c| c.has_delivery_options())
+            .map(|c| &c.origin)
+    }
+
     /// Every declaration of the workspace that is not in the prelude and is
     /// reachable from anything (used for library-only generation).
     #[must_use]
@@ -109,39 +265,225 @@ impl Ir {
         (0..self.decls.len() as u32).map(DeclId).collect()
     }
 
-    /// Features a set of services (and everything they reach) uses.
+    /// Features a set of services (and everything they reach) uses: [`Ir::http_features_used`]
+    /// and [`Ir::event_features`].
     #[must_use]
     pub fn features_used(&self, services: &[ServiceId]) -> BTreeSet<Feature> {
-        let mut f = BTreeSet::new();
-        let decls = self.reachable_decls(services);
-        for id in &decls {
-            let d = self.decl(*id);
-            match &d.kind {
-                DeclKind::Union(_) => {
-                    f.insert(Feature::Unions);
-                }
-                DeclKind::Model(m) | DeclKind::Error(ErrorDecl { fields: m, .. }) => {
-                    for fld in &m.fields {
-                        fld.ty.features(&mut f);
-                        if !fld.constraints.is_empty() {
-                            f.insert(Feature::Constraints);
-                        }
-                    }
-                }
-                DeclKind::Const(_) => {
-                    f.insert(Feature::Consts);
-                }
-                DeclKind::Enum(_) => {}
+        let mut f = self.http_features_used(services);
+        f.extend(self.event_features(services));
+        f
+    }
+
+    /// The features one declaration uses: its kind, its rules and the types and constraints of
+    /// its fields.
+    fn decl_features(&self, id: DeclId, f: &mut BTreeSet<Feature>) {
+        let d = self.decl(id);
+        match &d.kind {
+            DeclKind::Union(_) => {
+                f.insert(Feature::Unions);
             }
+            DeclKind::Event(e) => {
+                rule_features(&e.rules, f);
+                for fld in &e.fields {
+                    field_features(fld, f);
+                }
+            }
+            DeclKind::Model(m) | DeclKind::Error(ErrorDecl { fields: m, .. }) => {
+                rule_features(&m.rules, f);
+                for fld in &m.fields {
+                    field_features(fld, f);
+                }
+            }
+            DeclKind::Const(_) => {
+                f.insert(Feature::Consts);
+            }
+            DeclKind::Enum(e) => {
+                if e.is_state_machine() {
+                    f.insert(Feature::RulesTransitions);
+                }
+                if e.has_timed_edge() {
+                    f.insert(Feature::RulesTimed);
+                }
+                if e.flows.iter().any(|fl| fl.flag.is_some()) {
+                    f.insert(Feature::RulesFlags);
+                }
+            }
+        }
+    }
+
+    /// The version field of the model an endpoint answers with: the field whose value is the
+    /// `ETag` of a success response (`spec/rules.md` section 11.7). `None` when the success is no
+    /// stream and no model with a `@version` field.
+    #[must_use]
+    pub fn etag_field(&self, ep: &Endpoint) -> Option<&Field> {
+        if ep.success.stream {
+            return None;
+        }
+        let Some(Type::Decl(id)) = &ep.success.ty else {
+            return None;
+        };
+        match &self.decls.get(id.index())?.kind {
+            DeclKind::Model(m) => m.fields.iter().find(|f| f.version),
+            DeclKind::Error(_)
+            | DeclKind::Event(_)
+            | DeclKind::Enum(_)
+            | DeclKind::Union(_)
+            | DeclKind::Const(_) => None,
+        }
+    }
+
+    /// True when a derived field is on the type of a fact or on the principal of one of the
+    /// services, or on anything those reach: a value the application loads is given its derived
+    /// fields too (`spec/rules.md` section 17.2), though no endpoint reaches it.
+    fn facts_have_derived(&self, services: &[ServiceId]) -> bool {
+        self.fact_decls(services)
+            .into_iter()
+            .any(|id| self.decl(id).has_derived())
+    }
+
+    /// True when a value of the type has a derived field: on the declaration of the type or on
+    /// any declaration it reaches through field types, parents and union arms.
+    #[must_use]
+    pub fn type_reaches_derived(&self, ty: &Type) -> bool {
+        let mut stack = Vec::new();
+        ty.collect_decls(&mut stack);
+        self.close_over(stack)
+            .into_iter()
+            .any(|id| self.decl(id).has_derived())
+    }
+
+    /// True when a value of the type can hold a tenant-scoped value: the declaration of the type
+    /// or any declaration it reaches has a `@tenant` field (`spec/platform.md` section 3).
+    #[must_use]
+    pub fn type_reaches_tenant(&self, ty: &Type) -> bool {
+        let mut stack = Vec::new();
+        ty.collect_decls(&mut stack);
+        self.close_over(stack)
+            .into_iter()
+            .any(|id| self.decl(id).tenant_field().is_some())
+    }
+
+    /// The types of the facts of the services and everything those reach, sorted by id: what
+    /// the application's loaders hand the server. The principal is not among them.
+    #[must_use]
+    pub fn fact_type_decls(&self, services: &[ServiceId]) -> Vec<DeclId> {
+        let mut stack = Vec::new();
+        for sid in services {
+            for fact in &self.service(*sid).facts {
+                fact.ty.collect_decls(&mut stack);
+            }
+        }
+        self.close_over(stack)
+    }
+
+    /// True when a fact of one of the services can be tenant-scoped.
+    fn facts_have_tenant(&self, services: &[ServiceId]) -> bool {
+        self.fact_type_decls(services)
+            .into_iter()
+            .any(|id| self.decl(id).tenant_field().is_some())
+    }
+
+    /// True when a value of the type can have a `@visible` field: on the declaration of the
+    /// type or on any declaration it reaches (`spec/platform.md` section 2).
+    #[must_use]
+    pub fn type_reaches_visible(&self, ty: &Type) -> bool {
+        let mut stack = Vec::new();
+        ty.collect_decls(&mut stack);
+        self.close_over(stack)
+            .into_iter()
+            .any(|id| self.decl(id).fields().iter().any(|f| f.visible.is_some()))
+    }
+
+    /// The types of the facts and the principal of the services and everything those reach,
+    /// sorted by id. No endpoint reaches them (`reachable_decls` leaves them out), but the
+    /// application hands the server values of them.
+    #[must_use]
+    pub fn fact_decls(&self, services: &[ServiceId]) -> Vec<DeclId> {
+        let mut stack = Vec::new();
+        for sid in services {
+            let s = self.service(*sid);
+            for fact in &s.facts {
+                fact.ty.collect_decls(&mut stack);
+            }
+            stack.extend(s.principal.iter().map(|p| p.decl));
+        }
+        self.close_over(stack)
+    }
+
+    /// True when a `require`, an `ensure` or a clause of a policy that an `allow` of `ep` names
+    /// carries a flag (`spec/platform.md` section 11).
+    #[must_use]
+    pub fn endpoint_uses_flags(&self, ep: &Endpoint) -> bool {
+        ep.rules.first_flag_origin(self).is_some()
+    }
+
+    /// Features of the endpoints of the services and the declarations they reach, without what
+    /// only events use. A server that merely calls a service (`consumes`) uses these.
+    #[must_use]
+    pub fn http_features_used(&self, services: &[ServiceId]) -> BTreeSet<Feature> {
+        let mut f = BTreeSet::new();
+        for id in self.reachable_decls(services) {
+            self.decl_features(id, &mut f);
+        }
+        if self.facts_have_derived(services) {
+            f.insert(Feature::RulesDerived);
+        }
+        if self.facts_have_tenant(services) {
+            f.insert(Feature::Tenancy);
         }
         for sid in services {
             let s = self.service(*sid);
+            if !self.package(s.package).messages.is_empty() {
+                f.insert(Feature::Messages);
+            }
+            if !self.retention_plan(&[*sid]).is_empty() {
+                f.insert(Feature::Retention);
+            }
             for ep in &s.endpoints {
                 if ep.auth.kind != AuthKind::None {
                     f.insert(Feature::Auth);
                 }
                 if !ep.middleware.is_empty() {
                     f.insert(Feature::Middleware);
+                }
+                if ep.rules.has_statements() {
+                    f.insert(Feature::RulesEndpoint);
+                }
+                if ep.rules.version.is_some() || self.etag_field(ep).is_some() {
+                    f.insert(Feature::RulesVersion);
+                }
+                if ep.idempotency.is_some() {
+                    f.insert(Feature::Idempotency);
+                }
+                if ep.saga.is_some() {
+                    f.insert(Feature::Sagas);
+                }
+                if ep.timeout_ms.is_some() {
+                    f.insert(Feature::Timeouts);
+                }
+                if ep.slo.is_some() {
+                    f.insert(Feature::Slo);
+                }
+                if ep.audited {
+                    f.insert(Feature::Audit);
+                }
+                if ep.limit.is_some() {
+                    f.insert(Feature::Limits);
+                }
+                if ep.rules.transition.is_some() {
+                    f.insert(Feature::RulesTransitions);
+                }
+                if ep.rules.transition.as_ref().is_some_and(|t| t.is_timed()) {
+                    f.insert(Feature::RulesTimed);
+                }
+                if ep.rules.first_policy_origin().is_some() {
+                    f.insert(Feature::RulesPolicies);
+                }
+                if ep.rules.first_audited_origin().is_some() {
+                    f.insert(Feature::RulesRollout);
+                }
+                if self.endpoint_uses_flags(ep) {
+                    f.insert(Feature::RulesFlags);
                 }
                 for p in &ep.params {
                     p.ty.features(&mut f);
@@ -182,6 +524,29 @@ pub struct Package {
     pub id: PackageId,
     pub name: String,
     pub kind: PackageKind,
+    /// The message catalogs of the member (`spec/platform.md` section 22): language tag, then
+    /// message key, then text. Sorted. Omitted from the JSON when the member has none.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub messages: std::collections::BTreeMap<String, std::collections::BTreeMap<String, String>>,
+    /// The directory of the catalogs, relative to the member (`messages`), so that a diagnostic can
+    /// name a catalog file. Omitted when there is no catalog.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub messages_dir: Option<String>,
+}
+
+impl Package {
+    /// The place of the first catalog file (`<messages_dir>/<tag>.toml`), the origin that
+    /// `E0801` names when a generator cannot use catalogs. `None` without a catalog.
+    #[must_use]
+    pub fn first_catalog_origin(&self) -> Option<Origin> {
+        let tag = self.messages.keys().next()?;
+        let dir = self.messages_dir.as_deref().unwrap_or("messages");
+        Some(Origin {
+            file: format!("{dir}/{tag}.toml"),
+            line: 1,
+            col: 1,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -234,20 +599,79 @@ impl Decl {
                     f.ty.collect_decls(out);
                 }
             }
+            DeclKind::Event(e) => {
+                for f in &e.fields {
+                    f.ty.collect_decls(out);
+                }
+            }
             DeclKind::Union(u) => out.extend(u.arms.iter().map(|a| a.decl)),
             DeclKind::Const(c) => c.ty.collect_decls(out),
             DeclKind::Enum(_) => {}
         }
     }
 
-    /// Fields for models and errors; empty for anything else.
+    /// Rules for models, errors and events; empty for anything else.
+    #[must_use]
+    pub fn rules(&self) -> &[Rule] {
+        match &self.kind {
+            DeclKind::Model(m) => &m.rules,
+            DeclKind::Error(e) => &e.fields.rules,
+            DeclKind::Event(e) => &e.rules,
+            DeclKind::Enum(_) | DeclKind::Union(_) | DeclKind::Const(_) => &[],
+        }
+    }
+
+    /// Fields for models, errors and events; empty for anything else.
     #[must_use]
     pub fn fields(&self) -> &[Field] {
         match &self.kind {
             DeclKind::Model(m) => &m.fields,
             DeclKind::Error(e) => &e.fields.fields,
+            DeclKind::Event(e) => &e.fields,
             DeclKind::Enum(_) | DeclKind::Union(_) | DeclKind::Const(_) => &[],
         }
+    }
+
+    /// The derived fields of the declaration in the order their values are computed
+    /// (`spec/rules.md` section 17.2): a field after every derived field it reads, and in
+    /// declaration order among fields that do not depend on each other. Inherited fields come
+    /// first, as they do in [`Decl::fields`]. A cycle (the compiler refuses it, `E0960`) does
+    /// not loop: what is left comes last, in declaration order.
+    #[must_use]
+    pub fn derived_fields(&self) -> Vec<&Field> {
+        let mut left: Vec<&Field> = self
+            .fields()
+            .iter()
+            .filter(|f| f.derived.is_some())
+            .collect();
+        let mut out: Vec<&Field> = Vec::with_capacity(left.len());
+        while !left.is_empty() {
+            let ready = left.iter().position(|f| {
+                f.derived_reads()
+                    .iter()
+                    .all(|r| !left.iter().any(|o| o.name == *r && !std::ptr::eq(*o, *f)))
+            });
+            out.push(left.remove(ready.unwrap_or(0)));
+        }
+        out
+    }
+
+    /// The `@tenant` field of the declaration, its own or inherited: a declaration that has one is
+    /// tenant-scoped (`spec/platform.md` section 3).
+    #[must_use]
+    pub fn tenant_field(&self) -> Option<&Field> {
+        self.fields().iter().find(|f| f.tenant)
+    }
+
+    /// True when a field of the declaration is derived.
+    #[must_use]
+    pub fn has_derived(&self) -> bool {
+        self.fields().iter().any(|f| f.derived.is_some())
+    }
+
+    #[must_use]
+    pub fn is_event(&self) -> bool {
+        matches!(self.kind, DeclKind::Event(_))
     }
 
     #[must_use]
@@ -264,6 +688,115 @@ pub enum DeclKind {
     Enum(Enum),
     Union(Union),
     Const(Const),
+    /// An event (`spec/events.md` section 3).
+    Event(Event),
+}
+
+/// An event declaration: a record with event identity.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Event {
+    pub fields: Vec<Field>,
+    /// Invariants. Omitted from the JSON when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rules: Vec<Rule>,
+    /// The rules digest of the event (`spec/events.md` section 6.1). Omitted when it has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rules_digest: Option<String>,
+}
+
+/// A channel: one logical stream of events (`spec/events.md` section 4).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Channel {
+    pub name: String,
+    pub package: PackageId,
+    pub module: String,
+    pub qualified: String,
+    pub topic: String,
+    /// The carried events, in `carries` order.
+    pub events: Vec<DeclId>,
+    pub key: Option<ChannelKey>,
+    pub docs: Option<String>,
+    pub deprecated: Option<String>,
+    /// `@retry(max: n, backoff: ..)` (`spec/events.md` section 10.2). Omitted when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry: Option<Retry>,
+    /// `@deadLetter`. Omitted when false.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub dead_letter: bool,
+    /// `@ordered`. Omitted when false.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub ordered: bool,
+    pub origin: Origin,
+}
+
+impl Channel {
+    /// True when the channel has one of the three annotations of `spec/events.md` section 10.2:
+    /// a service that publishes or subscribes to it uses the feature `events_delivery`.
+    #[must_use]
+    pub fn has_delivery_options(&self) -> bool {
+        self.retry.is_some() || self.dead_letter || self.ordered
+    }
+}
+
+/// `@retry(max: n, backoff: fixed | exponential)`: how often a consumer handles a message again
+/// after its handler failed (`spec/events.md` section 10.4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Retry {
+    /// 0 to 100.
+    pub max: u32,
+    pub backoff: Backoff,
+}
+
+/// The wait between two runs of a handler.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Backoff {
+    Fixed,
+    Exponential,
+}
+
+impl Backoff {
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        match self {
+            Backoff::Fixed => "fixed",
+            Backoff::Exponential => "exponential",
+        }
+    }
+}
+
+/// The `key` of a channel: the field that orders the stream.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ChannelKey {
+    pub name: String,
+    pub wire: String,
+    #[serde(rename = "type")]
+    pub ty: Type,
+}
+
+/// One channel of a `publishes` line, with the position of its name.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Publication {
+    pub channel: ChannelId,
+    pub origin: Origin,
+}
+
+/// `subscribes C as "group" { on E -> handler }`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Subscription {
+    pub channel: ChannelId,
+    pub group: String,
+    pub handlers: Vec<Handler>,
+    pub origin: Origin,
+}
+
+/// One `on E -> name` line.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Handler {
+    pub event: DeclId,
+    pub name: String,
+    pub docs: Option<String>,
+    pub origin: Origin,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -271,6 +804,13 @@ pub struct Model {
     pub parent: Option<DeclId>,
     /// Own and inherited fields; inherited (parent-first) come first.
     pub fields: Vec<Field>,
+    /// Invariants, inherited first. Omitted from the JSON when empty, so the IR of a contract
+    /// without rules is unchanged (`spec/rules.md` section 13).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rules: Vec<Rule>,
+    /// `@retain` (`spec/platform.md` section 23). Omitted from the JSON when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retain: Option<retention::Retain>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -283,6 +823,65 @@ pub struct ErrorDecl {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Enum {
     pub variants: Vec<Variant>,
+    /// The edges of a state machine, in first-declaration order, without duplicates
+    /// (`spec/rules.md` section 10.4). Omitted from the JSON when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub flows: Vec<Flow>,
+    /// The final states, as variant names in declaration order. Omitted from the JSON when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub finals: Vec<String>,
+}
+
+impl Enum {
+    /// An enum without a state machine.
+    #[must_use]
+    pub fn plain(variants: Vec<Variant>) -> Self {
+        Enum {
+            variants,
+            flows: Vec::new(),
+            finals: Vec::new(),
+        }
+    }
+
+    /// True when the enum declares at least one flow.
+    #[must_use]
+    pub fn is_state_machine(&self) -> bool {
+        !self.flows.is_empty()
+    }
+
+    /// True when at least one edge is timed (`spec/platform.md` section 10).
+    #[must_use]
+    pub fn has_timed_edge(&self) -> bool {
+        self.flows.iter().any(Flow::is_timed)
+    }
+}
+
+/// One edge of a state machine, by variant names.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Flow {
+    pub from: String,
+    pub to: String,
+    /// `flow a -> b after d` (`spec/platform.md` section 10): the milliseconds a value must have
+    /// been in `from` before it may move, a decimal string so it stays exact. Omitted from the
+    /// JSON when the edge is not timed, so the IR of a contract without `after` is unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub after_ms: Option<String>,
+    /// `flow a -> b when flag("name")` (`spec/platform.md` section 11): the edge exists only
+    /// while the flag is on. Omitted from the JSON when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flag: Option<String>,
+    /// The event the move emits (`spec/events.md` section 11). It is not part of any id: the id
+    /// of a transition names the guard. Omitted from the JSON when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub emits: Option<DeclId>,
+}
+
+impl Flow {
+    /// True for a timed edge.
+    #[must_use]
+    pub fn is_timed(&self) -> bool {
+        self.after_ms.is_some()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -321,6 +920,45 @@ pub struct Field {
     pub optional: bool,
     pub default: Option<Literal>,
     pub readonly: bool,
+    /// `@version` (`spec/rules.md` section 11.7): the version of the model. Omitted from the JSON
+    /// when false, so the IR of a contract without the annotation is unchanged.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub version: bool,
+    /// The expression of a derived field (`spec/rules.md` section 17.2): `total: decimal =
+    /// subtotal - discount`. Omitted from the JSON when the field is not derived, so the IR of a
+    /// contract without derived fields is the same bytes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub derived: Option<Expr>,
+    /// The identity of a derived field (`spec/rules.md` sections 6 and 17.2), set exactly when
+    /// `derived` is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub derived_id: Option<String>,
+    /// `@pii` (`spec/rules.md` section 19.3): the field holds personal data. Omitted from the
+    /// JSON when false, so the IR of a contract without the annotation is unchanged.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pii: bool,
+    /// `@secret` (`spec/rules.md` section 19.3): the value must never be shown. Omitted when false.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub secret: bool,
+    /// `@visible(when: e)` (`spec/platform.md` section 2): the field is sent to a caller only
+    /// when `e` is true for that caller. Omitted from the JSON when absent, so the IR of a
+    /// contract without the annotation is unchanged. Not part of any signature.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub visible: Option<Expr>,
+    /// The principal model `visible` was checked against (`spec/platform.md` section 2): the
+    /// caller it reads is a value of this model. Present exactly when `visible` is. A server
+    /// whose principal is another model has no caller of that type, and hides the field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub visible_principal: Option<DeclId>,
+    /// `@tenant` (`spec/platform.md` section 3): the field holds the tenant of the value and is
+    /// set by the server, never by the caller. Omitted from the JSON when false.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub tenant: bool,
+    /// The identity of a `@tenant` field, `veld:<package>/<Model>.tenant@<hex16>`: the rule that
+    /// `onRuleViolation` is told when a value of another tenant is refused. Set exactly when
+    /// `tenant` is. An inherited field has the id of the model that wrote it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tenant_id: Option<String>,
     pub inherited_from: Option<DeclId>,
     pub constraints: Constraints,
     pub example: Option<Literal>,
@@ -430,6 +1068,55 @@ impl Type {
     }
 }
 
+/// The features the invariants of a declaration use.
+fn rule_features(rules: &[Rule], f: &mut BTreeSet<Feature>) {
+    if !rules.is_empty() {
+        f.insert(Feature::RulesInvariants);
+    }
+    if rules.iter().any(Rule::is_audited) {
+        f.insert(Feature::RulesRollout);
+    }
+    if rules.iter().any(|r| r.flag.is_some()) {
+        f.insert(Feature::RulesFlags);
+    }
+}
+
+/// The features the type and the constraints of a field use.
+fn field_features(fld: &Field, f: &mut BTreeSet<Feature>) {
+    fld.ty.features(f);
+    if fld.derived.is_some() {
+        f.insert(Feature::RulesDerived);
+    }
+    if fld.visible.is_some() {
+        f.insert(Feature::Visibility);
+    }
+    if fld.tenant {
+        f.insert(Feature::Tenancy);
+    }
+    if !fld.constraints.is_empty() {
+        f.insert(Feature::Constraints);
+    }
+}
+
+impl Field {
+    /// True when a request does not carry the field and may lack it: the server sets it. That is
+    /// a `@readonly` field and a `@tenant` field (`spec/platform.md` section 3).
+    #[must_use]
+    pub fn server_set(&self) -> bool {
+        self.readonly || self.tenant
+    }
+
+    /// Source names of the fields of the declaration that the derived expression reads, first
+    /// use first. Empty when the field is not derived.
+    #[must_use]
+    pub fn derived_reads(&self) -> Vec<String> {
+        self.derived
+            .as_ref()
+            .map(|e| e.self_reads())
+            .unwrap_or_default()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Constraints {
     pub min: Option<f64>,
@@ -498,7 +1185,67 @@ pub struct Service {
     pub auth: Auth,
     pub middleware: Vec<String>,
     pub endpoints: Vec<Endpoint>,
+    /// One loader method per fact name (`spec/rules.md` section 9.2), sorted by name.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub facts: Vec<ServiceFact>,
+    /// Digest of the invariants the service reaches (`spec/rules.md` section 9.7).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rules_digest: Option<String>,
+    /// The package's principal (`spec/rules.md` section 11.1).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub principal: Option<ServicePrincipal>,
+    /// Channels the service publishes to, in source order, each with the position of the channel
+    /// name in its `publishes` line (`spec/events.md` section 13). Omitted from the JSON when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub publishes: Vec<Publication>,
+    /// The service's subscriptions, in source order. Omitted from the JSON when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub subscriptions: Vec<Subscription>,
     pub origin: Origin,
+}
+
+impl Service {
+    /// True when the service publishes or subscribes (the feature `events`).
+    #[must_use]
+    pub fn uses_events(&self) -> bool {
+        !self.publishes.is_empty() || !self.subscriptions.is_empty()
+    }
+
+    /// Where the first `publishes` or `subscribes` line is, for diagnostics: the channel name of
+    /// the first `publishes` line when the service publishes, otherwise the first `subscribes`
+    /// line.
+    #[must_use]
+    pub fn first_event_origin(&self) -> Option<&Origin> {
+        match self.publishes.first() {
+            Some(p) => Some(&p.origin),
+            None => self.subscriptions.first().map(|s| &s.origin),
+        }
+    }
+
+    /// The transition of the first endpoint whose move emits an event, in source order
+    /// (`spec/events.md` section 11). This is where the gate of `events_outbox` points.
+    #[must_use]
+    pub fn first_emitting_transition(&self) -> Option<&endpoint_rules::EndpointTransition> {
+        self.endpoints
+            .iter()
+            .filter_map(|e| e.rules.transition.as_ref())
+            .find(|t| !t.emits.is_empty())
+    }
+
+    /// The channels the service publishes to, in source order.
+    pub fn published_channels(&self) -> impl Iterator<Item = ChannelId> + '_ {
+        self.publishes.iter().map(|p| p.channel)
+    }
+
+    /// Every channel the service publishes to or subscribes to, in id order, once each.
+    #[must_use]
+    pub fn channels_used(&self) -> Vec<ChannelId> {
+        let all: BTreeSet<ChannelId> = self
+            .published_channels()
+            .chain(self.subscriptions.iter().map(|s| s.channel))
+            .collect();
+        all.into_iter().collect()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -562,6 +1309,147 @@ pub struct Endpoint {
     pub params: Vec<Param>,
     pub success: Success,
     pub errors: Vec<ErrorResponse>,
+    /// The statements of the endpoint block. Omitted from the JSON when empty.
+    #[serde(default, skip_serializing_if = "EndpointRules::is_empty")]
+    pub rules: EndpointRules,
+    /// `@idempotent` (`spec/rules.md` section 11.8). Omitted from the JSON when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub idempotency: Option<Idempotency>,
+    /// The saga that implements the endpoint (`spec/platform.md` section 17). Omitted from the
+    /// JSON when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub saga: Option<Saga>,
+    /// `@timeout` (`spec/platform.md` section 12): the deadline of a request in milliseconds, a
+    /// decimal string so it stays exact. Omitted from the JSON when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeout_ms: Option<String>,
+    /// `@slo` (`spec/platform.md` section 13). Omitted from the JSON when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub slo: Option<Slo>,
+    /// `@audited` (`spec/platform.md` section 4): the server records one audit event for every
+    /// request that matched the endpoint. Omitted from the JSON when false.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub audited: bool,
+    /// `@limit` (`spec/platform.md` section 5), from the endpoint or its service. Omitted from
+    /// the JSON when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit: Option<Limit>,
+    pub origin: Origin,
+}
+
+/// The rate limit of an endpoint (`spec/platform.md` section 5): `@limit(10, per: minute, by: user)`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Limit {
+    /// How many calls one key may make in one window: 1 or more.
+    pub count: u32,
+    pub per: LimitWindow,
+    pub by: LimitSubject,
+}
+
+/// The length of the window of a [`Limit`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LimitWindow {
+    Second,
+    Minute,
+    Hour,
+    Day,
+}
+
+impl LimitWindow {
+    /// The window in seconds: what a limiter is asked for.
+    #[must_use]
+    pub fn seconds(self) -> u32 {
+        match self {
+            LimitWindow::Second => 1,
+            LimitWindow::Minute => 60,
+            LimitWindow::Hour => 3_600,
+            LimitWindow::Day => 86_400,
+        }
+    }
+
+    /// The word of the contract.
+    #[must_use]
+    pub fn word(self) -> &'static str {
+        match self {
+            LimitWindow::Second => "second",
+            LimitWindow::Minute => "minute",
+            LimitWindow::Hour => "hour",
+            LimitWindow::Day => "day",
+        }
+    }
+}
+
+/// Whose calls a [`Limit`] counts together.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LimitSubject {
+    /// One count per caller (`spec/platform.md` section 5).
+    User,
+    /// One count per tenant of the caller.
+    Tenant,
+    /// One count per client address.
+    Ip,
+}
+
+impl LimitSubject {
+    /// The word of the contract, which is also the `k` of the key.
+    #[must_use]
+    pub fn word(self) -> &'static str {
+        match self {
+            LimitSubject::User => "user",
+            LimitSubject::Tenant => "tenant",
+            LimitSubject::Ip => "ip",
+        }
+    }
+}
+
+/// The service level an endpoint states with `@slo` (`spec/platform.md` section 13). Each
+/// latency is the milliseconds within which that share of requests answers, as a decimal string;
+/// `errors` is the most percent of requests that may end in a `5xx`, as written. A member that
+/// the annotation does not give is omitted from the JSON.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct Slo {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub p50_ms: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub p90_ms: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub p95_ms: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub p99_ms: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub errors: Option<String>,
+}
+
+impl Slo {
+    /// The stated latency objectives as `(name, milliseconds)`, fastest share first.
+    #[must_use]
+    pub fn latencies(&self) -> Vec<(&'static str, &str)> {
+        [
+            ("p50", &self.p50_ms),
+            ("p90", &self.p90_ms),
+            ("p95", &self.p95_ms),
+            ("p99", &self.p99_ms),
+        ]
+        .into_iter()
+        .filter_map(|(n, v)| v.as_deref().map(|v| (n, v)))
+        .collect()
+    }
+}
+
+/// `@idempotent` on an endpoint (`spec/rules.md` sections 11.8 and 11.9).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Idempotency {
+    /// The request header that carries the key, `Idempotency-Key` unless the annotation names
+    /// another.
+    pub header: String,
+    /// `required: true`: a request without the header is `422 ValidationError`.
+    pub required: bool,
+    /// True when the scope of a key includes the caller, that is when the endpoint's effective
+    /// auth is not `none`.
+    pub caller: bool,
+    /// The annotation.
     pub origin: Origin,
 }
 
@@ -649,19 +1537,46 @@ pub struct ErrorResponse {
     pub decl: DeclId,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Auth {
     pub kind: AuthKind,
     pub header: Option<String>,
+    /// True when the author wrote `@auth` on the endpoint or on its service, `@auth(none)`
+    /// included. It is not part of the JSON and not of equality: only the `auth-required` lint
+    /// reads it, in the process that compiled the contract (`spec/rules.md` section 11.6).
+    #[serde(skip)]
+    pub declared: bool,
 }
 
+impl PartialEq for Auth {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind && self.header == other.header
+    }
+}
+
+impl Eq for Auth {}
+
 impl Auth {
+    /// An auth scheme that is not marked as written by the author.
+    #[must_use]
+    pub fn new(kind: AuthKind, header: Option<String>) -> Self {
+        Auth {
+            kind,
+            header,
+            declared: false,
+        }
+    }
+
     #[must_use]
     pub fn none() -> Self {
-        Auth {
-            kind: AuthKind::None,
-            header: None,
-        }
+        Auth::new(AuthKind::None, None)
+    }
+
+    /// The same scheme, marked as written by the author.
+    #[must_use]
+    pub fn declared(mut self) -> Self {
+        self.declared = true;
+        self
     }
 }
 
@@ -688,10 +1603,91 @@ pub enum Feature {
     Page,
     Consts,
     Bytes,
+    RulesInvariants,
+    RulesEndpoint,
+    RulesTransitions,
+    RulesPolicies,
+    /// `@rollout(audit)` on a rule (`spec/rules.md` section 17.1). A generator that does not
+    /// know it would enforce a rule that must not reject.
+    RulesRollout,
+    /// `@version`: the `If-Match` guard of a fact and the `ETag` of a response
+    /// (`spec/rules.md` section 11.7).
+    RulesVersion,
+    /// `@idempotent` (`spec/rules.md` section 11.8).
+    Idempotency,
+    /// A derived field: `total: decimal = subtotal - discount` (`spec/rules.md` section 17.2).
+    /// A generator that does not know it would leave the field without a value.
+    RulesDerived,
+    /// A `saga` endpoint (`spec/platform.md` section 17).
+    Sagas,
+    /// `publishes` or `subscribes` (`spec/events.md` section 13).
+    Events,
+    /// `@retry`, `@deadLetter` or `@ordered` on a channel that a service publishes or subscribes
+    /// to (`spec/events.md` section 10.8).
+    EventsDelivery,
+    /// `flow ... after` and `transition ... since` (`spec/platform.md` section 10).
+    RulesTimed,
+    /// `when flag("name")` on a rule, a `require`, an `ensure`, a `permit` or `forbid` clause or
+    /// a `flow` (`spec/platform.md` section 11).
+    RulesFlags,
+    /// `@timeout` (`spec/platform.md` section 12).
+    Timeouts,
+    /// `@slo` (`spec/platform.md` section 13): the metrics hook.
+    Slo,
+    /// A member with message catalogs (`spec/platform.md` section 22). Opt-in: a generator that
+    /// does not declare it would send the contract's text where a catalog was meant to be used.
+    Messages,
+    /// A server with `@retain` models (`spec/platform.md` section 23). Opt-in, and only a server
+    /// is concerned: a client generates nothing for it.
+    Retention,
+    /// A `transition` over a flow that `emits` an event (`spec/events.md` section 11).
+    EventsOutbox,
+    /// `@visible(when: e)` on a field (`spec/platform.md` section 2). Opt-in: a generator that
+    /// does not declare it would send a field that must be hidden. Clients generate nothing for
+    /// it, so the gate does not ask them.
+    Visibility,
+    /// `@tenant` on a field (`spec/platform.md` section 3). Opt-in: a generator that does not
+    /// declare it would send a value of another tenant. Clients generate nothing for it, so the
+    /// gate does not ask them.
+    Tenancy,
+    /// `@audited` (`spec/platform.md` section 4). Opt-in: a generator that does not declare it
+    /// would record nothing. Clients generate nothing for it, so the gate does not ask them.
+    Audit,
+    /// `@limit` (`spec/platform.md` section 5). Opt-in: a generator that does not declare it would
+    /// serve without the limit. A client is asked too: it waits when it is refused.
+    Limits,
 }
 
 impl Feature {
-    pub const ALL: [Feature; 10] = [
+    /// The rules features (`spec/rules.md` section 8).
+    pub const RULES: [Feature; 4] = [
+        Feature::RulesInvariants,
+        Feature::RulesEndpoint,
+        Feature::RulesTransitions,
+        Feature::RulesPolicies,
+    ];
+    /// Features no generator supports unless it says so: [`Feature::ALL`] minus these is what
+    /// `all_except` hands out. A feature that changes what a rule means must be opted into.
+    pub const OPT_IN: [Feature; 17] = [
+        Feature::RulesRollout,
+        Feature::RulesVersion,
+        Feature::Idempotency,
+        Feature::RulesDerived,
+        Feature::Sagas,
+        Feature::EventsDelivery,
+        Feature::RulesTimed,
+        Feature::RulesFlags,
+        Feature::Timeouts,
+        Feature::Slo,
+        Feature::Messages,
+        Feature::Retention,
+        Feature::EventsOutbox,
+        Feature::Visibility,
+        Feature::Tenancy,
+        Feature::Audit,
+        Feature::Limits,
+    ];
+    pub const ALL: [Feature; 32] = [
         Feature::Unions,
         Feature::Constraints,
         Feature::Auth,
@@ -702,6 +1698,28 @@ impl Feature {
         Feature::Page,
         Feature::Consts,
         Feature::Bytes,
+        Feature::RulesInvariants,
+        Feature::RulesEndpoint,
+        Feature::RulesTransitions,
+        Feature::RulesPolicies,
+        Feature::RulesRollout,
+        Feature::RulesVersion,
+        Feature::Idempotency,
+        Feature::RulesDerived,
+        Feature::Sagas,
+        Feature::Events,
+        Feature::EventsDelivery,
+        Feature::RulesTimed,
+        Feature::RulesFlags,
+        Feature::Timeouts,
+        Feature::Slo,
+        Feature::Messages,
+        Feature::Retention,
+        Feature::EventsOutbox,
+        Feature::Visibility,
+        Feature::Tenancy,
+        Feature::Audit,
+        Feature::Limits,
     ];
     #[must_use]
     pub fn name(self) -> &'static str {
@@ -716,6 +1734,28 @@ impl Feature {
             Feature::Page => "page",
             Feature::Consts => "consts",
             Feature::Bytes => "bytes",
+            Feature::RulesInvariants => "rules_invariants",
+            Feature::RulesEndpoint => "rules_endpoint",
+            Feature::RulesTransitions => "rules_transitions",
+            Feature::RulesPolicies => "rules_policies",
+            Feature::RulesRollout => "rules_rollout",
+            Feature::RulesVersion => "rules_version",
+            Feature::Idempotency => "idempotency",
+            Feature::RulesDerived => "rules_derived",
+            Feature::Sagas => "sagas",
+            Feature::Events => "events",
+            Feature::EventsDelivery => "events_delivery",
+            Feature::RulesTimed => "rules_timed",
+            Feature::RulesFlags => "rules_flags",
+            Feature::Timeouts => "timeouts",
+            Feature::Slo => "slo",
+            Feature::Messages => "messages",
+            Feature::Retention => "retention",
+            Feature::EventsOutbox => "events_outbox",
+            Feature::Visibility => "visibility",
+            Feature::Tenancy => "tenancy",
+            Feature::Audit => "audit",
+            Feature::Limits => "limits",
         }
     }
     #[must_use]
@@ -756,3 +1796,16 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod derived_tests;
+#[cfg(test)]
+mod events_tests;
+#[cfg(test)]
+mod platform_p1_tests;
+
+#[cfg(test)]
+mod delivery_tests;
+
+#[cfg(test)]
+mod outbox_tests;

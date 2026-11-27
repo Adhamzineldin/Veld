@@ -14,6 +14,8 @@ pub fn flatten(prog: &mut Program<'_>, diags: &mut Vec<Diagnostic>) {
     for (i, fields) in memo.into_iter().enumerate() {
         prog.decls[i].res.fields = fields.unwrap_or_default();
         prog.decls[i].res.cyclic = cyclic[i];
+        one_version_field(&prog.decls[i], diags);
+        super::retain::check(&prog.decls[i], diags);
     }
 }
 
@@ -115,4 +117,24 @@ fn compute(
     };
     memo[i] = Some(result.clone());
     result
+}
+
+/// `E0602`: a model has at most one `@version` field, the inherited one included
+/// (`spec/rules.md` section 11.7). Only an own field is reported, so a parent with two reports once.
+fn one_version_field(d: &super::DeclInfo<'_>, diags: &mut Vec<Diagnostic>) {
+    let mut versions = d.res.fields.iter().filter(|f| f.version);
+    let Some(first) = versions.next() else { return };
+    for extra in versions.filter(|f| f.inherited_from.is_none()) {
+        diags.push(
+            Diagnostic::error(
+                "E0602",
+                format!(
+                    "`{}` has two `@version` fields: `{}` and `{}`",
+                    d.name, first.name, extra.name
+                ),
+                extra.span,
+            )
+            .with_label(first.span, "the first one"),
+        );
+    }
 }

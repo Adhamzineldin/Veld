@@ -3,7 +3,7 @@
 use std::collections::BTreeSet;
 
 use serde::de::DeserializeOwned;
-use veld_ir::{DeclKind, Feature, Ir, Origin, ServiceId};
+use veld_ir::{DeclId, DeclKind, Feature, Ir, Origin, ServiceId};
 
 use crate::FileSet;
 use crate::profile::{FrameworkInfo, LanguageInfo, Offer, Profile, strip_profile_keys};
@@ -30,15 +30,23 @@ impl Role {
 pub struct Capabilities(pub BTreeSet<Feature>);
 
 impl Capabilities {
-    /// Everything except the listed features.
+    /// Everything except the listed features and the opt-in ones ([`Feature::OPT_IN`]), which a
+    /// generator adds with [`Capabilities::with`] once it implements them.
     #[must_use]
     pub fn all_except(unsupported: &[Feature]) -> Self {
         Self(
             Feature::ALL
                 .into_iter()
-                .filter(|f| !unsupported.contains(f))
+                .filter(|f| !unsupported.contains(f) && !Feature::OPT_IN.contains(f))
                 .collect(),
         )
+    }
+
+    /// These capabilities and `feature` as well.
+    #[must_use]
+    pub fn with(mut self, feature: Feature) -> Self {
+        self.0.insert(feature);
+        self
     }
 
     #[must_use]
@@ -98,6 +106,13 @@ pub trait Generator {
         opts: &Self::Options,
         profile: &Profile,
     ) -> Result<FileSet, Vec<GenDiagnostic>>;
+
+    /// Warnings for a request that generates successfully (`W....` codes, for example `W0904`).
+    /// The core reports them after a successful `generate`; they never stop generation. Most
+    /// generators have none.
+    fn warnings(&self, _req: &GenRequest<'_>, _opts: &Self::Options) -> Vec<GenDiagnostic> {
+        Vec::new()
+    }
 }
 
 /// Object-safe form of [`Generator`]: options arrive as JSON.
@@ -114,6 +129,16 @@ pub trait DynGenerator {
         req: &GenRequest<'_>,
         opts: &serde_json::Value,
     ) -> Result<FileSet, Vec<GenDiagnostic>>;
+    /// The warnings of [`Generator::warnings`]. Empty for a generator that has none, and for
+    /// options that do not parse (`generate_dyn` reports those as `E0802`).
+    fn warnings_dyn(&self, _req: &GenRequest<'_>, _opts: &serde_json::Value) -> Vec<GenDiagnostic> {
+        Vec::new()
+    }
+    /// Whether `opts` parse as the generator's own options (`E0802` otherwise), without running
+    /// it. A generator that cannot tell (a plugin) accepts everything here.
+    fn check_options(&self, _opts: &serde_json::Value) -> Result<(), Vec<GenDiagnostic>> {
+        Ok(())
+    }
 }
 
 /// `E0803` when `req.framework` is not one of the generator's `frameworks(role)`. Every role is
@@ -200,22 +225,38 @@ impl<T: Generator> DynGenerator for T {
         opts: &serde_json::Value,
     ) -> Result<FileSet, Vec<GenDiagnostic>> {
         let profile = resolve_profile(self, req, opts).map_err(|d| vec![d])?;
-        let own = strip_profile_keys(opts, Generator::language(self).as_ref());
-        let parsed = if own.is_null() {
-            T::Options::default()
-        } else {
-            serde_json::from_value(own).map_err(|e| {
-                vec![GenDiagnostic::new(
-                    "E0802",
-                    format!(
-                        "invalid options for generator `{}`: {e}",
-                        Generator::id(self)
-                    ),
-                )]
-            })?
-        };
+        let parsed = parse_options(self, opts)?;
         Generator::generate(self, req, &parsed, &profile)
     }
+    fn warnings_dyn(&self, req: &GenRequest<'_>, opts: &serde_json::Value) -> Vec<GenDiagnostic> {
+        match parse_options(self, opts) {
+            Ok(parsed) => Generator::warnings(self, req, &parsed),
+            Err(_) => Vec::new(),
+        }
+    }
+    fn check_options(&self, opts: &serde_json::Value) -> Result<(), Vec<GenDiagnostic>> {
+        parse_options(self, opts).map(|_| ())
+    }
+}
+
+/// The generator's own options: `opts` without the keys the core resolves into the profile.
+fn parse_options<T: Generator>(
+    generator: &T,
+    opts: &serde_json::Value,
+) -> Result<T::Options, Vec<GenDiagnostic>> {
+    let own = strip_profile_keys(opts, Generator::language(generator).as_ref());
+    if own.is_null() {
+        return Ok(T::Options::default());
+    }
+    serde_json::from_value(own).map_err(|e| {
+        vec![GenDiagnostic::new(
+            "E0802",
+            format!(
+                "invalid options for generator `{}`: {e}",
+                Generator::id(generator)
+            ),
+        )]
+    })
 }
 
 /// `E0801` for every used feature `caps` does not support. The core calls this before `generate`.
@@ -227,7 +268,7 @@ pub fn check_capabilities(
 ) -> Vec<GenDiagnostic> {
     let mut all = req.services.clone();
     all.extend(req.consumes.iter().copied());
-    ir.features_used(&all)
+    checked_features(ir, req)
         .into_iter()
         .filter(|f| !caps.supports(*f))
         .map(|f| GenDiagnostic {
@@ -237,13 +278,96 @@ pub fn check_capabilities(
                 f.name(),
                 req.role.name()
             ),
-            origin: first_use(ir, &all, f),
+            origin: first_use(ir, &all, req, f),
         })
         .collect()
 }
 
+/// The features the gate checks for `req`: those of the endpoints of the services and of the
+/// services they consume, and of the events of the services the target generates. Only the
+/// services a target generates count for events; a client generates nothing for them, so of what
+/// events use (an audited invariant, a union, a constraint) only `events` itself concerns it: it
+/// keeps its bytes when a contract gains events.
+#[must_use]
+pub fn checked_features(ir: &Ir, req: &GenRequest<'_>) -> std::collections::BTreeSet<Feature> {
+    let mut all = req.services.clone();
+    all.extend(req.consumes.iter().copied());
+    let mut used = ir.http_features_used(&all);
+    let mut from_events = ir.event_features(&req.services);
+    if req.role == Role::Client {
+        from_events.retain(|f| *f == Feature::Events);
+    }
+    used.extend(from_events);
+    if req.role == Role::Client && !reaches_derived(ir, &all) {
+        // A client never sees a fact or the principal: only what an endpoint reaches counts.
+        used.remove(&Feature::RulesDerived);
+    }
+    // Retention is a server's own: the models of the services it serves, not of those it only
+    // calls, and nothing for a client (`spec/platform.md` section 23).
+    used.remove(&Feature::Retention);
+    // Visibility and the audit log are enforced by a server, for its own services: a client has
+    // nothing to hide or to record, and a server that only calls a service (`consumes`) enforces
+    // nothing of it (`spec/platform.md` section 1).
+    let own = ir.http_features_used(&req.services);
+    for feature in [Feature::Visibility, Feature::Audit] {
+        used.remove(&feature);
+        if req.role == Role::Server && own.contains(&feature) {
+            used.insert(feature);
+        }
+    }
+    // Tenancy is a server's to enforce for its own services too, but a client is asked as well
+    // when a model it reaches has a `@tenant` field: the field is set by the server, so a request
+    // does not carry it (`spec/platform.md` section 3). A client never sees a fact.
+    used.remove(&Feature::Tenancy);
+    match req.role {
+        Role::Server if own.contains(&Feature::Tenancy) => {
+            used.insert(Feature::Tenancy);
+        }
+        Role::Client if reaches_tenant(ir, &all) => {
+            used.insert(Feature::Tenancy);
+        }
+        Role::Server | Role::Client => {}
+    }
+    if req.role == Role::Server && !ir.retention_plan(&req.services).is_empty() {
+        used.insert(Feature::Retention);
+    }
+    used
+}
+
+/// True when an endpoint of `services` reaches a model with a `@tenant` field.
+fn reaches_tenant(ir: &Ir, services: &[ServiceId]) -> bool {
+    ir.reachable_decls(services)
+        .into_iter()
+        .any(|id| ir.decl(id).tenant_field().is_some())
+}
+
+/// True when an endpoint of `services` reaches a model with a derived field.
+fn reaches_derived(ir: &Ir, services: &[ServiceId]) -> bool {
+    ir.reachable_decls(services)
+        .into_iter()
+        .any(|id| ir.decl(id).has_derived())
+}
+
 /// Where a feature is first used: an endpoint for endpoint-level features, a declaration otherwise.
-fn first_use(ir: &Ir, services: &[ServiceId], feature: Feature) -> Option<Origin> {
+fn first_use(
+    ir: &Ir,
+    services: &[ServiceId],
+    req: &GenRequest<'_>,
+    feature: Feature,
+) -> Option<Origin> {
+    if feature == Feature::RulesRollout {
+        return first_audited_origin(ir, services, event_services(req));
+    }
+    // What a server enforces it enforces for its own services only.
+    let services = if req.role == Role::Server
+        && matches!(
+            feature,
+            Feature::Visibility | Feature::Tenancy | Feature::Audit
+        ) {
+        &req.services[..]
+    } else {
+        services
+    };
     for sid in services {
         for ep in &ir.service(*sid).endpoints {
             let hit = match feature {
@@ -258,20 +382,125 @@ fn first_use(ir: &Ir, services: &[ServiceId], feature: Feature) -> Option<Origin
                     .params
                     .iter()
                     .any(|p| p.binding == veld_ir::Binding::Header),
+                Feature::RulesEndpoint => ep.rules.has_statements(),
+                Feature::RulesVersion => ep.rules.version.is_some() || ir.etag_field(ep).is_some(),
+                Feature::Idempotency => ep.idempotency.is_some(),
+                Feature::Sagas => ep.saga.is_some(),
+                Feature::RulesTransitions => ep.rules.transition.is_some(),
+                Feature::RulesTimed => ep.rules.transition.as_ref().is_some_and(|t| t.is_timed()),
+                Feature::RulesFlags => ir.endpoint_uses_flags(ep),
+                Feature::Timeouts => ep.timeout_ms.is_some(),
+                Feature::Slo => ep.slo.is_some(),
+                Feature::Audit => ep.audited,
+                Feature::Limits => ep.limit.is_some(),
+                Feature::RulesPolicies => ep.rules.first_policy_origin().is_some(),
                 Feature::Unions
                 | Feature::Constraints
                 | Feature::Consts
                 | Feature::Page
-                | Feature::Bytes => false,
+                | Feature::Bytes
+                | Feature::Events
+                | Feature::EventsDelivery
+                | Feature::Messages
+                | Feature::Retention
+                | Feature::EventsOutbox
+                | Feature::Visibility
+                | Feature::Tenancy
+                | Feature::RulesRollout
+                | Feature::RulesDerived
+                | Feature::RulesInvariants => false,
             };
             if hit {
+                if feature == Feature::RulesEndpoint {
+                    return ep.rules.first_origin().cloned();
+                }
+                if feature == Feature::RulesVersion {
+                    return Some(
+                        ep.rules
+                            .version
+                            .as_ref()
+                            .map_or(&ep.origin, |v| &v.origin)
+                            .clone(),
+                    );
+                }
+                if feature == Feature::Idempotency {
+                    return ep.idempotency.as_ref().map(|i| i.origin.clone());
+                }
+                if feature == Feature::RulesFlags {
+                    return ep.rules.first_flag_origin(ir).cloned();
+                }
+                if feature == Feature::RulesTransitions || feature == Feature::RulesTimed {
+                    return ep.rules.transition.as_ref().map(|t| t.origin.clone());
+                }
+                if feature == Feature::RulesPolicies {
+                    return ep.rules.first_policy_origin().cloned();
+                }
                 return Some(ep.origin.clone());
             }
         }
     }
+    if feature == Feature::Retention {
+        return ir
+            .retention_plan(&req.services)
+            .first()
+            .map(|e| ir.decl(e.decl).origin.clone());
+    }
+    if feature == Feature::Messages {
+        return services
+            .iter()
+            .find_map(|s| ir.package(ir.service(*s).package).first_catalog_origin());
+    }
+    if feature == Feature::Events {
+        return req
+            .services
+            .iter()
+            .find_map(|s| ir.service(*s).first_event_origin().cloned());
+    }
+    if feature == Feature::EventsDelivery {
+        return req
+            .services
+            .iter()
+            .find_map(|s| ir.first_delivery_origin(*s).cloned());
+    }
+    if feature == Feature::EventsOutbox {
+        return req.services.iter().find_map(|s| {
+            ir.service(*s)
+                .first_emitting_transition()
+                .map(|t| t.origin.clone())
+        });
+    }
+    if feature == Feature::RulesInvariants {
+        return first_rule_origin(ir, &searched(ir, services, req));
+    }
+    if feature == Feature::RulesDerived {
+        let mut ids = searched(ir, services, req);
+        if req.role == Role::Server {
+            ids.extend(ir.fact_decls(services));
+        }
+        return first_derived_origin(ir, &ids);
+    }
+    if feature == Feature::Visibility {
+        return first_visible_origin(ir, &searched(ir, services, req));
+    }
+    if feature == Feature::Tenancy {
+        let mut ids = searched(ir, services, req);
+        if req.role == Role::Server {
+            ids.extend(ir.fact_type_decls(&req.services));
+        }
+        return first_tenant_origin(ir, &ids);
+    }
+    if feature == Feature::RulesTransitions {
+        return first_machine_origin(ir, &searched(ir, services, req));
+    }
+    if feature == Feature::RulesTimed {
+        return first_timed_origin(ir, &searched(ir, services, req));
+    }
+    if feature == Feature::RulesFlags {
+        return first_flag_origin(ir, &searched(ir, services, req));
+    }
     let wanted_union = feature == Feature::Unions;
     let wanted_const = feature == Feature::Consts;
-    ir.reachable_decls(services)
+    searched(ir, services, req)
         .into_iter()
         .map(|id| ir.decl(id))
         .find(|d| {
@@ -281,6 +510,131 @@ fn first_use(ir: &Ir, services: &[ServiceId], feature: Feature) -> Option<Origin
         .map(|d| d.origin.clone())
 }
 
+/// The declarations a feature is searched in: the ones the endpoints reach and, for a server, the
+/// events of its channels and what they reach (a union only an event uses has an origin too).
+fn searched(ir: &Ir, services: &[ServiceId], req: &GenRequest<'_>) -> Vec<DeclId> {
+    let mut ids = ir.reachable_decls(services);
+    if req.role == Role::Server {
+        ids.extend(ir.events_of(&req.services));
+        ids.extend(ir.event_reachable_decls(&req.services));
+    }
+    ids
+}
+
+/// The origin of the first flagged invariant of a reachable declaration, else of the first
+/// reachable enum with a flagged flow (`spec/platform.md` section 11).
+fn first_flag_origin(ir: &Ir, decls: &[DeclId]) -> Option<Origin> {
+    let rule = decls.iter().copied().find_map(|id| {
+        let flagged = ir.decl(id).rules().iter().find(|r| r.flag.is_some());
+        flagged.map(|r| r.origin.clone())
+    });
+    rule.or_else(|| {
+        decls
+            .iter()
+            .copied()
+            .map(|id| ir.decl(id))
+            .find(|d| matches!(&d.kind, DeclKind::Enum(e) if e.flows.iter().any(|f| f.flag.is_some())))
+            .map(|d| d.origin.clone())
+    })
+}
+
+/// The origin of the first reachable enum with a timed edge (`spec/platform.md` section 10).
+fn first_timed_origin(ir: &Ir, decls: &[DeclId]) -> Option<Origin> {
+    decls
+        .iter()
+        .copied()
+        .map(|id| ir.decl(id))
+        .find(|d| matches!(&d.kind, DeclKind::Enum(e) if e.has_timed_edge()))
+        .map(|d| d.origin.clone())
+}
+
+/// The origin of the first reachable enum that is a state machine.
+fn first_machine_origin(ir: &Ir, decls: &[DeclId]) -> Option<Origin> {
+    decls
+        .iter()
+        .copied()
+        .map(|id| ir.decl(id))
+        .find(|d| matches!(&d.kind, DeclKind::Enum(e) if e.is_state_machine()))
+        .map(|d| d.origin.clone())
+}
+
+/// The origin of the first field with `@visible` (`spec/platform.md` section 2) of the
+/// declarations, in source order.
+fn first_visible_origin(ir: &Ir, decls: &[DeclId]) -> Option<Origin> {
+    decls
+        .iter()
+        .flat_map(|id| ir.decl(*id).fields().iter())
+        .filter(|f| f.visible.is_some())
+        .map(|f| &f.origin)
+        .min_by_key(|o| (o.file.as_str(), o.line, o.col))
+        .cloned()
+}
+
+/// The origin of the first `@tenant` field (`spec/platform.md` section 3) of the declarations, in
+/// source order.
+fn first_tenant_origin(ir: &Ir, decls: &[DeclId]) -> Option<Origin> {
+    decls
+        .iter()
+        .flat_map(|id| ir.decl(*id).fields().iter())
+        .filter(|f| f.tenant)
+        .map(|f| &f.origin)
+        .min_by_key(|o| (o.file.as_str(), o.line, o.col))
+        .cloned()
+}
+
+/// The origin of the first derived field (`spec/rules.md` section 17.2) of the declarations, in
+/// source order.
+fn first_derived_origin(ir: &Ir, decls: &[DeclId]) -> Option<Origin> {
+    decls
+        .iter()
+        .flat_map(|id| ir.decl(*id).fields().iter())
+        .filter(|f| f.derived.is_some())
+        .map(|f| &f.origin)
+        .min_by_key(|o| (o.file.as_str(), o.line, o.col))
+        .cloned()
+}
+
+/// The origin of the first invariant of the first reachable declaration that has one.
+fn first_rule_origin(ir: &Ir, decls: &[DeclId]) -> Option<Origin> {
+    decls
+        .iter()
+        .copied()
+        .find_map(|id| ir.decl(id).rules().first().map(|r| r.origin.clone()))
+}
+
+/// The services whose events count: the ones the target generates, and none for a client.
+fn event_services<'a>(req: &'a GenRequest<'_>) -> &'a [ServiceId] {
+    match req.role {
+        Role::Server => &req.services,
+        Role::Client => &[],
+    }
+}
+
+/// The origin of the first audited rule in source order: an invariant of a reachable declaration,
+/// a `require` or an `ensure` of one of the services, or an invariant an event of
+/// `event_services` reaches.
+fn first_audited_origin(
+    ir: &Ir,
+    services: &[ServiceId],
+    event_services: &[ServiceId],
+) -> Option<Origin> {
+    let invariants = ir
+        .reachable_decls(services)
+        .into_iter()
+        .flat_map(|id| ir.decl(id).rules().iter())
+        .filter(|r| r.is_audited())
+        .map(|r| &r.origin);
+    let statements = services
+        .iter()
+        .flat_map(|s| ir.service(*s).endpoints.iter())
+        .filter_map(|ep| ep.rules.first_audited_origin());
+    invariants
+        .chain(statements)
+        .chain(ir.first_event_audited_origin(event_services))
+        .min_by_key(|o| (o.file.as_str(), o.line, o.col))
+        .cloned()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -288,6 +642,10 @@ mod tests {
 
     fn ir_with_sse() -> Ir {
         let ep = Endpoint {
+            slo: None,
+            timeout_ms: None,
+            audited: false,
+            limit: None,
             name: "feed".into(),
             method: Method::Get,
             path: "/feed".into(),
@@ -303,6 +661,9 @@ mod tests {
                 stream: true,
             },
             errors: vec![],
+            rules: EndpointRules::default(),
+            idempotency: None,
+            saga: None,
             origin: Origin {
                 file: "a.veld".into(),
                 line: 3,
@@ -315,6 +676,8 @@ mod tests {
                 id: PackageId(0),
                 name: "a".into(),
                 kind: PackageKind::Service,
+                messages: Default::default(),
+                messages_dir: None,
             }],
             decls: vec![],
             services: vec![Service {
@@ -327,9 +690,17 @@ mod tests {
                 auth: Auth::none(),
                 middleware: vec![],
                 endpoints: vec![ep],
+                facts: vec![],
+                rules_digest: None,
+                principal: None,
+                publishes: vec![],
+                subscriptions: vec![],
                 origin: Origin::default(),
             }],
             consumes: Default::default(),
+            examples: vec![],
+            policies: vec![],
+            channels: vec![],
         }
     }
 
@@ -390,6 +761,35 @@ mod tests {
                 .map_err(|e| vec![GenDiagnostic::new("E0899", e.to_string())])?;
             Ok(fs)
         }
+        fn warnings(&self, _: &GenRequest<'_>, opts: &Opts) -> Vec<GenDiagnostic> {
+            if opts.flag {
+                vec![GenDiagnostic::new("W0904", "the flag is set")]
+            } else {
+                Vec::new()
+            }
+        }
+    }
+
+    #[test]
+    fn warnings_reach_the_core_through_the_dyn_generator() {
+        let ir = ir_with_sse();
+        let req = GenRequest {
+            ir: &ir,
+            role: Role::Client,
+            services: vec![],
+            consumes: vec![],
+            framework: None,
+        };
+        let g: Box<dyn DynGenerator> = Box::new(Dummy);
+        let on = g.warnings_dyn(&req, &serde_json::json!({ "flag": true }));
+        assert_eq!(on.len(), 1);
+        assert_eq!(on[0].code, "W0904");
+        assert!(g.warnings_dyn(&req, &serde_json::Value::Null).is_empty());
+        // Options that do not parse are `generate_dyn`'s `E0802`, not a warning.
+        assert!(
+            g.warnings_dyn(&req, &serde_json::json!({ "nope": 1 }))
+                .is_empty()
+        );
     }
 
     #[test]
@@ -449,5 +849,194 @@ mod tests {
         );
         assert!(g.generate_dyn(&req(Role::Server, None), &null).is_ok());
         assert!(g.generate_dyn(&req(Role::Client, None), &null).is_ok());
+    }
+
+    fn at(line: u32) -> Origin {
+        Origin {
+            file: "e.veld".into(),
+            line,
+            col: 1,
+        }
+    }
+
+    fn event_rule(audited: bool, line: u32) -> Rule {
+        Rule {
+            flag: None,
+            name: "r".into(),
+            id: "veld:a/Paid.r@0".into(),
+            expr: Expr {
+                t: ExprType::Type(Type::Scalar(Scalar::Bool)),
+                e: ExprKind::Lit(ExprLit::Bool(true)),
+            },
+            message: None,
+            reads: vec![],
+            reads_readonly: false,
+            inherited_from: None,
+            docs: None,
+            deprecated: None,
+            rollout: audited.then_some(Rollout::Audit),
+            origin: at(line),
+        }
+    }
+
+    /// An event `Paid` with one rule, a channel that carries it, a publisher `P` (line 7 is its
+    /// `publishes` line) and a subscriber `S`.
+    fn ir_with_event(audited: bool) -> Ir {
+        let mut ir = ir_with_sse();
+        ir.services[0].endpoints.clear();
+        ir.decls.push(Decl {
+            id: DeclId(0),
+            package: PackageId(0),
+            module: "a".into(),
+            name: "Paid".into(),
+            qualified: "a.Paid".into(),
+            sig: "veld:a/Paid@0".into(),
+            docs: None,
+            deprecated: None,
+            origin: at(1),
+            kind: DeclKind::Event(Event {
+                fields: vec![],
+                rules: vec![event_rule(audited, 3)],
+                rules_digest: None,
+            }),
+        });
+        ir.channels.push(Channel {
+            name: "C".into(),
+            package: PackageId(0),
+            module: "a".into(),
+            qualified: "a.C".into(),
+            topic: "a.C".into(),
+            events: vec![DeclId(0)],
+            key: None,
+            docs: None,
+            deprecated: None,
+            retry: None,
+            dead_letter: false,
+            ordered: false,
+            origin: at(5),
+        });
+        ir.services[0].name = "P".into();
+        ir.services[0].origin = at(6);
+        ir.services[0].publishes = vec![Publication {
+            channel: ChannelId(0),
+            origin: at(7),
+        }];
+        let mut s = ir.services[0].clone();
+        s.id = ServiceId(1);
+        s.name = "S".into();
+        s.publishes.clear();
+        s.subscriptions = vec![Subscription {
+            channel: ChannelId(0),
+            group: "g".into(),
+            handlers: vec![],
+            origin: at(9),
+        }];
+        ir.services.push(s);
+        ir
+    }
+
+    fn gate(ir: &Ir, role: Role, services: &[u32], caps: &Capabilities) -> Vec<GenDiagnostic> {
+        let req = GenRequest {
+            ir,
+            role,
+            services: services.iter().map(|i| ServiceId(*i)).collect(),
+            consumes: vec![],
+            framework: None,
+        };
+        check_capabilities(ir, &req, caps)
+    }
+
+    #[test]
+    fn events_point_at_the_publishes_line_and_the_subscribes_line() {
+        let ir = ir_with_event(false);
+        let caps = Capabilities::all_except(&[Feature::Events]);
+        let lines = |who: u32| -> Vec<Option<u32>> {
+            gate(&ir, Role::Server, &[who], &caps)
+                .iter()
+                .map(|d| d.origin.as_ref().map(|o| o.line))
+                .collect()
+        };
+        assert_eq!(lines(0), [Some(7)]);
+        assert_eq!(lines(1), [Some(9)]);
+        // A client generates nothing for events and supports the feature.
+        assert!(gate(&ir, Role::Client, &[0, 1], &Capabilities::all_except(&[])).is_empty());
+    }
+
+    #[test]
+    fn an_audited_event_rule_needs_rules_rollout_from_a_publisher_and_a_subscriber() {
+        let ir = ir_with_event(true);
+        let without = Capabilities::all_except(&[]);
+        assert!(without.supports(Feature::Events) && !without.supports(Feature::RulesRollout));
+        for who in [0, 1] {
+            let found = gate(&ir, Role::Server, &[who], &without);
+            assert_eq!(found.len(), 1, "{found:?}");
+            assert_eq!(found[0].code, "E0801");
+            assert!(found[0].message.contains("`rules_rollout`"));
+            assert_eq!(found[0].origin.as_ref().map(|o| o.line), Some(3));
+            let both = without.clone().with(Feature::RulesRollout);
+            assert!(gate(&ir, Role::Server, &[who], &both).is_empty());
+        }
+    }
+
+    #[test]
+    fn an_enforced_event_rule_does_not_use_rules_rollout() {
+        let ir = ir_with_event(false);
+        let used = ir.features_used(&[ServiceId(0), ServiceId(1)]);
+        assert!(!used.contains(&Feature::RulesRollout), "{used:?}");
+        assert!(gate(&ir, Role::Server, &[0, 1], &Capabilities::all_except(&[])).is_empty());
+    }
+
+    #[test]
+    fn a_channel_annotation_needs_events_delivery_from_a_publisher_and_a_subscriber() {
+        let mut ir = ir_with_event(false);
+        ir.channels[0].retry = Some(veld_ir::Retry {
+            max: 3,
+            backoff: veld_ir::Backoff::Fixed,
+        });
+        ir.channels[0].origin = at(5);
+        let without = Capabilities::all_except(&[]);
+        assert!(without.supports(Feature::Events) && !without.supports(Feature::EventsDelivery));
+        for who in [0, 1] {
+            let found = gate(&ir, Role::Server, &[who], &without);
+            assert_eq!(found.len(), 1, "{found:?}");
+            assert_eq!(found[0].code, "E0801");
+            assert!(found[0].message.contains("`events_delivery`"));
+            assert_eq!(found[0].origin.as_ref().map(|o| o.line), Some(5));
+            let with = without.clone().with(Feature::EventsDelivery);
+            assert!(gate(&ir, Role::Server, &[who], &with).is_empty());
+        }
+        // A client generates nothing for events and keeps its bytes.
+        assert!(gate(&ir, Role::Client, &[0, 1], &without).is_empty());
+    }
+
+    #[test]
+    fn a_client_and_a_server_that_only_calls_are_not_concerned_with_event_rules() {
+        let ir = ir_with_event(true);
+        let caps = Capabilities::all_except(&[]);
+        assert!(gate(&ir, Role::Client, &[0, 1], &caps).is_empty());
+        let req = GenRequest {
+            ir: &ir,
+            role: Role::Server,
+            services: vec![],
+            consumes: vec![ServiceId(0)],
+            framework: None,
+        };
+        assert!(check_capabilities(&ir, &req, &caps).is_empty());
+    }
+
+    #[test]
+    fn all_except_leaves_out_the_opt_in_features_and_with_adds_them() {
+        let caps = Capabilities::all_except(&[]);
+        assert!(!caps.supports(Feature::RulesRollout));
+        for f in Feature::ALL
+            .into_iter()
+            .filter(|f| !Feature::OPT_IN.contains(f))
+        {
+            assert!(caps.supports(f), "{}", f.name());
+        }
+        let caps = caps.with(Feature::RulesRollout);
+        assert!(caps.supports(Feature::RulesRollout));
+        // Listing a feature as unsupported still wins over everything else.
+        assert!(!Capabilities::all_except(&[Feature::Auth]).supports(Feature::Auth));
     }
 }

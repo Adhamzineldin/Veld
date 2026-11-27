@@ -61,7 +61,7 @@ try {
   await download.click({ trial: true });
   await context.setOffline(false);
 
-  const presets = { hello: 'Hello', errors: 'Errors', 'library-package': 'Shared library', microservices: 'Microservices', streaming: 'Streaming' };
+  const presets = { hello: 'Hello', bookings: 'Bookings', errors: 'Errors', 'library-package': 'Shared library', microservices: 'Microservices', streaming: 'Streaming' };
   for (const [id, title] of Object.entries(presets)) {
     const entry = cases.find((c) => c.name.startsWith('preset:' + id + ' / ') && c.target.name === c.target.role + '-' + c.target.emitter);
     assert(entry?.ok, 'Generate fresh CLI parity fixtures for preset ' + id);
@@ -149,7 +149,7 @@ try {
   await page.getByText('20 files', { exact: true }).waitFor();
   await download.click({ trial: true });
   assert.deepEqual(errors, []);
-  console.log('Chromium: five preset ZIPs match the CLI and all five usage examples typecheck; ' + streaming.length + ' streaming targets, editor, diagnostics, format, clipboard, legacy links and offline generation passed.');
+  console.log('Chromium: six preset ZIPs match the CLI and all six usage examples typecheck; ' + streaming.length + ' streaming targets, editor, diagnostics, format, clipboard, legacy links and offline generation passed.');
 } finally {
   await browser?.close();
   await server.close();

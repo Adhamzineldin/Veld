@@ -1,0 +1,17 @@
+// The subscriber package: it imports the channel and the events of another package.
+
+use bookings:events.{BookingEvents, BookingPaid, BookingCancelled}
+
+service Notifications {
+  subscribes BookingEvents as "notifications" {
+    /// Sends the receipt.
+    on BookingPaid      -> sendReceipt
+    on BookingCancelled -> sendApology
+  }
+}
+
+example "a paid booking sends a receipt" {
+  given event BookingPaid { amount: 10.00 }
+  expect Notifications.sendReceipt called
+  expect Notifications.sendApology not called
+}

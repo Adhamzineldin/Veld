@@ -1,0 +1,55 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0602]: `@rollout` cannot be applied to a model
+ --> app/app.veld:6:1
+  |
+6 | @rollout(audit)
+  | ^^^^^^^^^^^^^^^
+  = help: `@rollout` applies to: rule, require, ensure
+
+error[E0602]: `@rollout` cannot be applied to a field
+ --> app/app.veld:8:3
+  |
+8 |   @rollout(audit)
+  |   ^^^^^^^^^^^^^^^
+  = help: `@rollout` applies to: rule, require, ensure
+
+error[E0602]: `@rollout` cannot be applied to an enum
+ --> app/app.veld:14:1
+   |
+14 | @rollout(audit)
+   | ^^^^^^^^^^^^^^^
+  = help: `@rollout` applies to: rule, require, ensure
+
+error[E0602]: `@rollout` cannot be applied to an enum variant
+ --> app/app.veld:15:19
+   |
+15 | enum Color { red, @rollout(audit) green }
+   |                   ^^^^^^^^^^^^^^^
+  = help: `@rollout` applies to: rule, require, ensure
+
+error[E0602]: `@rollout` cannot be applied to a service
+ --> app/app.veld:17:1
+   |
+17 | @rollout(audit)
+   | ^^^^^^^^^^^^^^^
+  = help: `@rollout` applies to: rule, require, ensure
+
+error[E0602]: `@rollout` cannot be applied to an endpoint
+ --> app/app.veld:20:3
+   |
+20 |   @rollout(audit)
+   |   ^^^^^^^^^^^^^^^
+  = help: `@rollout` applies to: rule, require, ensure
+
+error[E0602]: `@rollout` cannot be applied to a parameter
+ --> app/app.veld:21:26
+   |
+21 |   get "/{id}" getBooking(@rollout(audit) id: uuid) -> 200 Booking
+   |                          ^^^^^^^^^^^^^^^
+  = help: `@rollout` applies to: rule, require, ensure
+
+== ir ==
+(no IR: compilation failed)

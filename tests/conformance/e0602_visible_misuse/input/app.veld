@@ -1,0 +1,18 @@
+// @visible takes `when: expression` and stands on a field.
+
+model User {
+  id: uuid
+}
+
+principal User
+
+@visible(when: true)
+model A {
+  x?: string
+}
+
+model B {
+  a?: string @visible
+  b?: string @visible(true)
+  c?: string @visible(who: true)
+}

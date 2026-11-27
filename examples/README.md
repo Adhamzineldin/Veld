@@ -1,14 +1,15 @@
 # Veld examples
 
-Each example includes its contracts, `veld.toml`, generated packages and handwritten application
+Each example includes its contracts, `veld.toml` files, generated packages and handwritten application
 code. End-to-end tests call the servers over HTTP and exercise the clients.
 
 | Example | Shows |
 |---|---|
 | [`hello/`](hello) | The minimum, end to end: an Express server implementing `HelloService`, and a Vite + React app using the generated hooks, with a README walk-through |
+| [`bookings/`](bookings) | Business rules: invariants, endpoint rules (`fact`, `require`, `ensure`, `now`), `example` blocks and `veld test`, an Express server with a test server for `veld test --live`, and a React form using `useFormRules`. Guide: [`docs/guides/rules.md`](../docs/guides/rules.md) |
 | [`microservices/`](microservices) | Five services (four Node, one Java), mutual `consumes` between Node and Java, typed errors across both, a React app, Docker compose |
 | [`rust-catalog/`](rust-catalog) | An Axum book catalog and a blocking Rust CLI that looks up books and handles typed 404 responses |
-| [`library-package/`](library-package) | A shared `[libraries.common]` package whose types and errors are used by two services (Express and Fastify) and a typed client script |
+| [`library-package/`](library-package) | A shared `[library]` member, `common`, whose types and errors are used by two services (Express and Fastify) and a typed client script |
 
 For the Rust example, follow its Cargo commands. For the Node examples, build the CLI once with `cargo build -p veld --release`, then run
 

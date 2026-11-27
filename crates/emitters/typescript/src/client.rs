@@ -9,10 +9,14 @@ use veld_codegen::naming;
 use veld_codegen::{CodeWriter, FileSet, GenDiagnostic};
 use veld_ir::{AuthKind, Binding, Endpoint, Ir, Method, Param, Service, ServiceId};
 
+use crate::can;
+use crate::derived;
+use crate::policy::Plan;
 use crate::tree::{FileCtx, Tree};
 use crate::types::ts_type;
 use crate::util::{add_file, doc_comment, method_key, prop_key, ts_str};
 use crate::validate::schema_expr;
+use crate::version;
 
 /// Names of request interfaces. `<Endpoint>Request`, prefixed by the service name
 /// when two services of the same set would otherwise collide.
@@ -68,6 +72,25 @@ pub fn op_const(svc: &Service, ep: &Endpoint) -> String {
 /// `export interface GetOrderRequest { ... }`: path params, `body`, `query`, single
 /// query params and headers, all by parameter name.
 pub fn write_request_type(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, name: &str, ep: &Endpoint) {
+    write_request_type_for(w, fc, name, (ep, false));
+}
+
+/// The type of one parameter of a request. A client sends a body and a query object without
+/// their derived fields (`spec/rules.md` section 17.2), so there they have the `Input` type.
+fn param_type(fc: &mut FileCtx<'_, '_>, p: &Param, client: bool) -> String {
+    if client && matches!(p.binding, Binding::Body | Binding::QueryObject) {
+        derived::shaped_type(fc, &p.ty, derived::Shape::Input)
+    } else {
+        ts_type(fc, &p.ty)
+    }
+}
+
+fn write_request_type_for(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    name: &str,
+    (ep, client): (&Endpoint, bool),
+) {
     // `body: stream T` on a `ws` endpoint is the client's message type, not part of the request.
     let params: Vec<&Param> = ep.params.iter().filter(|p| !p.stream).collect();
     if params.is_empty() {
@@ -77,8 +100,33 @@ pub fn write_request_type(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, name: &s
     w.open(format!("export interface {name}"));
     for p in params {
         let opt = if p.optional { "?" } else { "" };
-        let ty = ts_type(fc, &p.ty);
+        let ty = param_type(fc, p, client);
         w.line(format!("{}{opt}: {ty};", prop_key(&p.name)));
+    }
+    w.close();
+}
+
+/// The request type of a client method: the one of the server, and `ifMatch` and `idempotencyKey`
+/// after the declared parameters when the endpoint has a guard or is `@idempotent`.
+fn write_client_request_type(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    name: &str,
+    ep: &Endpoint,
+) {
+    let extras = version::client_members(fc, ep);
+    if extras.is_empty() {
+        write_request_type_for(w, fc, name, (ep, true));
+        return;
+    }
+    w.open(format!("export interface {name}"));
+    for p in ep.params.iter().filter(|p| !p.stream) {
+        let opt = if p.optional { "?" } else { "" };
+        let ty = param_type(fc, p, true);
+        w.line(format!("{}{opt}: {ty};", prop_key(&p.name)));
+    }
+    for line in extras {
+        w.line(line);
     }
     w.close();
 }
@@ -159,6 +207,18 @@ pub fn write_spec_fields(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, ep: &Endp
         })
         .collect();
     write_list(w, "errors", errors);
+    version::write_spec_members(w, fc.tree.ir, ep);
+    if let Some(ms) = &ep.timeout_ms {
+        w.line(format!("timeoutMs: {ms},"));
+    }
+    // A client that is refused with `429` waits and sends again, once, a `get` or an `@idempotent`
+    // call (`spec/platform.md` section 5).
+    if fc.tree.uses_limits()
+        && ep.limit.is_some()
+        && (ep.method == veld_ir::Method::Get || ep.idempotency.is_some())
+    {
+        w.line("retryOnLimit: true,");
+    }
 }
 
 fn write_list(w: &mut CodeWriter, key: &str, items: Vec<String>) {
@@ -184,11 +244,13 @@ fn write_service(
     w: &mut CodeWriter,
     fc: &mut FileCtx<'_, '_>,
     names: &RequestNames,
-    svc: &Service,
+    (svc, plan): (&Service, &Plan),
+    diags: &mut Vec<GenDiagnostic>,
 ) {
     for ep in &svc.endpoints {
         let name = names.get(svc.id, &ep.name);
-        write_request_type(w, fc, &name, ep);
+        version::reserved_names(svc, ep, diags);
+        write_client_request_type(w, fc, &name, ep);
         w.blank();
         write_op(w, fc, svc, ep);
         w.blank();
@@ -204,6 +266,10 @@ fn write_service(
         w.blank();
         write_method(w, fc, names, svc, ep);
     }
+    for ep in svc.endpoints.iter().filter(|ep| can::wanted(ep)) {
+        w.blank();
+        can::write_can(w, fc, plan, (svc, ep), diags);
+    }
     w.close();
 }
 
@@ -211,22 +277,42 @@ fn write_constructor(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service
     let opts = fc.rt("ClientOptions");
     let core = fc.rt("ClientCore");
     let validation = validation_expr(fc);
-    w.open(format!("constructor(opts: {opts} = {{}})"));
+    let config = fc.tree.uses_runtime_config();
+    // With a runtime config the address is `baseUrl`, always given (`spec/runtime-config.md` 5).
+    let param = if config {
+        format!("opts: {opts}")
+    } else {
+        format!("opts: {opts} = {{}}")
+    };
+    w.open(format!("constructor({param})"));
     let passed = if fc.tree.validate {
         "opts"
     } else {
         "{ validate: false, ...opts }"
     };
     w.open_with(format!("this.#core = new {core}({passed},"), " {");
-    w.line(format!(
-        "envVar: {},",
-        ts_str(&format!("VELD_{}_URL", naming::screaming_snake(&svc.name)))
-    ));
-    match &svc.base_url {
-        Some(u) => w.line(format!("baseUrl: {},", ts_str(u))),
-        None => w.line("baseUrl: null,"),
-    };
+    if !config {
+        w.line(format!(
+            "envVar: {},",
+            ts_str(&format!("VELD_{}_URL", naming::screaming_snake(&svc.name)))
+        ));
+        match &svc.base_url {
+            Some(u) => w.line(format!("baseUrl: {},", ts_str(u))),
+            None => w.line("baseUrl: null,"),
+        };
+    }
     w.line(format!("validation: {validation},"));
+    if let Some(digest) = svc.rules_digest.as_deref() {
+        w.line(format!("service: {},", ts_str(&svc.name)));
+        w.line(format!("digest: {},", ts_str(digest)));
+    }
+    // The violations of the local check carry the key of their message (`spec/platform.md` 22).
+    if fc.tree.uses_rules()
+        && let Some(module) = crate::messages::client_keys(fc.tree, svc.package)
+    {
+        fc.import(&module, "messageKeys", true);
+        w.line("keys: messageKeys,");
+    }
     w.close_with("});");
     w.close();
 }
@@ -258,7 +344,7 @@ fn write_method(
         Some(t) => ts_type(fc, t),
         None => "void".to_string(),
     };
-    let default = if ep.params.iter().all(|p| p.stream) {
+    let default = if ep.params.iter().all(|p| p.stream) && !version::needs_request(ep) {
         " = {}"
     } else {
         ""
@@ -306,7 +392,7 @@ fn write_ws_method(
         None => "never".to_string(),
     };
     let outgoing = match ep.params.iter().find(|p| p.stream) {
-        Some(p) => ts_type(fc, &p.ty),
+        Some(p) => derived::shaped_type(fc, &p.ty, derived::Shape::Input),
         None => "never".to_string(),
     };
     let init = fc.rt("WsInit");
@@ -326,6 +412,8 @@ fn write_ws_method(
 /// Emits `client.ts` for each package of the tree's services; returns the module paths written.
 pub fn emit(files: &mut FileSet, tree: &Tree<'_>) -> Result<Vec<String>, Vec<GenDiagnostic>> {
     let names = RequestNames::new(tree.ir, &tree.services);
+    let plan = Plan::new(tree);
+    let mut diags = Vec::new();
     let mut modules = Vec::new();
     for pkg in tree.packages() {
         let module = tree.client_module(pkg);
@@ -336,11 +424,16 @@ pub fn emit(files: &mut FileSet, tree: &Tree<'_>) -> Result<Vec<String>, Vec<Gen
             .iter()
             .filter(|s| tree.ir.service(**s).package == pkg)
         {
-            write_service(&mut w, &mut fc, &names, tree.ir.service(*sid));
+            let svc = tree.ir.service(*sid);
+            write_service(&mut w, &mut fc, &names, (svc, &plan), &mut diags);
             w.blank();
         }
         add_file(files, &format!("{module}.ts"), fc.finish(&w.finish()))?;
         modules.push(module);
     }
-    Ok(modules)
+    if diags.is_empty() {
+        Ok(modules)
+    } else {
+        Err(diags)
+    }
 }

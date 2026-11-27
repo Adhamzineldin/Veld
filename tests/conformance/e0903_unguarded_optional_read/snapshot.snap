@@ -1,0 +1,69 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0903]: `a` is optional and may be absent where it is read here
+ --> app/app.veld:12:14
+   |
+12 |   rule bare: a > 0
+   |              ^
+  = help: guard it: `has(a) && ...`, `has(a) implies ...` or `!has(a) || ...`
+
+error[E0903]: `a` is optional and may be absent where it is read here
+ --> app/app.veld:13:30
+   |
+13 |   rule orNotGuard: has(a) || a > 0
+   |                              ^
+  = help: guard it: `has(a) && ...`, `has(a) implies ...` or `!has(a) || ...`
+
+error[E0903]: `a` is optional and may be absent where it is read here
+ --> app/app.veld:14:19
+   |
+14 |   rule wrongSide: a > 0 && has(a)
+   |                   ^
+  = help: guard it: `has(a) && ...`, `has(a) implies ...` or `!has(a) || ...`
+
+error[E0903]: `a` is optional and may be absent where it is read here
+ --> app/app.veld:15:30
+   |
+15 |   rule otherField: has(b) && a > 0
+   |                              ^
+  = help: guard it: `has(a) && ...`, `has(a) implies ...` or `!has(a) || ...`
+
+error[E0903]: `address.zip` is optional and may be absent where it is read here
+ --> app/app.veld:16:48
+   |
+16 |   rule onlyPrefix: has(address) && len(address.zip) == 5
+   |                                                ^^^
+  = help: guard it: `has(address.zip) && ...`, `has(address.zip) implies ...` or `!has(address.zip) || ...`
+
+error[E0903]: `a` is optional and may be absent where it is read here
+ --> app/app.veld:17:30
+   |
+17 |   rule notEnough: !has(a) && a > 0
+   |                              ^
+  = help: guard it: `has(a) && ...`, `has(a) implies ...` or `!has(a) || ...`
+
+error[E0903]: `a` is optional and may be absent where it is read here
+ --> app/app.veld:18:21
+   |
+18 |   rule impliesLeft: a > 0 implies has(a)
+   |                     ^
+  = help: guard it: `has(a) && ...`, `has(a) implies ...` or `!has(a) || ...`
+
+error[E0903]: `i.zip` is optional and may be absent where it is read here
+ --> app/app.veld:19:40
+   |
+19 |   rule inLambda: all(items, i => len(i.zip) > 0)
+   |                                        ^^^
+  = help: guard it: `has(i.zip) && ...`, `has(i.zip) implies ...` or `!has(i.zip) || ...`
+
+error[E0903]: `nick` is optional and may be absent where it is read here
+ --> app/app.veld:20:34
+   |
+20 |   rule afterOr: has(nick) || len(nick) > 0
+   |                                  ^^^^
+  = help: guard it: `has(nick) && ...`, `has(nick) implies ...` or `!has(nick) || ...`
+
+== ir ==
+(no IR: compilation failed)

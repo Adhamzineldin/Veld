@@ -1,0 +1,24 @@
+// Flagged invariants on the messages of a WebSocket and the items of a stream (spec/platform.md
+// section 11): the checks run with the flags the request read, also after the call that made the
+// conversation or the stream has returned. Compiled as the package `chat` by
+// crates/emitters/rust/tests/platform_flags.rs (tests/toolchain/rust/flags-streams-harness).
+
+/// What a client says. A flagged invariant: with `shortOnly` on, a long text is refused.
+model Say {
+  text: string
+  rule shortOnly: len(text) <= 5 message "too long" when flag("shortOnly")
+}
+
+/// What the server sends back, and the items of a stream. A flagged invariant: with `loud` on, a
+/// one-letter text must not be sent.
+model Heard {
+  text: string
+  rule loud: len(text) >= 2 message "too quiet" when flag("loud")
+}
+
+service Chat at "/chat" {
+  /// Two items of the given text.
+  get "/ticks" ticks(@query text: string) -> stream Heard
+  /// Echoes every message.
+  ws "/talk" talk(body: stream Say) -> stream Heard
+}

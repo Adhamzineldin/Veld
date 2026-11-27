@@ -4,6 +4,8 @@
 //! - `input/*.veld`: a single package named `app`; or
 //! - `input/<pkg>/**.veld`: one package per directory (`@org+name` is the
 //!   registry package `@org/name`);
+//! - `messages/<tag>.toml` (optional): the message catalogs of the package `app`
+//!   (`spec/platform.md` section 22);
 //! - `case.toml` (optional): `[consumes]`, `[base_url]` and `[kinds]` and `[prefix]` tables.
 //!
 //! The snapshot (`snapshot.snap`, stored in the case directory) holds the
@@ -13,7 +15,8 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use veld_compiler::{CompileInput, CompileOutput, PackageInput, SourceFile, compile_prefixed};
+use veld_compiler::messages::{CatalogFile, Catalogs, MemberCatalogs, compile_with_catalogs};
+use veld_compiler::{CompileInput, CompileOutput, PackageInput, SourceFile};
 use veld_ir::PackageKind;
 
 fn root() -> PathBuf {
@@ -154,7 +157,28 @@ fn compile_case(dir: &Path) -> CompileOutput {
     let cfg = fs::read_to_string(dir.join("case.toml"))
         .map(|t| parse_case_toml(&t))
         .unwrap_or_default();
-    compile_prefixed(&load_case(dir), None, &cfg.prefix)
+    compile_with_catalogs(&load_case(dir), None, &cfg.prefix, &load_catalogs(dir))
+}
+
+/// The catalogs of a case: the `*.toml` files of its `messages` directory, for the package `app`.
+fn load_catalogs(dir: &Path) -> Catalogs {
+    let files: Vec<CatalogFile> = sorted_entries(&dir.join("messages"))
+        .into_iter()
+        .filter(|p| p.is_file())
+        .filter_map(|p| {
+            let name = p.file_name()?.to_string_lossy().into_owned();
+            let text = fs::read_to_string(&p).ok()?.replace("\r\n", "\n");
+            Some(CatalogFile { name, text })
+        })
+        .collect();
+    if files.is_empty() {
+        return Catalogs::new();
+    }
+    let member = MemberCatalogs {
+        dir: "messages".into(),
+        files,
+    };
+    [("app".to_owned(), member)].into()
 }
 
 fn render_case(out: &CompileOutput) -> String {
@@ -241,6 +265,15 @@ fn every_diagnostic_code_has_an_invalid_case() {
     codes.extend((501..=512).map(|n| format!("E0{n}")));
     codes.extend((601..=603).map(|n| format!("E0{n}")));
     codes.extend(["E0701", "E0702", "W0001", "W0201", "W0202", "W0701"].map(String::from));
+    // Rules (spec/rules.md section 14) and the expression nesting limit.
+    codes.push("E0005".to_string());
+    codes.extend((901..=908).map(|n| format!("E0{n}")));
+    codes.extend((920..=924).map(|n| format!("E0{n}")));
+    codes.extend((940..=942).map(|n| format!("E0{n}")));
+    codes.push("W0940".to_string());
+    codes.extend((950..=952).map(|n| format!("E0{n}")));
+    codes.extend((960..=961).map(|n| format!("E0{n}")));
+    codes.extend((901..=903).map(|n| format!("W0{n}")));
     let names: Vec<String> = case_dirs()
         .iter()
         .map(|d| case_name(d).to_lowercase())

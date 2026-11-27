@@ -1,0 +1,25 @@
+// Flagged invariants over the production handler (spec/platform.md section 11): a request, a result
+// and the client's local check. The models are those of tests/rules/core/flags.veld.pending.
+
+model Stay {
+  start: datetime
+  end: datetime
+  guests: int
+
+  rule maxStay: end - start <= days(14) when flag("shortStays")
+  rule positive: guests > 0
+  rule smallGroup: guests <= 6 when flag("smallGroups")
+}
+
+model Stays {
+  items: Stay[]
+}
+
+model Child extends Stay {
+  note: string
+}
+
+service Visits at "/stays" {
+  post "/" bookStay(body: Stay) -> 204
+  get "/one" getStay() -> Stay
+}

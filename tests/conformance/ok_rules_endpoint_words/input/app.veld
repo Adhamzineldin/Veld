@@ -1,0 +1,72 @@
+// The words of endpoint rules and examples (spec/rules.md section 2.2) are still ordinary names:
+// a field, an enum variant, a parameter, an endpoint, a declaration, a fact, a statement name and
+// a given. They are keywords only where the grammar expects them.
+
+enum Vocabulary {
+  fact, require, ensure, else, old, now, result, absent, returns, ok, given, example
+}
+
+model Room {
+  fact: string
+  require: int
+  ensure: int
+  else: int
+  old: int
+  now: int
+  result: int
+  absent: int
+  returns: int
+  ok: int
+  given: int
+  example: int
+}
+
+model example { value: int }
+model absent { value: int }
+model returns { value: int }
+model ok { value: int }
+
+service Words at "/words" {
+  get "/fact" fact(@query require: int, @query ensure: int, @query old: int) -> 200 Room {
+    fact ok: Room = require
+    fact given: Room = ensure
+    fact example?: Room
+    fact absent: Room = old
+    require old: require > 0 && old > 0
+    require else: ensure > 0 message "named else"
+    require has(example) implies example.fact == ok.fact
+    ensure now: result.old >= 0
+    ensure returns: old(ok.fact) == old(given.fact)
+    ensure example: result.require == require
+  }
+
+  get "/given" given(@query given: int) -> 200 Room
+
+  get "/ok" ok() -> 200 Room
+
+  get "/absent" absent() -> 200 Room
+
+  get "/example" example() -> 200 Room
+}
+
+example "words" {
+  given ok = absent
+  given given = { fact: "x" }
+  fact(require: 1, ensure: 1, old: 1) -> NotFound
+}
+
+example "an endpoint called given" {
+  given(given: 1) -> ok
+}
+
+example "ok, absent and returns are names" {
+  absent() returns { ok: 1, returns: 2, absent: 3 } -> ok { ok: 1 }
+}
+
+example "ok" {
+  ok() -> ok
+}
+
+example "example" {
+  Words.example() -> ok
+}

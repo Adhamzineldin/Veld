@@ -55,7 +55,9 @@ pub enum Command {
     Fmt(FmtArgs),
     /// Show breaking and non-breaking contract changes
     Diff(DiffArgs),
-    /// Export OpenAPI or the compiled IR
+    /// Run the `example` blocks of the contracts, offline or against a live test handler
+    Test(TestArgs),
+    /// Export OpenAPI, the rule book, OpenSLO or the compiled IR
     #[command(subcommand)]
     Export(ExportCommand),
     /// Create and test emitter plugins
@@ -157,6 +159,23 @@ pub struct CheckArgs {
     /// Print the service dependency graph instead of the summary
     #[arg(long, value_name = "FORMAT", num_args = 0..=1, default_missing_value = "text", value_enum)]
     pub graph: Option<GraphFormat>,
+    #[command(flatten)]
+    pub prove: ProveArgs,
+}
+
+/// The options of `--prove`, shared by `veld check` and `veld diff` (`spec/rules.md` section 18).
+#[derive(Debug, Args, Default, Clone)]
+pub struct ProveArgs {
+    /// Ask an external SMT solver about the rules: for `check`, whether they contradict each other;
+    /// for `diff`, whether a changed rule got tighter
+    #[arg(long)]
+    pub prove: bool,
+    /// With --prove: the solver program (default: VELD_SOLVER, then z3 and cvc5 on PATH)
+    #[arg(long, value_name = "PATH", requires = "prove")]
+    pub solver: Option<PathBuf>,
+    /// With --prove: the time limit of each question, in seconds (default: 5)
+    #[arg(long, value_name = "SECONDS", requires = "prove")]
+    pub prove_timeout: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
@@ -229,10 +248,30 @@ impl InitArgs {
     }
 }
 
+/// Which members of a workspace a command works on (`spec/workspace.md`, section 9). With no
+/// flag: the member whose directory you are in, else every member.
+#[derive(Debug, Args, Default, Clone)]
+pub struct SelectArgs {
+    /// Work on this member, whatever its kind (repeatable)
+    #[arg(short = 'p', long = "package", value_name = "NAME", conflicts_with_all = ["workspace", "affected"])]
+    pub package: Vec<String>,
+    /// Work on every member, also from inside one
+    #[arg(long, conflicts_with = "affected")]
+    pub workspace: bool,
+    /// Work on the members that a change since `--since` can have affected
+    #[arg(long, requires = "since")]
+    pub affected: bool,
+    /// With --affected: the git ref to compare with, for example origin/master
+    #[arg(long, value_name = "REF", requires = "affected")]
+    pub since: Option<String>,
+}
+
 #[derive(Debug, Args, Default)]
 pub struct GenerateArgs {
     /// Generate only the target with this name
     pub target: Option<String>,
+    #[command(flatten)]
+    pub select: SelectArgs,
     /// Show what would change without writing anything
     #[arg(long)]
     pub dry_run: bool,
@@ -248,10 +287,10 @@ pub struct GenerateArgs {
     /// Regenerate whenever a .veld file or veld.toml changes
     #[arg(long)]
     pub watch: bool,
-    /// Fail on breaking changes instead of prompting (for CI)
+    /// Fail on breaking or possibly breaking changes (a changed rule) instead of prompting (for CI)
     #[arg(long, conflicts_with = "accept_breaking")]
     pub strict: bool,
-    /// Continue past breaking changes without asking
+    /// Continue past breaking or possibly breaking changes without asking
     #[arg(long)]
     pub accept_breaking: bool,
     /// Run `veld setup` after generating
@@ -271,6 +310,8 @@ impl GenerateArgs {
 pub struct WatchArgs {
     /// Watch and regenerate only the target with this name
     pub target: Option<String>,
+    #[command(flatten)]
+    pub select: SelectArgs,
     /// Overwrite existing files that Veld did not create
     #[arg(long)]
     pub force: bool,
@@ -286,6 +327,8 @@ pub struct WatchArgs {
 pub struct SetupArgs {
     /// Wire only the target with this name
     pub target: Option<String>,
+    #[command(flatten)]
+    pub select: SelectArgs,
     /// Show the planned edits without writing anything
     #[arg(long)]
     pub dry_run: bool,
@@ -293,6 +336,8 @@ pub struct SetupArgs {
 
 #[derive(Debug, Args)]
 pub struct CleanArgs {
+    #[command(flatten)]
+    pub select: SelectArgs,
     /// Also remove veld.lock.ir.json, the breaking-change baseline
     #[arg(long)]
     pub lock: bool,
@@ -332,18 +377,106 @@ pub struct DiffArgs {
     /// Exit 1 if any change is breaking
     #[arg(long)]
     pub strict: bool,
+    #[command(flatten)]
+    pub prove: ProveArgs,
+}
+
+/// `veld test`.
+#[derive(Debug, Args, Default)]
+pub struct TestArgs {
+    /// Run only the examples written in these .veld files or directories
+    pub paths: Vec<PathBuf>,
+    #[command(flatten)]
+    pub select: SelectArgs,
+    /// Run only the examples whose name or `Service.endpoint` contains this text
+    #[arg(long, value_name = "TEXT")]
+    pub filter: Option<String>,
+    /// Send the examples to a running test handler at this base URL instead of running them offline
+    #[arg(long, value_name = "BASE_URL")]
+    pub live: Option<String>,
+    /// With --live: an example without `returns` stops before the application's handler
+    #[arg(long, requires = "live")]
+    pub dry_run: bool,
+    /// With --live: after the examples, send N generated requests per endpoint (the boundaries
+    /// of its rules first) and compare each answer with the reference evaluator
+    #[arg(
+        long,
+        value_name = "N",
+        requires = "live",
+        value_parser = clap::value_parser!(u32).range(1..=100_000)
+    )]
+    pub fuzz: Option<u32>,
+    /// With --fuzz: the seed to repeat a run (a run without one picks and prints a seed)
+    #[arg(long, value_name = "SEED", requires = "fuzz")]
+    pub seed: Option<u64>,
+    /// After the examples, report which rules they exercise: each rule must be held by one
+    /// example and violated by another (works with and without --live)
+    #[arg(long)]
+    pub coverage: bool,
+    /// With --coverage: exit 1 when fewer than N percent of the rules are covered
+    #[arg(
+        long,
+        value_name = "N",
+        requires = "coverage",
+        value_parser = clap::value_parser!(u8).range(0..=100)
+    )]
+    pub fail_under: Option<u8>,
+    /// Print the `example` block for a violation event a server captured (a JSON file), and
+    /// run nothing else
+    #[arg(
+        long,
+        value_name = "FILE",
+        conflicts_with_all = ["paths", "filter", "live", "dry_run", "fuzz", "seed", "coverage", "fail_under"]
+    )]
+    pub from_violation: Option<PathBuf>,
 }
 
 #[derive(Debug, Subcommand)]
 pub enum ExportCommand {
     /// OpenAPI 3.1 JSON
     Openapi(DocOut),
+    /// AsyncAPI 3.0 JSON: the channels, their messages and the operations of the services
+    Asyncapi(DocOut),
+    /// The rules of the workspace as Markdown, for people who do not read contracts
+    Rules(DocOut),
+    /// JSON Schema of the runtime config of a target
+    RuntimeSchema(RuntimeSchemaArgs),
+    /// The `@slo` of the contracts as OpenSLO v1 YAML
+    Slo(DocOut),
     /// The compiled IR as JSON, for plugin authors
     Ir {
         /// Write to this file instead of stdout
         #[arg(short, long, value_name = "FILE")]
         output: Option<PathBuf>,
     },
+    /// The data inventory as Markdown: personal data, how long it is kept, where it travels
+    Retention(FileOut),
+}
+
+/// An export of the whole workspace into one file.
+#[derive(Debug, Args, Default)]
+pub struct FileOut {
+    /// Write to this file instead of stdout
+    #[arg(short, long, value_name = "FILE")]
+    pub output: Option<PathBuf>,
+    /// Overwrite an existing, different FILE
+    #[arg(long)]
+    pub force: bool,
+}
+
+/// `veld export runtime-schema` (`spec/runtime-config.md`, section 6).
+#[derive(Debug, Args, Default)]
+pub struct RuntimeSchemaArgs {
+    /// The target to describe (default: the one target that has a runtime config)
+    pub target: Option<String>,
+    #[command(flatten)]
+    pub select: SelectArgs,
+    /// Write to this file instead of stdout
+    #[arg(short, long, value_name = "FILE")]
+    pub output: Option<PathBuf>,
+    /// Overwrite an existing, different FILE
+    #[arg(long)]
+    pub force: bool,
 }
 
 /// Exports that produce one document.
@@ -516,6 +649,7 @@ mod tests {
             "--service",
             "t",
         ]);
+        ok(&["export", "asyncapi", "-o", "events.json", "--service", "s"]);
         bad(&["export", "nope"]);
         ok(&["export", "ir"]);
         ok(&["plugin", "new", "kotlin"]);
@@ -541,6 +675,31 @@ mod tests {
         bad(&["generate", "--input", "a.veld"]);
         ok(&["watch", "api"]);
         ok(&["generate", "--watch"]);
+    }
+
+    #[test]
+    fn selection_flags_parse_and_exclude_each_other() {
+        ok(&["generate", "-p", "a", "-p", "b"]);
+        ok(&["generate", "--package", "a", "api"]);
+        ok(&["generate", "--workspace"]);
+        ok(&[
+            "generate",
+            "--affected",
+            "--since",
+            "origin/master",
+            "--check",
+        ]);
+        for cmd in ["watch", "clean", "setup", "test"] {
+            ok(&[cmd, "-p", "a"]);
+            ok(&[cmd, "--workspace"]);
+        }
+        bad(&["generate", "--affected"]);
+        bad(&["generate", "--since", "main"]);
+        bad(&["generate", "-p", "a", "--workspace"]);
+        bad(&["generate", "-p", "a", "--affected", "--since", "x"]);
+        bad(&["generate", "--workspace", "--affected", "--since", "x"]);
+        bad(&["check", "-p", "a"]);
+        bad(&["diff", "--workspace"]);
     }
 
     #[test]

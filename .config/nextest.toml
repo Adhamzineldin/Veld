@@ -1,0 +1,11 @@
+# cargo-nextest runs every test in its own process. The Java and Rust toolchain tests share one
+# compiled fixture per process (javac output, a built generated crate), so under nextest they
+# would each rebuild it at the same time and collide. They run with `cargo test` instead:
+#
+#   cargo nextest run --workspace
+#   cargo test -p veld-emit-java --test toolchain
+#   cargo test -p veld-emit-rust --test toolchain
+#
+# Together these are the same tests as `cargo test --workspace`.
+[profile.default]
+default-filter = 'not (binary(toolchain) and (package(veld-emit-java) or package(veld-emit-rust)))'

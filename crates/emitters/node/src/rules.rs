@@ -1,0 +1,685 @@
+//! Endpoint rules in the server module (`spec/rules.md` section 9, `spec/targets/typescript.md`
+//! section 5c): the fact types and loader interface, and the `rules` member of an endpoint
+//! description. The runtime (`runtime/veld.ts`, region `endpoint_rules`) runs them as step 6 and
+//! step 9 of the pipeline.
+
+use std::collections::BTreeSet;
+
+use crate::guards;
+use veld_codegen::{CodeWriter, GenDiagnostic};
+use veld_emit_typescript::expr::{EndpointPrinter, EndpointScope, Principal};
+use veld_emit_typescript::machine::Move;
+use veld_emit_typescript::policy::app_value;
+use veld_emit_typescript::tree::{FileCtx, Tree};
+use veld_emit_typescript::types::ts_type;
+use veld_emit_typescript::util::{method_key, prop_key, ts_str};
+use veld_emit_typescript::validate::schema_expr;
+use veld_ir::{
+    Constraints, DeclKind, Endpoint, EndpointEnsure, EndpointFact, EndpointRequire, ExprType,
+    Scalar, Service, Type,
+};
+
+/// Whether an endpoint has any statement.
+#[must_use]
+pub fn endpoint_has_rules(ep: &Endpoint) -> bool {
+    !ep.rules.is_empty()
+}
+
+/// Whether the service has an endpoint with statements: it gets an endpoints builder, and the
+/// handler factory needs the fact loaders and takes a clock.
+#[must_use]
+pub fn service_has_rules(svc: &Service) -> bool {
+    svc.endpoints.iter().any(endpoint_has_rules)
+}
+
+/// Whether an endpoint is `@idempotent`.
+#[must_use]
+pub fn endpoint_is_idempotent(ep: &Endpoint) -> bool {
+    ep.idempotency.is_some()
+}
+
+/// Whether the service has an `@idempotent` endpoint: its hooks need an `idempotency` member.
+#[must_use]
+pub fn service_is_idempotent(svc: &Service) -> bool {
+    svc.endpoints.iter().any(endpoint_is_idempotent)
+}
+
+/// Whether the service gets an endpoints builder (and, with `testing`, a test handler): it has
+/// endpoint rules or an `@idempotent` endpoint.
+#[must_use]
+pub fn service_has_builder(tree: &Tree<'_>, svc: &Service) -> bool {
+    service_has_rules(svc) || service_is_idempotent(svc) || service_uses_platform(tree, svc)
+}
+
+/// Whether the server enforces a feature of platform phase P1 (`spec/platform.md` sections 2 to
+/// 5) for an endpoint of the service: visibility, tenancy, the audit log or a limit.
+#[must_use]
+pub fn service_uses_platform(tree: &Tree<'_>, svc: &Service) -> bool {
+    svc.endpoints
+        .iter()
+        .any(|ep| veld_emit_typescript::platform::endpoint_uses_platform(tree, ep))
+}
+
+/// Whether the service has an audited endpoint that the server audits: its hooks require `audit`.
+#[must_use]
+pub fn service_audits(tree: &Tree<'_>, svc: &Service) -> bool {
+    tree.uses_audit()
+        && svc
+            .endpoints
+            .iter()
+            .any(|ep| ep.audited && !ep.success.stream)
+}
+
+/// Whether an endpoint of the service has a limit by `by`.
+fn service_limits_by(tree: &Tree<'_>, svc: &Service, by: veld_ir::LimitSubject) -> bool {
+    tree.uses_limits_server()
+        && svc
+            .endpoints
+            .iter()
+            .any(|ep| ep.limit.is_some_and(|l| l.by == by))
+}
+
+/// Whether the hooks of the service require `address` (`by: ip`, `spec/platform.md` section 5).
+#[must_use]
+pub fn service_needs_address(tree: &Tree<'_>, svc: &Service) -> bool {
+    service_limits_by(tree, svc, veld_ir::LimitSubject::Ip)
+}
+
+/// Whether the hooks of the service require `caller` (`by: user`): the hook of the caller's
+/// identity that `@idempotent` shares, when an endpoint of the service needs it for its own key
+/// (`idempotency.caller`); otherwise a hook of its own, next to `limiter`.
+#[must_use]
+pub fn service_needs_limit_caller(tree: &Tree<'_>, svc: &Service) -> bool {
+    service_limits_by(tree, svc, veld_ir::LimitSubject::User)
+        && !svc
+            .endpoints
+            .iter()
+            .any(|ep| ep.idempotency.as_ref().is_some_and(|i| i.caller))
+}
+
+/// Whether the hooks of the service have members of the limits.
+#[must_use]
+pub fn service_has_limits(tree: &Tree<'_>, svc: &Service) -> bool {
+    tree.uses_limits_server() && svc.endpoints.iter().any(|ep| ep.limit.is_some())
+}
+
+/// Whether the hooks of the service must be given (they have a member that is required): the
+/// factory has no default, and a Nest module needs them.
+#[must_use]
+pub fn service_limit_hooks_required(tree: &Tree<'_>, svc: &Service) -> bool {
+    service_needs_address(tree, svc) || service_needs_limit_caller(tree, svc)
+}
+
+/// Whether the hooks of the service take a clock: endpoint rules read it, and so does every
+/// feature of platform phase P1.
+#[must_use]
+pub fn service_has_clock(tree: &Tree<'_>, svc: &Service) -> bool {
+    service_has_rules(svc) || service_uses_platform(tree, svc)
+}
+
+/// The flags an endpoint may touch (`spec/platform.md` section 11): those of its own `require` and
+/// `ensure`, of the clauses of the policies it names, of the edges its transition takes, and of
+/// every invariant of the declarations of the tree. The runtime reads them once, before step 5.
+#[must_use]
+pub fn endpoint_flags(tree: &Tree<'_>, ep: &Endpoint) -> Vec<String> {
+    let ir = tree.ir;
+    let mut out: BTreeSet<String> = BTreeSet::new();
+    let r = &ep.rules;
+    out.extend(r.requires.iter().filter_map(|x| x.flag.clone()));
+    out.extend(r.ensures.iter().filter_map(|x| x.flag.clone()));
+    for allow in &r.allows {
+        if let Some(policy) = ir.policies.get(allow.policy.index()) {
+            out.extend(policy.clauses.iter().filter_map(|c| c.flag.clone()));
+        }
+    }
+    if let Some(t) = &r.transition
+        && let DeclKind::Enum(machine) = &ir.decl(t.decl).kind
+    {
+        out.extend(
+            machine
+                .flows
+                .iter()
+                .filter(|f| f.to == t.to && t.from.contains(&f.from))
+                .filter_map(|f| f.flag.clone()),
+        );
+    }
+    out.extend(decl_flags(tree));
+    out.into_iter().collect()
+}
+
+/// The flags of the invariants of the declarations of the tree: what an event may touch.
+#[must_use]
+pub fn decl_flags(tree: &Tree<'_>) -> Vec<String> {
+    let flags: BTreeSet<String> = tree
+        .decls()
+        .iter()
+        .flat_map(|id| {
+            tree.ir
+                .decl(*id)
+                .rules()
+                .iter()
+                .filter_map(|x| x.flag.clone())
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    flags.into_iter().collect()
+}
+
+/// Whether a server of the tree needs a flag provider: some endpoint of the service may touch a flag.
+#[must_use]
+pub fn service_uses_flags(tree: &Tree<'_>, svc: &Service) -> bool {
+    tree.uses_flags()
+        && svc
+            .endpoints
+            .iter()
+            .any(|ep| !endpoint_flags(tree, ep).is_empty())
+}
+
+/// The type of the loaded facts of an endpoint: `CreateBookingFacts` for `CreateBookingRequest`.
+#[must_use]
+pub fn facts_name(request: &str) -> String {
+    format!(
+        "{}Facts",
+        request.strip_suffix("Request").unwrap_or(request)
+    )
+}
+
+fn old_name(request: &str) -> String {
+    format!("{}Old", request.strip_suffix("Request").unwrap_or(request))
+}
+
+/// The loader interface of a service.
+#[must_use]
+pub fn loaders_name(service: &str) -> String {
+    format!("{service}FactLoaders")
+}
+
+/// `export interface CreateBookingFacts { room: Room; coupon?: Coupon; }`: what the handler gets
+/// besides the parameters.
+pub fn write_facts_type(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    request: &str,
+    ep: &Endpoint,
+) {
+    if ep.rules.facts.is_empty() {
+        return;
+    }
+    w.line("/** The facts the loaders found, handed to the handler with the parameters. */");
+    w.open(format!("export interface {}", facts_name(request)));
+    for fact in &ep.rules.facts {
+        let opt = if fact.optional { "?" } else { "" };
+        w.line(format!(
+            "{}{opt}: {};",
+            prop_key(&fact.name),
+            ts_type(fc, &fact.ty)
+        ));
+    }
+    w.close();
+    w.blank();
+}
+
+/// `export interface BookingsFactLoaders { room(key: string, ctx): Promise<Room | null | undefined>; }`.
+pub fn write_loaders(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service, name: &str) {
+    let ctx = fc.rt("RequestContext");
+    w.line(format!(
+        "/** One loader per fact of `{}`. A loader resolves to `null` or `undefined` when it finds nothing. */",
+        svc.name
+    ));
+    w.open(format!("export interface {}", loaders_name(name)));
+    for fact in &svc.facts {
+        // What a loader returns: the derived fields are optional, the runtime computes them.
+        let ty = veld_emit_typescript::derived::shaped_type(
+            fc,
+            &fact.ty,
+            veld_emit_typescript::derived::Shape::Output,
+        );
+        let key = match &fact.key {
+            Some(k) => format!("key: {}, ", ts_type(fc, k)),
+            None => String::new(),
+        };
+        w.line(format!(
+            "{}({key}ctx: {ctx}): Promise<{ty} | null | undefined>;",
+            method_key(&fact.name)
+        ));
+    }
+    w.close();
+}
+
+/// What the writer of one endpoint needs.
+pub struct Site<'a> {
+    pub svc: &'a Service,
+    pub ep: &'a Endpoint,
+    /// The request type name (`CreateBookingRequest`).
+    pub request: &'a str,
+}
+
+/// Whether a statement of the endpoint reads the caller (`spec/rules.md` section 11.1): an
+/// `allow` argument, a fact key, a `require` or its `else` payload, or an `ensure`.
+fn reads_principal(ep: &Endpoint) -> bool {
+    let r = &ep.rules;
+    r.allows
+        .iter()
+        .any(|a| a.args.iter().any(veld_ir::Expr::reads_principal))
+        || r.facts
+            .iter()
+            .any(|f| f.key.as_ref().is_some_and(veld_ir::Expr::reads_principal))
+        || r.requires.iter().any(|q| {
+            q.expr.reads_principal()
+                || q.else_error
+                    .iter()
+                    .flat_map(|e| &e.fields)
+                    .any(|f| f.value.reads_principal())
+        })
+        || r.ensures.iter().any(|e| e.expr.reads_principal())
+}
+
+/// The caller of the service when the rules of `ep` read it: it is part of the scope `f` the
+/// rules of this endpoint see, under the name it has in the rules.
+#[must_use]
+pub fn caller(site: &Site<'_>) -> Option<Principal> {
+    let p = site.svc.principal.as_ref()?;
+    reads_principal(site.ep).then(|| Principal {
+        name: p.name.clone(),
+        ty: Type::Decl(p.decl),
+    })
+}
+
+fn scope(ep: &Endpoint, principal: Option<Principal>) -> EndpointScope {
+    let params: BTreeSet<String> = ep
+        .params
+        .iter()
+        .filter(|p| p.optional)
+        .map(|p| p.name.clone())
+        .collect();
+    let facts: BTreeSet<String> = ep
+        .rules
+        .facts
+        .iter()
+        .filter(|f| f.optional)
+        .map(|f| f.name.clone())
+        .collect();
+    EndpointScope {
+        optional_params: params,
+        optional_facts: facts,
+        principal,
+        ..EndpointScope::default()
+    }
+}
+
+pub(crate) fn unsupported(site: &Site<'_>, what: &str) -> GenDiagnostic {
+    let mut d = GenDiagnostic::new(
+        "E0801",
+        format!(
+            "{}.{}: the `node` generator cannot represent {what}",
+            site.svc.name, site.ep.name
+        ),
+    );
+    d.origin = site.ep.rules.first_origin().cloned();
+    d
+}
+
+/// `bigint` for the 64 bit and temporal kinds, `number` for `int` and `float`, and so on: the
+/// type of a value in the rule representation (`veld_emit_typescript::expr`).
+fn rule_ty(fc: &mut FileCtx<'_, '_>, ty: &ExprType) -> String {
+    match ty {
+        ExprType::Duration => "bigint".to_string(),
+        ExprType::Type(t) => rule_type(fc, t),
+    }
+}
+
+fn rule_type(fc: &mut FileCtx<'_, '_>, t: &Type) -> String {
+    match t {
+        Type::Scalar(s) => match s {
+            Scalar::Int | Scalar::Float => "number".to_string(),
+            Scalar::Long | Scalar::Date | Scalar::Datetime | Scalar::Time => "bigint".to_string(),
+            Scalar::Decimal => format!("{}.Decimal", fc.rules_ns()),
+            Scalar::Bool => "boolean".to_string(),
+            Scalar::Json => "unknown".to_string(),
+            Scalar::String | Scalar::Uuid | Scalar::Bytes => "string".to_string(),
+        },
+        Type::List(inner) => format!("{}[]", rule_type(fc, inner)),
+        Type::Map(_) | Type::Page(_) | Type::Decl(_) => ts_type(fc, t),
+    }
+}
+
+fn message(name: Option<&str>, custom: Option<&str>, unnamed: &str) -> String {
+    match (custom, name) {
+        (Some(m), _) => ts_str(m),
+        (None, Some(n)) => ts_str(&format!("violates rule {n}")),
+        (None, None) => ts_str(unnamed),
+    }
+}
+
+fn fields_list(reads: &[String]) -> String {
+    let items: Vec<String> = reads.iter().map(|r| ts_str(r)).collect();
+    format!("[{}]", items.join(", "))
+}
+
+/// The parameter list of a generated rule function.
+pub(crate) struct Sig {
+    pub p: String,
+    pub f: String,
+}
+
+fn write_fact(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    printer: &mut EndpointPrinter<'_>,
+    site: &Site<'_>,
+    sig: &Sig,
+    fact: &EndpointFact,
+    diags: &mut Vec<GenDiagnostic>,
+) {
+    let (p, f) = (&sig.p, &sig.f);
+    w.open_with("", "{");
+    w.line(format!("name: {},", ts_str(&fact.name)));
+    w.line(format!("optional: {},", fact.optional));
+    let loader = format!("loaders.{}", method_key(&fact.name));
+    match &fact.key {
+        Some(key) => {
+            match app_value(fc, printer, key) {
+                Some(code) => w.line(format!("key: ({p}, {f}) => {code},")),
+                None => {
+                    diags.push(unsupported(
+                        site,
+                        "the key of this fact as a loader argument",
+                    ));
+                    w.line("key: () => undefined,")
+                }
+            };
+            w.line(format!("load: (key, ctx) => {loader}(key, ctx),"));
+        }
+        None => {
+            w.line(format!("load: (_key, ctx) => {loader}(ctx),"));
+        }
+    }
+    // A fact is given its derived fields once it is loaded (`spec/rules.md` section 17.2).
+    let tenant = fc.tree.uses_tenancy() && fc.tree.ir.type_reaches_tenant(&fact.ty);
+    // The audit event holds the fact in wire form, and a fact of another tenant is not found.
+    let audited = fc.tree.uses_audit() && site.ep.audited;
+    // A capture of a rule violation holds the facts the server loaded, in wire form.
+    let captured = fc.tree.uses_capture();
+    if fc.tree.ir.type_reaches_derived(&fact.ty) || tenant || audited || captured {
+        let schema = schema_expr(fc, &fact.ty, &Constraints::default());
+        w.line(format!("schema: {schema},"));
+    }
+    w.close_with("},");
+}
+
+fn write_require(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    printer: &mut EndpointPrinter<'_>,
+    site: &Site<'_>,
+    sig: &Sig,
+    r: &EndpointRequire,
+    diags: &mut Vec<GenDiagnostic>,
+) {
+    let (p, f) = (&sig.p, &sig.f);
+    w.open_with("", "{");
+    w.line(format!("id: {},", ts_str(&r.id)));
+    w.line(format!(
+        "name: {},",
+        ts_str(r.name.as_deref().unwrap_or("require"))
+    ));
+    w.line(format!("fields: {},", fields_list(&r.reads)));
+    w.line(format!(
+        "message: {},",
+        message(
+            r.name.as_deref(),
+            r.message.as_deref(),
+            "precondition failed"
+        )
+    ));
+    if r.rollout.is_some() {
+        w.line("audited: true,");
+    }
+    if let Some(flag) = &r.flag {
+        w.line(format!("flag: {},", ts_str(flag)));
+    }
+    let cond = printer.print(&r.expr);
+    w.line(format!("holds: ({p}, {f}, now: bigint) => {cond},"));
+    if let Some(e) = &r.else_error {
+        let (class, _) = fc.error_refs(e.decl);
+        let mut items = Vec::new();
+        for field in &e.fields {
+            let Some(value) = app_value(fc, printer, &field.value) else {
+                diags.push(unsupported(site, "a value of the `else` payload"));
+                continue;
+            };
+            items.push(format!("{}: {value}", prop_key(&field.name)));
+        }
+        let payload = if items.is_empty() {
+            "{}".to_string()
+        } else {
+            format!("{{ {} }}", items.join(", "))
+        };
+        w.line(format!(
+            "otherwise: {{ sig: {class}.sig, data: ({p}, {f}, now: bigint) => ({payload}) }},"
+        ));
+    }
+    w.close_with("},");
+}
+
+fn write_ensure(
+    w: &mut CodeWriter,
+    sig: &Sig,
+    result: &str,
+    old: Option<&str>,
+    (e, cond): (&EndpointEnsure, &str),
+) {
+    w.open_with("", "{");
+    w.line(format!("id: {},", ts_str(&e.id)));
+    w.line(format!(
+        "name: {},",
+        ts_str(e.name.as_deref().unwrap_or("ensure"))
+    ));
+    w.line(format!("fields: {},", fields_list(&e.reads)));
+    w.line(format!(
+        "message: {},",
+        message(
+            e.name.as_deref(),
+            e.message.as_deref(),
+            "postcondition failed"
+        )
+    ));
+    if e.rollout.is_some() {
+        w.line("audited: true,");
+    }
+    if let Some(flag) = &e.flag {
+        w.line(format!("flag: {},", ts_str(flag)));
+    }
+    let o = old.map_or_else(String::new, |t| format!(", o: {t}"));
+    w.line(format!(
+        "holds: ({}, result: {result}, now: bigint{o}) => {cond},",
+        sig.p
+    ));
+    w.close_with("},");
+}
+
+/// The tuple type of the saved `old(...)` values, by slot.
+fn old_type(fc: &mut FileCtx<'_, '_>, printer: &EndpointPrinter<'_>) -> Option<String> {
+    let slots = printer.olds();
+    if slots.is_empty() {
+        return None;
+    }
+    let types: Vec<String> = slots.iter().map(|(_, ty)| rule_ty(fc, ty)).collect();
+    Some(format!("readonly [{}]", types.join(", ")))
+}
+
+/// The `old` member: one function per saved operand.
+fn write_old(w: &mut CodeWriter, printer: &EndpointPrinter<'_>, sig: &Sig) {
+    let (p, f) = (&sig.p, &sig.f);
+    if printer.olds().is_empty() {
+        w.line("old: [],");
+        return;
+    }
+    w.open_with("old:", " [");
+    for (code, _) in printer.olds() {
+        w.line(format!("({p}, {f}, now: bigint) => {code},"));
+    }
+    w.close_with("],");
+}
+
+/// The slot numbers `o[N]` that the printed condition `cond` reads.
+fn slots_read(cond: &str) -> Vec<usize> {
+    let bytes = cond.as_bytes();
+    let mut slots = Vec::new();
+    for (at, _) in cond.match_indices("o[") {
+        let word =
+            at > 0 && (bytes[at - 1].is_ascii_alphanumeric() || b"_$.".contains(&bytes[at - 1]));
+        if word {
+            continue;
+        }
+        let digits: String = cond[at + 2..]
+            .chars()
+            .take_while(char::is_ascii_digit)
+            .collect();
+        if let Ok(n) = digits.parse() {
+            slots.push(n);
+        }
+    }
+    slots
+}
+
+/// The `oldFlags` member: for each slot of the saved `old(...)` values, the flags of the `ensure`
+/// statements that read it, when all of them are flagged (the operand is then evaluated only while
+/// one of the flags is on, as the reference removes a statement whose flag is off). Nothing when
+/// no slot is gated.
+fn write_old_flags(w: &mut CodeWriter, slots: usize, ensures: &[(&EndpointEnsure, &str)]) {
+    let mut gates: Vec<Option<Vec<&str>>> = vec![Some(Vec::new()); slots];
+    let mut read = vec![false; slots];
+    for (e, cond) in ensures {
+        for slot in slots_read(cond) {
+            let Some(gate) = gates.get_mut(slot) else {
+                continue;
+            };
+            read[slot] = true;
+            match (&e.flag, gate.as_mut()) {
+                (Some(flag), Some(list)) => {
+                    if !list.contains(&flag.as_str()) {
+                        list.push(flag);
+                    }
+                }
+                _ => *gate = None,
+            }
+        }
+    }
+    for (gate, seen) in gates.iter_mut().zip(&read) {
+        if !seen {
+            *gate = None;
+        }
+    }
+    if gates.iter().all(Option::is_none) {
+        return;
+    }
+    let items: Vec<String> = gates
+        .iter()
+        .map(|g| match g {
+            None => "undefined".to_string(),
+            Some(flags) => {
+                let list: Vec<String> = flags.iter().map(|f| ts_str(f)).collect();
+                format!("[{}]", list.join(", "))
+            }
+        })
+        .collect();
+    w.line(format!("oldFlags: [{}],", items.join(", ")));
+}
+
+/// Writes the `rules:` member of the endpoint description of `site`, and the type alias of its
+/// saved values just before the builder that holds it (`pre`).
+pub fn write_rules_member(
+    w: &mut CodeWriter,
+    pre: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    site: &Site<'_>,
+    diags: &mut Vec<GenDiagnostic>,
+) {
+    let ep = site.ep;
+    let caller = caller(site);
+    let facts = (!ep.rules.facts.is_empty()).then(|| facts_name(site.request));
+    let sig = Sig {
+        p: format!("p: {}", site.request),
+        f: format!("f: {}", guards::scope_type(fc, facts, caller.as_ref())),
+    };
+    let ns = fc.rules_ns();
+    let mut printer = EndpointPrinter::new(fc.tree.ir, &ns, scope(ep, caller.clone()));
+    let moved = match Move::of(fc.tree.ir, ep) {
+        Ok(moved) => moved,
+        Err(why) => {
+            diags.push(unsupported(site, why));
+            None
+        }
+    };
+    let result = match &ep.success.ty {
+        Some(t) if !ep.success.stream => ts_type(fc, t),
+        Some(_) | None => "undefined".to_string(),
+    };
+    // The `ensure` expressions come first: they decide the slots of `old(...)`.
+    printer.set_ensure(true);
+    let conds: Vec<String> = ep
+        .rules
+        .ensures
+        .iter()
+        .map(|e| printer.print(&e.expr))
+        .collect();
+    printer.set_ensure(false);
+    // The target check of a transition is the last `ensure`.
+    let found = moved.as_ref().and_then(|m| m.found(&printer, ep));
+    let old_ty = old_type(fc, &printer);
+    let alias = old_ty.as_ref().map(|_| old_name(site.request));
+    let mut ensure_code = CodeWriter::new();
+    for (e, cond) in ep.rules.ensures.iter().zip(&conds) {
+        write_ensure(&mut ensure_code, &sig, &result, alias.as_deref(), (e, cond));
+    }
+    if let (Some(mv), Some(state)) = (&moved, &found) {
+        guards::write_target(&mut ensure_code, &sig, &result, (mv, state));
+    }
+    if let Some(ty) = &old_ty {
+        pre.line(format!("type {} = {ty};", old_name(site.request)));
+        pre.blank();
+    }
+    w.open_with("rules:", " {");
+    write_list(w, "facts", |w| {
+        for fact in &ep.rules.facts {
+            write_fact(w, fc, &mut printer, site, &sig, fact, diags);
+        }
+    });
+    write_list(w, "requires", |w| {
+        for r in &ep.rules.requires {
+            write_require(w, fc, &mut printer, site, &sig, r, diags);
+        }
+    });
+    write_old(w, &printer, &sig);
+    let users: Vec<(&EndpointEnsure, &str)> = ep
+        .rules
+        .ensures
+        .iter()
+        .zip(conds.iter().map(String::as_str))
+        .collect();
+    write_old_flags(w, printer.olds().len(), &users);
+    write_list(w, "ensures", |w| {
+        for line in ensure_code.finish().lines() {
+            w.line(line);
+        }
+    });
+    let members = (caller.as_ref(), moved.as_ref(), found.as_deref());
+    guards::write_members(w, fc, &mut printer, (site, &sig), members, diags);
+    w.close_with("},");
+}
+
+fn write_list(w: &mut CodeWriter, key: &str, body: impl FnOnce(&mut CodeWriter)) {
+    let mut inner = CodeWriter::new();
+    body(&mut inner);
+    let text = inner.finish();
+    if text.is_empty() {
+        w.line(format!("{key}: [],"));
+        return;
+    }
+    w.open_with(format!("{key}:"), " [");
+    for line in text.lines() {
+        w.line(line);
+    }
+    w.close_with("],");
+}

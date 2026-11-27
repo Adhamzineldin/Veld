@@ -77,7 +77,7 @@ pub const CODES: &[CodeInfo] = &[
     e(
         "E0005",
         C,
-        "Nesting too deep: types and annotation call arguments are limited to 64 levels",
+        "Nesting too deep: types and annotation call arguments are limited to 64 levels, rule expressions to 32",
     ),
     e("E0006", C, "`extends` chain longer than 64 models"),
     e(
@@ -149,7 +149,7 @@ pub const CODES: &[CodeInfo] = &[
     e(
         "E0501",
         C,
-        "Service prefix or endpoint path does not start with `/`",
+        "Service prefix or endpoint path does not start with `/`, or a service with endpoints has no `at`",
     ),
     e(
         "E0502",
@@ -178,7 +178,11 @@ pub const CODES: &[CodeInfo] = &[
         C,
         "Error has neither a status here nor a default status",
     ),
-    e("E0509", C, "Endpoint declared twice in a service"),
+    e(
+        "E0509",
+        C,
+        "Endpoint or event handler declared twice in a service",
+    ),
     e("E0510", C, "Two endpoints collide on method and path"),
     e("E0511", C, "`stream` used where it is not allowed"),
     e("E0512", C, "Duplicate parameter"),
@@ -195,11 +199,7 @@ pub const CODES: &[CodeInfo] = &[
         C,
         "Unknown key in `veld.toml`, or a reserved package name",
     ),
-    e(
-        "E0702",
-        C,
-        "`consumes` or `service` names an unknown service",
-    ),
+    e("E0702", C, "`consumes` or `uses` names an unknown service"),
     e(
         "E0703",
         P,
@@ -208,12 +208,32 @@ pub const CODES: &[CodeInfo] = &[
     e(
         "E0704",
         P,
-        "Output directory is forbidden (project root or a contracts directory)",
+        "Output directory is forbidden (workspace root or a contracts directory)",
     ),
     e("E0705", H, "Plugin executable hash does not match `sha256`"),
     e("E0706", H, "Plugin protocol error"),
     e("E0707", H, "Plugin returned invalid or unsafe files"),
     e("E0708", H, "Plugin process failed or timed out"),
+    e(
+        "E0709",
+        P,
+        "`veld.toml` is in the layout of earlier betas (`[project]`, `[services.*]`, `[libraries.*]` or `[[targets]]`); the message says what to write instead",
+    ),
+    e(
+        "E0710",
+        P,
+        "Invalid workspace structure (no member table, more than one, a nested workspace, a member no workspace lists, a bad `members` pattern, a missing member file, a missing, invalid or duplicate member or target name)",
+    ),
+    e(
+        "E0711",
+        P,
+        "A table that is not allowed in this `veld.toml` (a root-only table in a member file, a `[server]` in an app, a target in a library)",
+    ),
+    e(
+        "E0712",
+        P,
+        "`--affected` cannot read the changes (no git work tree, `git` not found, unknown ref)",
+    ),
     e(
         "E0801",
         G,
@@ -227,7 +247,7 @@ pub const CODES: &[CodeInfo] = &[
     e(
         "E0803",
         G,
-        "Invalid generation request (unknown framework or framework version, a language older than the framework needs, unknown role or service, nothing selected)",
+        "Invalid generation request (unknown framework or framework version, a language older than the framework needs, unknown role or service, nothing selected, a `-p` name or a target that is not a selected member, `export asyncapi` of a workspace without channels)",
     ),
     e(
         "E0804",
@@ -244,10 +264,298 @@ pub const CODES: &[CodeInfo] = &[
         G,
         "Generator or plugin failure without a more specific code",
     ),
+    e(
+        "E0901",
+        C,
+        "Unknown name in an expression, or a lambda variable that shadows another name",
+    ),
+    e(
+        "E0902",
+        C,
+        "Type error in an expression: operand types do not fit the operator, a rule that is not `bool`, a chained comparison, an enum literal with no enum to infer",
+    ),
+    e(
+        "E0903",
+        C,
+        "An optional value is read where it is not known to be present",
+    ),
+    e(
+        "E0904",
+        C,
+        "`now`, `result` or `old` used where it is not available",
+    ),
+    e(
+        "E0905",
+        C,
+        "Operation not supported on this type: `/` or `%` on decimal, ordering strings, comparing models, lists, maps, bytes or json, a `const` of an unsupported type",
+    ),
+    e(
+        "E0906",
+        C,
+        "Unknown function, wrong number or type of arguments, lambda where none is allowed",
+    ),
+    e(
+        "E0907",
+        C,
+        "Duplicate rule name in a declaration, counting inherited rules",
+    ),
+    e("E0908", C, "Numeric literal out of range for its type"),
+    e(
+        "E0920",
+        C,
+        "A fact named like a parameter, another fact, the principal, `now` or `result`; a parameter or fact named `transition` on an endpoint that has one",
+    ),
+    e(
+        "E0921",
+        C,
+        "The error after `else` is not one of the endpoint's declared errors",
+    ),
+    e(
+        "E0922",
+        C,
+        "Two facts with one name but different types, key types or optionality in a service; an unknown or missing field in an `else` payload",
+    ),
+    e("E0923", C, "A fact read in `ensure` outside `old(...)`"),
+    e(
+        "E0924",
+        C,
+        "`ensure` on an endpoint whose success is a stream",
+    ),
+    e(
+        "E0930",
+        C,
+        "A `flow` or `final` names something that is not a variant of the enum",
+    ),
+    e(
+        "E0931",
+        C,
+        "A `final` state with an outgoing flow, or `final` in an enum with no flow",
+    ),
+    e(
+        "E0932",
+        C,
+        "The path of a `transition` does not start at a fact, does not end in a state machine, or passes through an optional step",
+    ),
+    e(
+        "E0933",
+        C,
+        "A `transition` lists a move that is not a flow of the machine",
+    ),
+    e("E0934", C, "More than one `transition` in an endpoint"),
+    e(
+        "E0935",
+        C,
+        "`after` is wrong: on a `flow` with several edges, twice for one edge, or not a positive constant duration",
+    ),
+    e(
+        "E0936",
+        C,
+        "`since` is wrong: missing on a timed edge, present on another, several sources, or not a required `datetime` field of the fact",
+    ),
+    e(
+        "E0937",
+        C,
+        "`when flag(..)` is wrong: a bad name, or on a statement that cannot have it",
+    ),
+    e(
+        "E0938",
+        C,
+        "`given flag` in an example names a flag that no statement of the workspace uses",
+    ),
+    e("E0940", C, "The type after `principal` is not a model"),
+    e("E0941", C, "More than one `principal` in a package"),
+    e(
+        "E0942",
+        C,
+        "`allow` names an unknown policy, or its arguments do not fit the policy's parameters",
+    ),
+    e(
+        "E0950",
+        C,
+        "Duplicate example name; unknown or ambiguous endpoint in an example",
+    ),
+    e(
+        "E0951",
+        C,
+        "`given` names something that is not a fact of the called endpoint",
+    ),
+    e(
+        "E0952",
+        C,
+        "A value in an example does not fit the type it is used at, or writes a derived field",
+    ),
+    e(
+        "E0953",
+        "veld-rules",
+        "A value an example leaves out cannot be filled in, or the filled-in value breaks an invariant",
+    ),
+    e("E0960", C, "Derived fields depend on each other in a cycle"),
+    e(
+        "E0961",
+        C,
+        "A derived field is optional, or has `@readonly` or `@example`",
+    ),
+    e(
+        "E0970",
+        "veld-prove",
+        "`--prove`: the rules contradict each other, a `require` can never pass, or a policy permits nobody",
+    ),
+    e(
+        "E1001",
+        C,
+        "An event is used as a type, or an event field has an event type",
+    ),
+    e(
+        "E1002",
+        C,
+        "`carries` names something that is not an event, names an event twice, or is missing",
+    ),
+    e(
+        "E1003",
+        C,
+        "The topic of a channel is not a legal topic name",
+    ),
+    e(
+        "E1004",
+        C,
+        "Two channels of the workspace have the same topic",
+    ),
+    e(
+        "E1005",
+        C,
+        "The `key` of a channel is not a required field of the same key type in every carried event, or the channel has two keys",
+    ),
+    e(
+        "E1006",
+        C,
+        "`publishes` or `subscribes` names something that is not a channel, or names a channel twice",
+    ),
+    e(
+        "E1007",
+        C,
+        "The group of a subscription is not a legal group name",
+    ),
+    e(
+        "E1008",
+        C,
+        "An `on` line names an event the channel does not carry or names an event twice, or the subscription has no `on` line",
+    ),
+    e(
+        "E1009",
+        C,
+        "A subscription to a channel of this workspace that no service publishes",
+    ),
+    e(
+        "E1010",
+        C,
+        "An example whose `expect` lines are not well formed. An event example: the channel cannot be chosen, an `expect` names no handler of that channel, `rejected` is combined with `called`, or `once` follows `not called` or `rejected`. A call example: `expect emitted` on an endpoint whose transition emits nothing, naming an event it does not emit, twice, without `ok` and `returns`, or combined with `expect not emitted`",
+    ),
+    e(
+        "E1011",
+        C,
+        "`emits` is wrong: on a flow with several edges, not an event, or a transition whose service publishes no channel that carries it",
+    ),
+    e(
+        "E1101",
+        C,
+        "`@visible` is wrong: a field that is not optional, a package without a principal, an expression that does not type, or a field an event reaches",
+    ),
+    e(
+        "E1110",
+        C,
+        "`@tenant` is wrong: two in one model, an optional field or a type that cannot be a tenant, a field of an error, a derived field, a principal without one, or a tenant-scoped endpoint without auth",
+    ),
+    e(
+        "E1120",
+        C,
+        "`@limit` is wrong: two on one endpoint, a bad count, window or subject, or a subject the endpoint cannot supply",
+    ),
+    e(
+        "E1201",
+        C,
+        "A step or a `compensate` of a saga names a service that is not consumed, an endpoint that does not exist or cannot be called (a stream or `ws`), or arguments that do not fit",
+    ),
+    e(
+        "E1202",
+        C,
+        "The endpoint of a step or of a `compensate` is not `@idempotent`",
+    ),
+    e(
+        "E1203",
+        C,
+        "A saga is not well formed: two steps with one name, a step called like a parameter, an expression that reads a later step, a last step whose type is not the success type, a missing or wrong `timeout`, a saga without a step, or a statement of an endpoint block in it",
+    ),
+    e(
+        "E1301",
+        C,
+        "A message catalog is not a flat table of strings, or its file name is not a language tag",
+    ),
+    e(
+        "E1310",
+        C,
+        "`@retain` is wrong: the duration, the `since` field, `then`, or `anonymize` without a `@pii` field",
+    ),
     w("W0001", C, "Doc comment is not attached to anything"),
     w("W0201", C, "Unused import"),
     w("W0202", C, "Declaration shadows a prelude declaration"),
     w("W0701", C, "Service consumes itself"),
+    w("W0901", C, "`==` or `!=` on `float`"),
+    w(
+        "W0902",
+        C,
+        "Nested comprehension over a list without `@length(max: n)`",
+    ),
+    w("W0903", C, "A rule that reads no field"),
+    w(
+        "W0904",
+        "generators",
+        "A target with request validation turned off reaches rules, which it will not enforce",
+    ),
+    w("W0930", C, "The same flow declared twice"),
+    w("W0931", C, "A state that is not final and has no way out"),
+    w(
+        "W0932",
+        C,
+        "A variant of a state machine that takes part in no flow and is not final",
+    ),
+    w("W0933", C, "A timed edge that no `transition` takes"),
+    w("W0940", C, "A policy with no `permit` permits nobody"),
+    w(
+        "W0970",
+        "veld-prove",
+        "`--prove`: some questions ended unknown or unsupported",
+    ),
+    w(
+        "W1001",
+        C,
+        "A published channel that nobody in the workspace subscribes to",
+    ),
+    w(
+        "W1002",
+        C,
+        "An event of a published channel that no subscription handles",
+    ),
+    w("W1003", C, "A channel has `@retry` and no `@deadLetter`"),
+    w(
+        "W1101",
+        C,
+        "An endpoint returns a field with `@visible` and has no caller of the principal type: the field is never sent there",
+    ),
+    w(
+        "W1201",
+        C,
+        "A step of a saga that is not the last has no `compensate`: once it has run, the saga cannot be undone past it",
+    ),
+    w(
+        "W1301",
+        C,
+        "A message catalog has a key that no rule of the member has",
+    ),
+    w(
+        "W1302",
+        C,
+        "A message catalog lacks the message of a rule of the member",
+    ),
     l(
         "L0001",
         T,
@@ -289,10 +597,35 @@ pub const CODES: &[CodeInfo] = &[
         T,
         "`deprecated-declaration`: declaration or enum variant is deprecated",
     ),
+    l(
+        "L0014",
+        T,
+        "`auth-required`: an endpoint whose auth comes from neither its own `@auth` nor its service's",
+    ),
+    l(
+        "L0015",
+        T,
+        "`pii-without-auth`: an endpoint with no auth can answer with a `@pii` field",
+    ),
+    l(
+        "L0016",
+        T,
+        "`secret-in-output`: a `@secret` field that a response, a declared error, a stream item or an event can contain",
+    ),
+    l(
+        "L0017",
+        T,
+        "`pii-without-retention`: a model with a `@pii` field and no `@retain`",
+    ),
+    l(
+        "L0018",
+        T,
+        "`post-moves-state-as-created`: a `post` whose `transition` answers the fact's own type with the default `201`",
+    ),
 ];
 
 /// Lint rule names by code, in code order. The names are what `[lint]` in `veld.toml` uses.
-pub const LINT_RULES: [(&str, &str); 13] = [
+pub const LINT_RULES: [(&str, &str); 18] = [
     ("L0001", "unused-model"),
     ("L0002", "empty-service"),
     ("L0003", "empty-model"),
@@ -306,6 +639,11 @@ pub const LINT_RULES: [(&str, &str); 13] = [
     ("L0011", "endpoint-name-case"),
     ("L0012", "variant-name-case"),
     ("L0013", "deprecated-declaration"),
+    ("L0014", "auth-required"),
+    ("L0015", "pii-without-auth"),
+    ("L0016", "secret-in-output"),
+    ("L0017", "pii-without-retention"),
+    ("L0018", "post-moves-state-as-created"),
 ];
 
 /// The entry for `code`, if it is documented.

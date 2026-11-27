@@ -1,0 +1,83 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0952]: a string does not fit the type `int`
+ --> app/app.veld:15:26
+   |
+15 |   create(body: { guests: "three" }) -> ok
+   |                          ^^^^^^^
+
+error[E0952]: `3000000000` for an `int` is out of range
+ --> app/app.veld:19:26
+   |
+19 |   create(body: { guests: 3000000000 }) -> ok
+   |                          ^^^^^^^^^^
+
+error[E0952]: `Booking` has no field `nope`
+ --> app/app.veld:23:18
+   |
+23 |   create(body: { nope: 1 }) -> ok
+   |                  ^^^^
+  = help: fields: id, guests, day
+
+error[E0952]: endpoint `create` has no parameter `nope`
+ --> app/app.veld:27:10
+   |
+27 |   create(nope: 1) -> ok
+   |          ^^^^
+  = help: parameters: body
+
+error[E0952]: not a date such as "2026-03-01"
+ --> app/app.veld:31:23
+   |
+31 |   create(body: { day: "2026-13-01" }) -> ok
+   |                       ^^^^^^^^^^^^
+
+error[E0952]: enum `Status` has no variant `paidd`
+ --> app/app.veld:35:27
+   |
+35 |   given room = { status: .paidd }
+   |                           ^^^^^
+  = help: did you mean `paid`?
+
+error[E0952]: `room` is absent, so it has no fields to read
+ --> app/app.veld:41:22
+   |
+41 |   create(body: { id: room.id }) -> ok
+   |                      ^^^^
+
+error[E0952]: `room.id` (a `uuid`) does not fit the type `int`
+ --> app/app.veld:46:26
+   |
+46 |   create(body: { guests: room.id }) -> ok
+   |                          ^^^^^^^
+
+error[E0952]: endpoint `remove` has no success body to give a value for
+ --> app/app.veld:50:20
+   |
+50 |   remove() returns { id: "00000000-0000-4000-8000-000000000001" } -> ok
+   |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0952]: endpoint `remove` cannot answer with `Conflict`
+ --> app/app.veld:54:15
+   |
+54 |   remove() -> Conflict
+   |               ^^^^^^^^
+  = help: an outcome is `ok` or an error the endpoint declares or has implicitly
+
+error[E0952]: the clock of an example is a date and time such as "2026-03-01T09:00:00Z"
+ --> app/app.veld:58:6
+   |
+58 |   at "tomorrow"
+   |      ^^^^^^^^^^
+
+error[E0952]: this package declares no principal, so an example cannot say who calls
+ --> app/app.veld:63:3
+   |
+63 |   as 1
+   |   ^^^^
+  = help: principals arrive with policies (spec/rules.md section 11)
+
+== ir ==
+(no IR: compilation failed)

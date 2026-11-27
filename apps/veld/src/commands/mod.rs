@@ -12,8 +12,14 @@ mod hooks;
 mod init;
 mod lsp;
 mod plugin;
+mod prove;
 mod registry;
+mod runtime_schema;
 mod setup;
+mod test;
+mod test_coverage;
+mod test_fuzz;
+mod test_violation;
 mod watch;
 
 use anyhow::Result;
@@ -47,6 +53,7 @@ pub fn run(cli: &Cli, ui: &Ui) -> Result<Exit> {
         }
         Command::Fmt(args) => fmt::run(ui, config, args),
         Command::Diff(args) => diff::run(ui, config, args),
+        Command::Test(args) => test::run(ui, config, args),
         Command::Export(cmd) => export::run(ui, config, cmd),
         Command::Plugin(cmd) => plugin::run(ui, cmd),
         Command::Add(_)

@@ -78,10 +78,20 @@ function listen(server: http.Server): Promise<string> {
 }
 
 async function main(): Promise<void> {
-  const ordersServer = http.createServer(ordersSrv.toNodeHttp(ordersSrv.createOrdersHandler(ordersImpl)));
-  const paymentsServer = http.createServer(paymentsSrv.toNodeHttp(paymentsSrv.createPaymentsHandler(paymentsImpl)));
+  // Each server consumes the other, so its runtime config needs the other's URL, which exists once
+  // both are listening: they start with a listener that is replaced when the handlers are built.
+  let ordersListener: http.RequestListener = (_req, res) => res.writeHead(503).end();
+  let paymentsListener: http.RequestListener = (_req, res) => res.writeHead(503).end();
+  const ordersServer = http.createServer((req, res) => ordersListener(req, res));
+  const paymentsServer = http.createServer((req, res) => paymentsListener(req, res));
   ordersUrl = await listen(ordersServer);
   paymentsUrl = await listen(paymentsServer);
+  ordersListener = ordersSrv.toNodeHttp(
+    ordersSrv.createOrdersHandler(ordersImpl, {}, { services: { payments: { url: paymentsUrl } } }),
+  );
+  paymentsListener = paymentsSrv.toNodeHttp(
+    paymentsSrv.createPaymentsHandler(paymentsImpl, {}, { services: { orders: { url: ordersUrl } } }),
+  );
   try {
     await scenario();
   } finally {

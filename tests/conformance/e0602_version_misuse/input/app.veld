@@ -1,0 +1,51 @@
+// `@version` marks one required `int` or `long` field of a model (spec/rules.md section 11.7).
+
+model NotANumber {
+  @version
+  name: string
+}
+
+model Optional {
+  @version
+  revision?: long
+}
+
+model Twice {
+  @version
+  a: int
+  @version
+  b: long
+}
+
+model Parent {
+  @version
+  revision: long
+}
+
+model Child extends Parent {
+  @version
+  other: int
+}
+
+model Argument {
+  @version(1)
+  revision: int
+}
+
+@version
+model OnAModel { a: int }
+
+error Gone 410 {
+  @version
+  revision: long
+}
+
+event Changed {
+  @version
+  revision: long
+}
+
+service S at "/s" {
+  @version
+  get "/" f() -> Twice
+}

@@ -1,0 +1,18 @@
+package dev.veld.runtime;
+
+/**
+ * The state transition an endpoint asks for, as the server checked it before it called the
+ * handler (spec/rules.md section 10.2).
+ *
+ * <p><strong>This is a guard, not an atomic guarantee.</strong> The server read the state, found
+ * it among the sources and went on; a second request can change the row after that check. The
+ * handler must therefore write the change conditionally (a compare-and-swap or a row lock, in its
+ * own transaction): the new state only where the row still holds {@link #from()}. When that write
+ * finds another value, the handler must answer {@code InvalidTransition} itself.
+ *
+ * @param <S> the state machine
+ * @param field the wire path of the state field inside the fact, for example {@code status}
+ * @param from the state the field held when the server checked it
+ * @param to the state the endpoint moves it to
+ */
+public record Transition<S extends Enum<S>>(String field, S from, S to) {}

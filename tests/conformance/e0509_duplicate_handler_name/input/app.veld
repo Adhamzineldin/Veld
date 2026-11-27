@@ -1,0 +1,19 @@
+event Paid { id: uuid }
+event Cancelled { id: uuid }
+channel A { carries Paid, Cancelled }
+
+service Both at "/both" {
+  publishes A
+  get "/handle" handle() -> 204
+  subscribes A as "g" {
+    on Paid -> handle
+    on Cancelled -> again
+  }
+}
+
+service Other {
+  subscribes A as "h" {
+    on Paid -> again
+    on Cancelled -> again
+  }
+}

@@ -1,0 +1,16 @@
+model Broken {
+  a: int
+  b: int
+  rule dangling: a >
+  rule unclosed: (a + b
+  rule missingOperand: a + * b
+  rule nullIsNotAThing: a == null
+  rule emptyArgument: len(,)
+  rule fine: a < b
+  rule afterwards: b > 0
+}
+
+model Later {
+  n: int
+  rule stillParsed: n > 0
+}

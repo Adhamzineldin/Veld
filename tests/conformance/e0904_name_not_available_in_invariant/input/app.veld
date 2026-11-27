@@ -1,0 +1,7 @@
+model Stamp {
+  stamp: datetime
+  size: int
+  rule notInThePast: stamp >= now
+  rule resultName: size == result.size
+  rule oldValue: old(size) < size
+}

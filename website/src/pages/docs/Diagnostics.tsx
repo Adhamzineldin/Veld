@@ -13,7 +13,7 @@ interface Row {
 function parseDiagnostics(md: string): Row[] {
   const rows: Row[] = [];
   for (const line of md.split(/\r?\n/)) {
-    const m = /^\|\s*`([EW]\d{4})`\s*\|\s*(\w+)\s*\|\s*([^|]*?)\s*\|\s*(.*?)\s*\|\s*$/.exec(line);
+    const m = /^\|\s*`([ELW]\d{4})`\s*\|\s*(\w+)\s*\|\s*([^|]*?)\s*\|\s*(.*?)\s*\|\s*$/.exec(line);
     if (m) rows.push({ code: m[1], kind: m[2], by: m[3], meaning: m[4] });
   }
   return rows;
@@ -32,11 +32,14 @@ export default function Diagnostics() {
   return (
     <Section id="diagnostics" title="Diagnostics">
       <P>
-        Every diagnostic has a stable code: <code>E####</code> is an error and <code>W####</code> a warning.
-        Codes are never reused. The ranges are <code>E00xx</code> syntax, <code>E01xx</code> modules,{' '}
-        <code>E02xx</code> names, <code>E03xx</code> types, <code>E04xx</code> declarations,{' '}
-        <code>E05xx</code> services, <code>E06xx</code> annotations, <code>E07xx</code> workspace and config, and{' '}
-        <code>E08xx</code> generation. This table is rendered at build time from{' '}
+        Every diagnostic has a stable code: <code>E####</code> is an error, <code>W####</code> a warning and{' '}
+        <code>L####</code> a lint. Codes are never reused. The ranges are <code>E00xx</code> syntax,{' '}
+        <code>E01xx</code> modules, <code>E02xx</code> names, <code>E03xx</code> types, <code>E04xx</code> declarations,{' '}
+        <code>E05xx</code> services, <code>E06xx</code> annotations, <code>E07xx</code> workspace and config,{' '}
+        <code>E08xx</code> generation, and <code>E09xx</code> business rules (expressions, endpoint rules, state
+        machines, policies and examples, with the warnings <code>W09xx</code>). The lint <code>L0014</code>,{' '}
+        <code>auth-required</code>, warns about an endpoint with no <code>@auth</code>; write <code>@auth(none)</code> when it is
+        public. This table is rendered at build time from{' '}
         <code>spec/diagnostics.md</code>, which is generated from the compiler ({diagnostics.length} codes).
       </P>
       <Table

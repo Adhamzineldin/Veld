@@ -1,0 +1,28 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+assertion_line: 195
+---
+== diagnostics ==
+error[E0601]: unknown annotation `@retry`
+ --> app/app.veld:3:2
+  |
+3 | @retry(max: 3, backoff: fixed)
+  |  ^^^^^
+  = help: known annotations: @auth, @middleware, @deprecated, @min, @max, @length, @pattern, @format, @readonly, @wire, @example, @discriminator, @query, @header, @topic
+
+error[E0601]: unknown annotation `@deadLetter`
+ --> app/app.veld:4:2
+  |
+4 | @deadLetter
+  |  ^^^^^^^^^^
+  = help: known annotations: @auth, @middleware, @deprecated, @min, @max, @length, @pattern, @format, @readonly, @wire, @example, @discriminator, @query, @header, @topic
+
+error[E0601]: unknown annotation `@ordered`
+ --> app/app.veld:5:2
+  |
+5 | @ordered
+  |  ^^^^^^^
+  = help: known annotations: @auth, @middleware, @deprecated, @min, @max, @length, @pattern, @format, @readonly, @wire, @example, @discriminator, @query, @header, @topic
+
+== ir ==
+(no IR: compilation failed)

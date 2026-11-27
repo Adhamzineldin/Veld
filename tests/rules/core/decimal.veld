@@ -1,0 +1,30 @@
+// Decimal and float semantics (spec/rules.md 3.4, 3.7).
+
+model DecEq {
+  a: decimal
+  b: decimal
+  rule same: a == b
+}
+
+model DecMath {
+  a: decimal
+  b: decimal
+  c: decimal
+  rule sum: a + b == c
+  rule ordered: a - b < c
+}
+
+model DecMul {
+  price: decimal
+  qty: int
+  total: decimal
+  rule exact: price * qty == total
+  rule positive: total > 0
+}
+
+model FloatMath {
+  a: float
+  b: float
+  rule finite: a * b < 1.0e308
+  rule ratio: a / b >= 0.0
+}

@@ -1,0 +1,208 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+warning[W1002]: no subscription handles `Cancelled`, an event of channel `Bookings`
+ --> app/app.veld:3:34
+  |
+3 | channel Bookings { carries Paid, Cancelled }
+  |                                  ^^^^^^^^^
+
+== ir ==
+{
+  "ir_version": "1.1",
+  "packages": [
+    {
+      "id": 0,
+      "name": "app",
+      "kind": "service"
+    }
+  ],
+  "decls": [
+    {
+      "id": 0,
+      "package": 0,
+      "module": "app",
+      "name": "Cancelled",
+      "qualified": "app:app.Cancelled",
+      "sig": "veld:app/Cancelled@01a154748034778a",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 2,
+        "col": 7
+      },
+      "kind": "event",
+      "fields": [
+        {
+          "name": "id",
+          "wire": "id",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 2,
+            "col": 19
+          }
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "package": 0,
+      "module": "app",
+      "name": "Paid",
+      "qualified": "app:app.Paid",
+      "sig": "veld:app/Paid@37528998c157b125",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 1,
+        "col": 7
+      },
+      "kind": "event",
+      "fields": [
+        {
+          "name": "id",
+          "wire": "id",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 1,
+            "col": 14
+          }
+        }
+      ]
+    }
+  ],
+  "services": [
+    {
+      "id": 0,
+      "package": 0,
+      "name": "Consumer",
+      "prefix": "",
+      "base_url": null,
+      "docs": null,
+      "auth": {
+        "kind": "none",
+        "header": null
+      },
+      "middleware": [],
+      "endpoints": [],
+      "subscriptions": [
+        {
+          "channel": 0,
+          "group": "consumer",
+          "handlers": [
+            {
+              "event": 1,
+              "name": "handle",
+              "docs": null,
+              "origin": {
+                "file": "app.veld",
+                "line": 8,
+                "col": 39
+              }
+            }
+          ],
+          "origin": {
+            "file": "app.veld",
+            "line": 8,
+            "col": 3
+          }
+        }
+      ],
+      "origin": {
+        "file": "app.veld",
+        "line": 7,
+        "col": 9
+      }
+    },
+    {
+      "id": 1,
+      "package": 0,
+      "name": "Publisher",
+      "prefix": "",
+      "base_url": null,
+      "docs": null,
+      "auth": {
+        "kind": "none",
+        "header": null
+      },
+      "middleware": [],
+      "endpoints": [],
+      "publishes": [
+        {
+          "channel": 0,
+          "origin": {
+            "file": "app.veld",
+            "line": 5,
+            "col": 31
+          }
+        }
+      ],
+      "origin": {
+        "file": "app.veld",
+        "line": 5,
+        "col": 9
+      }
+    }
+  ],
+  "consumes": {},
+  "channels": [
+    {
+      "name": "Bookings",
+      "package": 0,
+      "module": "app",
+      "qualified": "app:app.Bookings",
+      "topic": "app.Bookings",
+      "events": [
+        1,
+        0
+      ],
+      "key": null,
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 3,
+        "col": 9
+      }
+    }
+  ]
+}

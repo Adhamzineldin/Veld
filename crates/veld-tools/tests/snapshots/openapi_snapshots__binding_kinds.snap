@@ -1075,5 +1075,5 @@ expression: "export(\"ok_binding_kinds\")"
       }
     }
   },
-  "x-veld-ir-version": "1.0"
+  "x-veld-ir-version": "1.1"
 }

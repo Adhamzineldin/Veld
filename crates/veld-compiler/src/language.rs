@@ -15,6 +15,81 @@ pub const METHOD_WORDS: [&str; 8] = [
     "get", "post", "put", "patch", "delete", "head", "options", "ws",
 ];
 
+/// Contextual words of the rules language (`spec/rules.md` section 2.2). Each is a keyword only
+/// where the grammar expects it and an ordinary identifier everywhere else, so a field, variant,
+/// parameter, endpoint or declaration may carry any of them. The reserved list never grows.
+pub const CONTEXTUAL_RULE_WORDS: [&str; 38] = [
+    "rule",
+    "message",
+    "implies",
+    "not",
+    "in",
+    "has",
+    "fact",
+    "require",
+    "else",
+    "ensure",
+    "old",
+    "now",
+    "result",
+    "flow",
+    "final",
+    "emits",
+    "transition",
+    "after",
+    "since",
+    "flag",
+    "off",
+    "policy",
+    "permit",
+    "forbid",
+    "when",
+    "allow",
+    "principal",
+    "example",
+    "given",
+    "expect",
+    "absent",
+    "returns",
+    "ok",
+    "ifMatch",
+    "any",
+    "stored",
+    "other",
+    "running",
+];
+
+/// Contextual words of events (`spec/events.md` section 2). `emits`, `given` and `expect` are rule
+/// words already; `emitted` follows `expect` in a call example (section 11.1). Each is a keyword only where the grammar expects it; the reserved list never grows.
+pub const CONTEXTUAL_EVENT_WORDS: [&str; 11] = [
+    "event",
+    "channel",
+    "carries",
+    "key",
+    "publishes",
+    "subscribes",
+    "on",
+    "called",
+    "rejected",
+    "once",
+    "emitted",
+];
+
+/// Contextual words of sagas (`spec/platform.md` section 17): `saga` before `post` at the start of
+/// a service member, `step`, `compensate` and `timeout` inside its block, and `undo`,
+/// `unavailable`, `compensated` and `stuck` in an example. `given`, `expect` and `ok` are rule
+/// words already. Each is a keyword only where the grammar expects it.
+pub const CONTEXTUAL_SAGA_WORDS: [&str; 8] = [
+    "saga",
+    "step",
+    "compensate",
+    "timeout",
+    "undo",
+    "unavailable",
+    "compensated",
+    "stuck",
+];
+
 /// Words that start a declaration.
 pub const DECL_KEYWORDS: [&str; 6] = ["model", "enum", "error", "union", "service", "const"];
 
@@ -69,6 +144,13 @@ pub enum Target {
     Field,
     Variant,
     Param,
+    Rule,
+    /// A `require` statement of an endpoint block (`spec/rules.md` section 17.1).
+    Require,
+    /// An `ensure` statement of an endpoint block.
+    Ensure,
+    Event,
+    Channel,
 }
 
 /// What arguments an annotation takes.
@@ -83,6 +165,23 @@ pub enum ArgShape {
     Idents,
     Length,
     Format,
+    /// The word `audit`.
+    Rollout,
+    /// Nothing, or `header: "Name"` and `required: true|false` in either order.
+    Idempotent,
+    /// `max: n` and, optionally, `backoff: fixed | exponential`.
+    Retry,
+    /// One constant duration: `seconds(2)` (`spec/platform.md` section 12).
+    Timeout,
+    /// Named objectives: `p50`, `p90`, `p95`, `p99` (durations) and `errors` (a percent), at
+    /// least one (`spec/platform.md` section 13).
+    Slo,
+    /// `days(n), since: field, then: delete | anonymize`.
+    Retain,
+    /// `when: expression`: a rule expression (`spec/platform.md` section 2).
+    Visible,
+    /// `10, per: minute, by: user` (`spec/platform.md` section 5).
+    Limit,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -93,15 +192,18 @@ pub struct AnnotationSpec {
     pub usage: &'static str,
 }
 
-use Target::{Const, Endpoint, Enum, Error, Field, Model, Param, Service, Union, Variant};
+use Target::{
+    Channel, Const, Endpoint, Ensure, Enum, Error, Event, Field, Model, Param, Require, Rule,
+    Service, Union, Variant,
+};
 
 const ANY_DECL: [Target; 7] = [Service, Model, Error, Enum, Union, Const, Endpoint];
-const DEPRECATABLE: [Target; 9] = [
-    Service, Model, Error, Enum, Union, Const, Endpoint, Field, Variant,
+const DEPRECATABLE: [Target; 12] = [
+    Service, Model, Error, Enum, Union, Const, Endpoint, Field, Variant, Rule, Event, Channel,
 ];
 
 /// The annotation table of `spec/language.md` section 7.
-pub const ANNOTATIONS: [AnnotationSpec; 14] = [
+pub const ANNOTATIONS: [AnnotationSpec; 30] = [
     AnnotationSpec {
         name: "auth",
         targets: &[Service, Endpoint],
@@ -186,6 +288,102 @@ pub const ANNOTATIONS: [AnnotationSpec; 14] = [
         args: ArgShape::OneString,
         usage: "@header(\"Name\")",
     },
+    AnnotationSpec {
+        name: "topic",
+        targets: &[Channel],
+        args: ArgShape::OneString,
+        usage: "@topic(\"name\")",
+    },
+    AnnotationSpec {
+        name: "retry",
+        targets: &[Channel],
+        args: ArgShape::Retry,
+        usage: "@retry(max: 5, backoff: exponential)",
+    },
+    AnnotationSpec {
+        name: "deadLetter",
+        targets: &[Channel],
+        args: ArgShape::None,
+        usage: "@deadLetter",
+    },
+    AnnotationSpec {
+        name: "ordered",
+        targets: &[Channel],
+        args: ArgShape::None,
+        usage: "@ordered",
+    },
+    AnnotationSpec {
+        name: "rollout",
+        targets: &[Rule, Require, Ensure],
+        args: ArgShape::Rollout,
+        usage: "@rollout(audit)",
+    },
+    AnnotationSpec {
+        name: "version",
+        targets: &[Field],
+        args: ArgShape::None,
+        usage: "@version",
+    },
+    AnnotationSpec {
+        name: "idempotent",
+        targets: &[Endpoint],
+        args: ArgShape::Idempotent,
+        usage: "@idempotent(header: \"Idempotency-Key\", required: true)",
+    },
+    AnnotationSpec {
+        name: "timeout",
+        targets: &[Service, Endpoint],
+        args: ArgShape::Timeout,
+        usage: "@timeout(seconds(2))",
+    },
+    AnnotationSpec {
+        name: "slo",
+        targets: &[Service, Endpoint],
+        args: ArgShape::Slo,
+        usage: "@slo(p99: ms(300), errors: 0.1)",
+    },
+    AnnotationSpec {
+        name: "pii",
+        targets: &[Field],
+        args: ArgShape::None,
+        usage: "@pii",
+    },
+    AnnotationSpec {
+        name: "secret",
+        targets: &[Field],
+        args: ArgShape::None,
+        usage: "@secret",
+    },
+    AnnotationSpec {
+        name: "retain",
+        targets: &[Model],
+        args: ArgShape::Retain,
+        usage: "@retain(days(30), since: checkedOutAt, then: delete | anonymize)",
+    },
+    AnnotationSpec {
+        name: "visible",
+        targets: &[Field],
+        args: ArgShape::Visible,
+        usage: "@visible(when: user.id == ownerId)",
+    },
+    AnnotationSpec {
+        name: "tenant",
+        targets: &[Field],
+        args: ArgShape::None,
+        usage: "@tenant",
+    },
+    AnnotationSpec {
+        name: "audited",
+        targets: &[Service, Endpoint],
+        args: ArgShape::None,
+        usage: "@audited",
+    },
+    AnnotationSpec {
+        name: "limit",
+        targets: &[Service, Endpoint],
+        args: ArgShape::Limit,
+        usage: "@limit(10, per: minute, by: user)",
+    },
 ];
 
 /// Looks an annotation up by name.
@@ -211,6 +409,10 @@ error ValidationError 422 { issues: ValidationIssue[] }
 error TooManyRequests 429 { retryAfter?: int }
 error Internal 500        { message?: string }
 model ValidationIssue     { path: string, code: string, message: string }
+error InvalidTransition 409 { field: string, from: string, to: string }
+error PreconditionFailed 412 { expected: long, actual: long }
+error SagaFailed 502 { step: string, compensated: bool }
+error DeadlineExceeded 504 { timeoutMs: long }
 ";
 
 /// Name of the reserved prelude package.
@@ -233,6 +435,12 @@ pub struct AnnotationOut {
 pub struct LanguageSpec {
     pub reserved: Vec<&'static str>,
     pub contextual: Vec<&'static str>,
+    /// Contextual words of the rules language (`spec/rules.md` section 2.2).
+    pub rule_words: Vec<&'static str>,
+    /// Contextual words of events (`spec/events.md` section 2).
+    pub event_words: Vec<&'static str>,
+    /// Contextual words of sagas (`spec/platform.md` section 17).
+    pub saga_words: Vec<&'static str>,
     pub scalars: Vec<&'static str>,
     pub generics: Vec<&'static str>,
     pub annotations: Vec<AnnotationOut>,
@@ -245,6 +453,9 @@ pub fn spec() -> LanguageSpec {
     LanguageSpec {
         reserved: RESERVED.to_vec(),
         contextual: METHOD_WORDS.to_vec(),
+        rule_words: CONTEXTUAL_RULE_WORDS.to_vec(),
+        event_words: CONTEXTUAL_EVENT_WORDS.to_vec(),
+        saga_words: CONTEXTUAL_SAGA_WORDS.to_vec(),
         scalars: SCALARS.to_vec(),
         generics: GENERICS.to_vec(),
         annotations,
@@ -284,7 +495,35 @@ mod tests {
     #[test]
     fn spec_serializes_and_lists_every_annotation() {
         let json = serde_json::to_value(spec()).map(|v| v["annotations"].as_array().map(Vec::len));
-        assert_eq!(json.ok().flatten(), Some(14));
+        assert_eq!(json.ok().flatten(), Some(18));
+    }
+
+    #[test]
+    fn rule_words_are_contextual_never_reserved() {
+        for w in CONTEXTUAL_RULE_WORDS {
+            assert!(!is_reserved(w), "{w}");
+            assert!(is_valid_ident(w), "{w}");
+        }
+        assert_eq!(spec().rule_words.len(), CONTEXTUAL_RULE_WORDS.len());
+    }
+
+    #[test]
+    fn saga_words_are_contextual_never_reserved() {
+        for w in CONTEXTUAL_SAGA_WORDS {
+            assert!(!is_reserved(w), "{w}");
+            assert!(is_valid_ident(w), "{w}");
+        }
+        assert_eq!(spec().saga_words.len(), CONTEXTUAL_SAGA_WORDS.len());
+    }
+
+    #[test]
+    fn only_deprecated_and_rollout_apply_to_a_rule() {
+        let on_rule: Vec<&str> = ANNOTATIONS
+            .iter()
+            .filter(|a| a.targets.contains(&Target::Rule))
+            .map(|a| a.name)
+            .collect();
+        assert_eq!(on_rule, vec!["deprecated", "rollout"]);
     }
 
     #[test]

@@ -1,0 +1,12 @@
+[service]
+name = "iam"
+contracts = "../../contracts/iam"
+base-url = "http://iam-service:3001"
+owners = ["team-identity"]
+
+# Node servers. Each one also gets a typed client per consumed service under <out>/clients/.
+# The framework (Express) comes from the workspace defaults.
+[server]
+name = "iam-api"
+emitter = "node"
+out = "src/generated"

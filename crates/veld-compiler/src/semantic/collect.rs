@@ -2,7 +2,10 @@
 
 use std::collections::BTreeMap;
 
-use super::{DKind, DeclInfo, ModuleInfo, ParsedPackage, PkgInfo, Program, Resolved, Scope};
+use super::{
+    ChannelInfo, DKind, DeclInfo, ModuleInfo, ParsedPackage, PkgInfo, PolicyInfo, Program,
+    Resolved, Scope,
+};
 use crate::diagnostics::{Diagnostic, Span};
 use crate::language;
 use crate::syntax::ast::DeclKind;
@@ -31,6 +34,11 @@ pub fn collect<'a>(packages: &'a [ParsedPackage], diags: &mut Vec<Diagnostic>) -
         modules: Vec::new(),
         decls: Vec::new(),
         services: Vec::new(),
+        examples: Vec::new(),
+        policies: Vec::new(),
+        event_examples: Vec::new(),
+        channels: Vec::new(),
+        principals: BTreeMap::new(),
         scopes: Vec::new(),
         prelude: BTreeMap::new(),
         prelude_pkg: usize::MAX,
@@ -54,6 +62,9 @@ pub fn collect<'a>(packages: &'a [ParsedPackage], diags: &mut Vec<Diagnostic>) -
                     prog.scopes.push(Scope::default());
                     for decl in &f.ast.decls {
                         add_decl(&mut prog, &mut names, mi, decl, diags);
+                    }
+                    for policy in &f.ast.policies {
+                        add_policy(&mut prog, &mut names, mi, policy, diags);
                     }
                 }
                 Err(msg) => diags.push(
@@ -144,6 +155,11 @@ fn add_decl<'a>(
         DeclKind::Enum(_) => DKind::Enum,
         DeclKind::Union(_) => DKind::Union,
         DeclKind::Const(_) => DKind::Const,
+        DeclKind::Event(_) => DKind::Event,
+        DeclKind::Channel(c) => {
+            add_channel(prog, mi, decl, c, id.span);
+            return;
+        }
         DeclKind::Service(_) => return,
     };
     let qualified = format!(
@@ -159,6 +175,82 @@ fn add_decl<'a>(
         ast: decl,
         name_span: id.span,
         res: Resolved::default(),
+    });
+}
+
+/// Registers a channel; its name was already entered in the package-wide name table.
+fn add_channel<'a>(
+    prog: &mut Program<'a>,
+    mi: usize,
+    decl: &'a crate::syntax::ast::Decl,
+    c: &'a crate::syntax::ast::ChannelDecl,
+    name_span: Span,
+) {
+    let pkg = prog.modules[mi].pkg;
+    let qualified = format!(
+        "{}:{}.{}",
+        prog.packages[pkg].name, prog.modules[mi].path, c.name.name
+    );
+    prog.channels.push(ChannelInfo {
+        pkg,
+        module: mi,
+        name: c.name.name.clone(),
+        qualified,
+        decl,
+        ast: c,
+        name_span,
+        res: None,
+    });
+}
+
+/// Registers a policy under the package-wide name table that declarations use.
+fn add_policy<'a>(
+    prog: &mut Program<'a>,
+    names: &mut BTreeMap<(usize, String), Span>,
+    mi: usize,
+    policy: &'a crate::syntax::ast::PolicyDecl,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let pkg = prog.modules[mi].pkg;
+    let id = &policy.name;
+    if language::SCALARS.contains(&id.name.as_str())
+        || language::GENERICS.contains(&id.name.as_str())
+    {
+        diags.push(Diagnostic::error(
+            "E0201",
+            format!(
+                "`{}` is a built-in type name and cannot be declared",
+                id.name
+            ),
+            id.span,
+        ));
+        return;
+    }
+    if let Some(first) = names.get(&(pkg, id.name.clone())) {
+        let pname = &prog.packages[pkg].name;
+        diags.push(
+            Diagnostic::error(
+                "E0201",
+                format!("`{}` is already declared in package `{pname}`", id.name),
+                id.span,
+            )
+            .with_label(*first, "first declared here")
+            .with_help("declaration names are unique across all modules of a package"),
+        );
+        return;
+    }
+    names.insert((pkg, id.name.clone()), id.span);
+    let qualified = format!(
+        "{}:{}.{}",
+        prog.packages[pkg].name, prog.modules[mi].path, id.name
+    );
+    prog.policies.push(PolicyInfo {
+        pkg,
+        module: mi,
+        name: id.name.clone(),
+        qualified,
+        ast: policy,
+        res: None,
     });
 }
 

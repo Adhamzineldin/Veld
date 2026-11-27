@@ -1,0 +1,31 @@
+// String semantics: code points, no normalisation, the regex subset (spec/rules.md 3.4, 3.5).
+
+model Text {
+  s: string
+  rule short: len(s) <= 3
+  rule noAdmin: !startsWith(s, "admin")
+}
+
+model Strs {
+  a: string
+  b: string
+  rule same: a == b
+  rule suffix: endsWith(a, "\u{1F600}")
+  rule inner: contains(b, "\u{E9}")
+}
+
+model Pattern {
+  code: string
+  rule shape: matches(code, "^[A-Z]{3}-\\d{4}$")
+  rule hasDigit: matches(code, "\\d")
+}
+
+model Sizes {
+  data: bytes
+  tags: string[]
+  limits: Map<string, int>
+  rule smallData: len(data) <= 3
+  rule fewTags: len(tags) < 3
+  rule hasMax: "max" in limits
+  rule gift: "gift" in tags || len(tags) == 0
+}

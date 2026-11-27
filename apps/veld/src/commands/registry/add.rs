@@ -37,8 +37,9 @@ pub fn run(ui: &Ui, config: Option<&Path>, args: &AddArgs) -> Result<Exit> {
     if let Some(r) = range {
         parse_range(r).map_err(fail)?;
     }
-    let config_file = pipeline::config_file(config)?;
-    let project = veld_project::config::load(&config_file)?;
+    let project = pipeline::load_project(config)?;
+    // `[dependencies]` belongs to the workspace root, whichever member the command runs in.
+    let config_file = project.file.clone();
     let session = Session::load(args.allow_insecure)?;
     let registry = resolve_registry(
         args.registry.as_deref(),

@@ -1691,7 +1691,7 @@ export class ClientCore {
     this.baseUrl = base.replace(/\/+$/, '');
     const f = opts.fetch ?? (globalThis as { fetch?: FetchLike }).fetch;
     if (!f) throw new VeldTransportError('no fetch implementation: pass options.fetch');
-    this.doFetch = f;
+    this.doFetch = opts.fetch ?? f.bind(globalThis);
   }
 
   private check(ep: EndpointSpec, req: Record<string, unknown>): void {

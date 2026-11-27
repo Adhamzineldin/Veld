@@ -11,64 +11,81 @@ four Node services and one Java service, mutually dependent, plus a React app). 
 
 ## 1. Declare the services
 
-A workspace replaces `[project].contracts` with `[services.*]`. Each service is a package: a folder of
-`.veld` files.
+A workspace is a root `veld.toml` that lists the members, and one `veld.toml` per member in the
+member's directory. Each service is a package: a folder of `.veld` files. The root:
 
 ```toml
-[project]
+# veld.toml
+[workspace]
 name = "nexusbank"
+members = ["backend/*", "web"]
 
-[services.iam]
-contracts = "contracts/iam"
-base-url = "http://iam-service:3001"
-
-# accounts and transactions consume each other. Cycles are legal.
-[services.accounts]
-contracts = "contracts/accounts"
-base-url = "http://account-service:3002"
-consumes = ["iam", "transactions"]
-
-[services.transactions]
-contracts = "contracts/transactions"
-base-url = "http://transaction-service:3003"
-consumes = ["iam", "accounts"]
+# Node servers use Express unless a service says otherwise.
+[workspace.defaults.server.node]
+framework = "express"
 ```
 
+A service, `backend/account-service/veld.toml`. accounts and transactions consume each other;
+cycles are legal:
+
+```toml
+[service]
+name = "accounts"                      # the directory is `account-service`
+contracts = "../../contracts/accounts"
+base-url = "http://account-service:3002"
+consumes = ["iam", "transactions"]
+owners = ["team-accounts"]
+```
+
+- The service is named after its directory unless `name` says otherwise. The name is what
+  `use accounts:...` and `consumes` refer to.
 - `consumes` lists the services a service calls. Each name must exist (`E0702`). A service listing
   itself is a warning (`W0701`). **Cycles are allowed**: `accounts` asks `transactions` for a statement and
   `transactions` asks `accounts` to check a source account.
 - `base-url` is the default address of the service for generated clients.
+- `owners` are free-form names that `veld diff` and `veld check --graph=json` show.
 
 Start a workspace with `veld init --workspace iam,accounts,transactions`, which writes the folders,
-the contracts, a `package.json` per service and the `veld.toml`. It asks which services call which
+the contracts, a `veld.toml` and a `package.json` per service. It asks which services call which
 (`--consumes orders=iam`), so the `consumes` lists start out as you intend them.
 
 ## 2. One server target per service
 
+The server of a service is a `[server]` table in the service's own `veld.toml`:
+
 ```toml
-[[targets]]
+# backend/account-service/veld.toml (continued)
+[server]
 name = "accounts-api"          # `veld generate accounts-api` builds just this one
-service = "accounts"
-role = "server"
-emitter = "node"
-framework = "express"
-out = "backend/account-service/src/generated"
+emitter = "node"               # the framework (express) comes from the workspace defaults
+out = "src/generated"          # relative to this file
+```
+
+```toml
+# backend/transaction-service/veld.toml
+[service]
+name = "transactions"
+contracts = "../../contracts/transactions"
+consumes = ["iam", "accounts"]
 
 # The transactions service is a Java server (JDK HTTP server adapter, no dependencies).
-[[targets]]
+[server]
 name = "transactions-api"
-service = "transactions"
-role = "server"
 emitter = "java"
 framework = "jdk"
-out = "backend/transaction-service/src/main/java"
+out = "src/main/java"
 
-[targets.options]
+[server.options]
 package = "com.nexusbank.transactions"
 ```
 
-Servers of different languages live side by side. Only the contracts connect them. A `client`
-target covers every service by default, or the ones you list in `services = ["iam", "accounts"]`.
+Servers of different languages live side by side. Only the contracts connect them. The web app is
+an `[app]` member, `web/veld.toml`, whose `[client]` covers every service by default, or the ones
+you list in `uses = ["iam", "accounts"]`.
+
+Run `veld` in a member's directory and it works on that member only; `-p accounts` picks a member
+from anywhere and `veld generate --affected --since origin/master` takes the members a change can
+have affected. See [Workspaces](workspaces.md).
 
 ## 3. Calling another service
 
@@ -100,7 +117,7 @@ Resolved at construction, highest priority first:
 
 1. the constructor argument (`baseUrl`)
 2. the environment variable `VELD_<SERVICE>_URL`, service name in UPPER_SNAKE (`VELD_ACCOUNTS_URL`)
-3. the `base-url` in `veld.toml`
+3. the `base-url` in the service's `veld.toml`
 4. otherwise the constructor fails with a clear error
 
 So `base-url` is a development default, and each deployment overrides it with the environment, as
@@ -135,8 +152,8 @@ A `NotFound` raised by `accounts.getAccount` is never equal to a `NotFound` rais
 Types and errors used by several services belong in a **library**:
 
 ```toml
-[libraries.common]
-contracts = "contracts/common"
+# libs/common/veld.toml
+[library]
 ```
 
 ```veld

@@ -1,0 +1,31 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0922]: `else RoomFull` does not give the fields `capacity`, `name`
+ --> app/app.veld:9:34
+  |
+9 |     require body.guests > 0 else RoomFull
+  |                                  ^^^^^^^^
+
+error[E0922]: `else RoomFull` does not give the field `name`
+ --> app/app.veld:10:34
+   |
+10 |     require body.guests > 1 else RoomFull { capacity: 1 }
+   |                                  ^^^^^^^^
+
+error[E0922]: error `RoomFull` has no field `extra`
+ --> app/app.veld:11:69
+   |
+11 |     require body.guests > 2 else RoomFull { capacity: 1, name: "x", extra: 2 }
+   |                                                                     ^^^^^
+  = help: fields: capacity, name, hint, level
+
+error[E0922]: field `capacity` is given twice
+ --> app/app.veld:12:58
+   |
+12 |     require body.guests > 3 else RoomFull { capacity: 1, capacity: 2, name: "x" }
+   |                                                          ^^^^^^^^
+
+== ir ==
+(no IR: compilation failed)

@@ -1,0 +1,27 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0940]: the principal must be a model, found `Role`
+ --> app/app.veld:7:11
+  |
+7 | principal Role
+  |           ^^^^
+  = help: declare the caller as a `model` and name it: `principal User`
+
+error[E0940]: the principal must be a model, found `int`
+ --> app/app.veld:8:11
+  |
+8 | principal int
+  |           ^^^
+  = help: declare the caller as a `model` and name it: `principal User`
+
+error[E0940]: the principal must be a model, found `Denied`
+ --> app/app.veld:9:11
+  |
+9 | principal Denied
+  |           ^^^^^^
+  = help: declare the caller as a `model` and name it: `principal User`
+
+== ir ==
+(no IR: compilation failed)

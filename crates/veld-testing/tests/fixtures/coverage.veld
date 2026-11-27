@@ -1,0 +1,130 @@
+// A contract for the tests of `veld test --coverage`: every rule is in the state its comment says.
+
+enum Status {
+  pending, paid, cancelled
+  flow pending -> paid
+  flow pending -> cancelled
+  final paid, cancelled
+}
+
+model User {
+  id: uuid
+  roles: string[]
+}
+
+principal User
+
+model Booking {
+  id: uuid
+  guestId: uuid
+  status: Status = .pending
+  total: decimal
+}
+
+model Payment {
+  amount: decimal
+}
+
+model NewStay {
+  guests: int @min(1)
+  start: datetime
+  end: datetime
+
+  // Held by one example and violated by another: covered.
+  rule endAfterStart: end > start
+  // Held by every example, never violated.
+  rule atMost30Days: end - start <= days(30)
+  // Audited, and counted like an enforced rule: held by one example, violated by another.
+  @rollout(audit)
+  rule smallParty: guests <= 6
+}
+
+model Closure {
+  reason: string
+  // No example reaches the endpoint: never evaluated.
+  rule reasonGiven: reason != ""
+}
+
+policy ManageBooking(user: User, booking: Booking) {
+  permit when booking.guestId == user.id
+}
+
+@auth(bearer)
+service Bookings at "/bookings" {
+  post "/stays" createStay(body: NewStay) -> 201 Booking
+
+  post "/{id}/pay" payBooking(id: uuid, body: Payment) -> Booking {
+    fact booking: Booking = id
+    // Permitted by every example, never denied.
+    allow ManageBooking(user, booking)
+    // A pending booking in every example, never an illegal move.
+    transition booking.status: pending -> paid
+    // Held by one example, violated by another: covered.
+    require amountMatches: body.amount == booking.total
+    // No example of this endpoint says what the handler returns: never evaluated.
+    ensure paidTotal: result.total == body.amount
+    ensure result.status == .paid
+  }
+
+  // Permitted by one example, denied by another: covered.
+  get "/{id}" getBooking(id: uuid) -> Booking {
+    fact booking: Booking = id
+    allow ManageBooking(user, booking)
+  }
+
+  // A legal move in one example, an illegal one in another: covered.
+  post "/{id}/cancel" cancelBooking(id: uuid) -> Booking {
+    fact booking: Booking = id
+    transition booking.status: pending -> cancelled
+  }
+
+  post "/{id}/close" closeBooking(id: uuid, body: Closure) -> 204 {
+    require reasonNeeded: body.reason != ""
+  }
+}
+
+example "a stay is accepted" {
+  createStay(body: { guests: 2 }) -> ok
+}
+
+example "a stay cannot end before it starts" {
+  createStay(body: { guests: 2, start: "2026-06-12T00:00:00Z", end: "2026-06-10T00:00:00Z" }) -> ValidationError
+}
+
+example "a big party is accepted and audited" {
+  createStay(body: { guests: 7 }) -> ok
+}
+
+example "the guest pays" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa", total: 10.00 }
+  as { id: "00000000-0000-4000-8000-0000000000aa", roles: [] }
+  payBooking(id: booking.id, body: { amount: 10.00 }) -> ok
+}
+
+example "a wrong amount is refused" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa", total: 10.00 }
+  as { id: "00000000-0000-4000-8000-0000000000aa", roles: [] }
+  payBooking(id: booking.id, body: { amount: 1.00 }) -> ValidationError
+}
+
+example "the guest sees the booking" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa", total: 10.00 }
+  as { id: "00000000-0000-4000-8000-0000000000aa", roles: [] }
+  getBooking(id: booking.id) -> ok
+}
+
+example "a stranger is refused" {
+  given booking = { guestId: "00000000-0000-4000-8000-0000000000aa", total: 10.00 }
+  as { id: "00000000-0000-4000-8000-0000000000bb", roles: [] }
+  getBooking(id: booking.id) -> Forbidden
+}
+
+example "a pending booking is cancelled" {
+  given booking = { status: .pending, total: 10.00 }
+  cancelBooking(id: booking.id) -> ok
+}
+
+example "a paid booking cannot be cancelled" {
+  given booking = { status: .paid, total: 10.00 }
+  cancelBooking(id: booking.id) -> InvalidTransition { field: "status", from: "paid", to: "cancelled" }
+}

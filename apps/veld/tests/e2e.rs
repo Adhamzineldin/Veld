@@ -268,7 +268,7 @@ fn unsupported_feature_is_a_loud_error_and_writes_nothing() {
     write(
         tmp.path(),
         "veld.toml",
-        "[project]\nname = \"demo\"\n\n[[targets]]\nname = \"api\"\nrole = \"server\"\nemitter = \"java\"\nout = \"generated/server\"\n",
+        "[service]\nname = \"demo\"\n\n[server]\nname = \"api\"\nemitter = \"java\"\nout = \"generated/server\"\n",
     );
     veld(tmp.path())
         .arg("generate")
@@ -276,6 +276,48 @@ fn unsupported_feature_is_a_loud_error_and_writes_nothing() {
         .code(1)
         .stderr(predicate::str::contains("E0801"));
     assert!(!tmp.path().join("generated").exists());
+}
+
+#[test]
+fn generate_warns_w0904_when_validation_is_off_and_the_contract_has_rules() {
+    let tmp = tempdir().unwrap();
+    init(tmp.path());
+    write(
+        tmp.path(),
+        "contracts/rules.veld",
+        "model Span {\n  from: int\n  to: int\n  rule ordered: from <= to\n}\n\nservice Spans at \"/spans\" {\n  post \"/\" make(body: Span) -> 204\n}\n",
+    );
+    let toml = |options: &str| {
+        format!(
+            "[service]\nname = \"demo\"\n\n[server]\nname = \"api\"\nemitter = \"node\"\nout = \"generated/server\"\n{options}\n"
+        )
+    };
+    // Validation on: no warning.
+    write(tmp.path(), "veld.toml", &toml(""));
+    veld(tmp.path())
+        .arg("generate")
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("W0904").not());
+    // Off: generation still succeeds, and says the rules of `Span` are not enforced.
+    write(
+        tmp.path(),
+        "veld.toml",
+        &toml("\n[server.options]\nvalidate = false"),
+    );
+    veld(tmp.path())
+        .arg("generate")
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("warning[W0904]"))
+        .stderr(predicate::str::contains("target `api`"))
+        .stderr(predicate::str::contains("Span"));
+    // `--quiet` hides warnings like every other warning.
+    veld(tmp.path())
+        .args(["--quiet", "generate"])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("W0904").not());
 }
 
 #[test]
@@ -367,7 +409,7 @@ fn unknown_key_in_config_suggests_the_right_one() {
     write(
         tmp.path(),
         "veld.toml",
-        "[project]\nname = \"x\"\n\n[[targets]]\nrole = \"client\"\nemiter = \"typescript\"\nout = \"gen\"\n",
+        "[service]\nname = \"x\"\n\n[client]\nemiter = \"typescript\"\nout = \"gen\"\n",
     );
     veld(tmp.path())
         .arg("check")
@@ -631,11 +673,14 @@ fn init_workspace_assigns_no_consumes_unless_asked() {
         .args(["init", "--name", "ws", "--workspace"])
         .assert()
         .success();
-    assert!(
-        !fs::read_to_string(tmp.path().join("veld.toml"))
-            .unwrap()
-            .contains("consumes")
-    );
+    for (path, bytes) in tree(tmp.path()) {
+        if path.ends_with("veld.toml") {
+            assert!(
+                !String::from_utf8(bytes).unwrap().contains("consumes"),
+                "{path} must not consume anything"
+            );
+        }
+    }
     veld(tmp.path()).arg("generate").assert().success();
     assert!(
         !tree(tmp.path())
@@ -643,4 +688,30 @@ fn init_workspace_assigns_no_consumes_unless_asked() {
             .any(|p| p.contains("/generated/clients/")),
         "nothing is consumed, so no consumed client is generated"
     );
+}
+
+/// A project that `veld init` has just written must not start with warnings. The `auth-required`
+/// lint is on by default, so every scaffolded service says who may call it.
+#[test]
+fn a_freshly_scaffolded_project_checks_without_a_warning() {
+    let scaffolds: [&[&str]; 4] = [
+        &["init", "--name", "demo"],
+        &["init", "--name", "shop", "--template", "crud", "--yes"],
+        &["init", "--name", "ws", "--workspace"],
+        &["init", "--name", "ws", "--workspace", "billing,catalog"],
+    ];
+    for args in scaffolds {
+        let tmp = tempdir().unwrap();
+        veld(tmp.path()).args(args).assert().success();
+        let out = veld(tmp.path())
+            .arg("check")
+            .assert()
+            .success()
+            .get_output()
+            .clone();
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(!stderr.contains("warning["), "{args:?}: {stderr}");
+        assert!(!stdout.contains("warning"), "{args:?}: {stdout}");
+    }
 }

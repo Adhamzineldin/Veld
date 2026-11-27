@@ -81,10 +81,8 @@ const invoicesPayInvoiceOp: veld.EndpointSpec = {
 export class InvoicesClient {
   readonly #core: veld.ClientCore;
 
-  constructor(opts: veld.ClientOptions = {}) {
+  constructor(opts: veld.ClientOptions) {
     this.#core = new veld.ClientCore(opts, {
-      envVar: 'VELD_INVOICES_URL',
-      baseUrl: 'http://invoices:3002',
       validation: (issues) => new ValidationError({ issues }),
     });
   }

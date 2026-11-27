@@ -2,7 +2,7 @@
 //! `src/veld/`, gated by `// @if <flag>` ... `// @end` lines so that a crate carries only what it
 //! uses (a client has no server core, a contract without streams has no `futures-core`).
 
-use veld_codegen::{FileSet, GenDiagnostic};
+use veld_codegen::{FileSet, GenDiagnostic, gate_regions};
 
 use crate::util::{HEADER, add_file};
 
@@ -20,9 +20,133 @@ pub struct Features {
     pub axum: bool,
     pub reqwest: bool,
     pub ureq: bool,
+    /// The crate has declarations with invariants (`spec/rules.md`): the rules runtime is emitted
+    /// and the `// #if rules` regions of the runtime files are kept.
+    pub rules: bool,
+    /// A served service has endpoint rules (`spec/rules.md` section 9): the server core runs
+    /// steps 6 and 9. Implies `rules`.
+    pub endpoint_rules: bool,
+    /// A served service has an `allow` or a `transition` (`spec/rules.md` sections 10 and 11):
+    /// step 6 runs the guards. Implies `endpoint_rules`.
+    pub guards: bool,
+    /// A policy is generated (an `allow` of a generated service names one), in either role: the
+    /// system clock reading of the policy functions. Implies `rules`.
+    pub policies: bool,
+    /// The crate has an audited rule (`@rollout(audit)`, `spec/rules.md` section 17.1): the `// #if rollout`
+    /// regions of the runtime are kept. Implies `rules`.
+    pub rollout: bool,
+    /// A served service publishes or subscribes (`spec/events.md`): `src/veld/events.rs` is
+    /// emitted.
+    pub events: bool,
+    /// A generated service has an endpoint with a version guard, or a served one answers with a
+    /// model that has a version field (`spec/rules.md` section 11.7): `src/veld/conditional.rs`
+    /// (`IfMatch`, the `ETag`) is emitted.
+    pub version: bool,
+    /// A served endpoint reads `If-Match` or writes an `ETag`: the server core does. Implies
+    /// `version` and `conditional`.
+    pub etag: bool,
+    /// A served service has an `@idempotent` endpoint (`spec/rules.md` section 11.8):
+    /// `src/veld/idempotency.rs` is emitted. Implies `conditional`.
+    pub idempotency: bool,
+    /// The server core says, for each endpoint, what it owes to `@version` and `@idempotent`.
+    pub conditional: bool,
+    /// A declaration of the crate has a derived field (`spec/rules.md` section 17.2): the schemas
+    /// say which fields are derived and the rules runtime computes them. Implies `rules`.
+    pub derived: bool,
+    /// The target has a runtime config (`spec/runtime-config.md`): `src/veld/config.rs` (the
+    /// engine of its check) is emitted, next to `src/runtime_config.rs`.
+    pub config: bool,
+    /// The crate has a flagged statement (`spec/platform.md` section 11): the `// #if flags` regions
+    /// of the runtime (the readings of a request, `vr::flag_on`, `vr::invariant_on`) are kept.
+    /// Implies `rules`.
+    pub flags: bool,
+    /// A served endpoint can reach a flag, or an event has a flagged invariant: `src/veld/flags.rs`
+    /// (the provider) is emitted. Implies `flags`.
+    pub flags_server: bool,
+    /// An event of a served service has a flagged invariant (`spec/platform.md` section 11): the
+    /// `// @if event_flags` regions of `src/veld/events.rs` (the provider in the options of the
+    /// publisher and the consumer, `EventDef::flags`) are kept. Implies `flags` and `flags_server`.
+    pub event_flags: bool,
+    /// A served endpoint has a service level (`@slo`, `spec/platform.md` section 13): the server
+    /// calls the metrics hook.
+    pub slo: bool,
+    /// An endpoint has a deadline (`@timeout`, `spec/platform.md` section 12): `EndpointSpec` has
+    /// `timeout_ms`, the server core wraps the pipeline in a timeout and answers `504`, the
+    /// client uses it as its default timeout.
+    pub timeouts: bool,
+    /// A served endpoint takes a timed edge (`spec/platform.md` section 10): the due check of the
+    /// guard and the due-moves runner. Implies `guards`.
+    pub timed: bool,
+    /// The target option `messaging` names Kafka (`spec/events.md` section 10.7):
+    /// `src/adapters/kafka.rs` and the `rdkafka` dependency.
+    pub kafka: bool,
+    /// A served service has an endpoint whose move emits an event (`spec/events.md` section 11): the
+    /// outbox, `emit`, the check after the handler and the relay of `src/veld/events.rs`, and the
+    /// events written by a request in `RequestContext`. Implies `events` and `refactor`.
+    pub outbox: bool,
+    /// The test handler (`testing = true`) of a service that subscribes serves
+    /// `POST /__veld/test/event` (`spec/events.md` section 10.9): the crate needs `axum`, also when
+    /// no service has an HTTP surface.
+    pub test_events: bool,
+    /// The same for RabbitMQ: `src/adapters/rabbitmq.rs` and `lapin`.
+    pub rabbitmq: bool,
+    /// A served endpoint can send a `@visible` field (`spec/platform.md` section 2): the server
+    /// core shows every answer to its caller. Implies `platform`.
+    pub visibility: bool,
+    /// A served answer or fact can be tenant-scoped (`spec/platform.md` section 3): the server
+    /// core compares tenants. Implies `platform`.
+    pub tenancy: bool,
+    /// A declaration of the crate has a `@tenant` field, in either role: a request may lack it.
+    pub tenant_fields: bool,
+    /// A served endpoint is `@audited` (`spec/platform.md` section 4). Implies `platform`.
+    pub audit_log: bool,
+    /// A served endpoint has a `@limit` (`spec/platform.md` section 5). Implies `platform`.
+    pub limits: bool,
+    /// An event of a served service has a `@tenant` field: its messages carry `veldtenant`.
+    pub tenant_events: bool,
+    /// A client of the crate (its own or a consumed one) has an endpoint with a `@limit`: it
+    /// waits and sends again.
+    pub limits_client: bool,
+    /// A declaration of the crate has a `@pii` or `@secret` field and a served endpoint is audited:
+    /// the schemas carry the marks the redaction reads.
+    pub pii: bool,
 }
 
 impl Features {
+    /// A served endpoint uses one of the four features of platform phase P1.
+    #[must_use]
+    pub fn platform(&self) -> bool {
+        self.server && (self.visibility || self.tenancy || self.audit_log || self.limits)
+    }
+
+    /// Whether the region `name` of a runtime file is kept (`// #if rules`, `// #if !rules`,
+    /// `// #if endpoint_rules`).
+    fn region(&self, name: &str) -> bool {
+        match name {
+            "rules" => self.rules,
+            "!rules" => !self.rules,
+            "endpoint_rules" => self.endpoint_rules,
+            "guards" => self.guards,
+            "policies" => self.policies,
+            "platform" => self.platform(),
+            "visibility" => self.visibility,
+            "tenancy" => self.tenancy,
+            "tenant_fields" => self.tenant_fields,
+            "audit_log" => self.audit_log,
+            "limits" => self.limits,
+            "limits_client" => self.limits_client,
+            "pii" => self.pii,
+            "rollout" => self.rollout,
+            "!rollout" => !self.rollout,
+            "derived" => self.derived,
+            "timed" => self.timed,
+            "flags" => self.flags,
+            "rollout_endpoint" => self.rollout && self.endpoint_rules,
+            "rules_plain" => self.rules && !self.rollout,
+            _ => false,
+        }
+    }
+
     fn flag(&self, name: &str) -> bool {
         match name {
             "server" => self.server,
@@ -31,6 +155,35 @@ impl Features {
             "ws_server" => self.ws_server,
             "ws_client" => self.ws_client,
             "axum" => self.axum,
+            "rules" => self.rules,
+            "version" => self.version,
+            "etag" => self.etag,
+            "idempotency" => self.idempotency,
+            "conditional" => self.conditional,
+            "derived" => self.derived,
+            "flags" => self.flags,
+            "event_flags" => self.event_flags,
+            "timed" => self.timed,
+            "timeouts" => self.timeouts,
+            "platform" => self.platform(),
+            "visibility" => self.visibility,
+            "tenancy" => self.tenancy,
+            "tenant_fields" => self.tenant_fields,
+            "audit_log" => self.audit_log,
+            "limits" => self.limits,
+            "limits_client" => self.limits_client,
+            "pii" => self.pii,
+            "tenant_types" => self.server && (self.tenancy || self.limits),
+            "tenant_events" => self.events && self.tenant_events,
+            "shapes" => self.server && (self.visibility || self.tenancy),
+            "sleep" => self.sse || self.limits_client,
+            "slo" => self.slo && self.server,
+            "timeouts_server" => self.timeouts && self.server,
+            "refactor" => {
+                self.timed || (self.timeouts && self.server) || self.outbox || self.platform()
+            }
+            "outbox" => self.outbox,
+            "split" => self.idempotency || (self.timeouts && self.server),
             "reqwest" => self.reqwest,
             "ureq" => self.ureq,
             _ => false,
@@ -62,10 +215,23 @@ pub fn gate(src: &str, f: &Features) -> String {
     out
 }
 
+const RULES: &str = include_str!("../runtime/rules.rs");
+// The helpers of the reference evaluator (`veld-rules`), embedded as they are: generated rule
+// code and the reference evaluator run the same helper source.
+const RULES_DECIMAL: &str = include_str!("../../../veld-rules/src/helpers/decimal.rs");
+const RULES_INSTANT: &str = include_str!("../../../veld-rules/src/helpers/instant.rs");
+const RULES_NUM: &str = include_str!("../../../veld-rules/src/helpers/num.rs");
+const RULES_TEXT: &str = include_str!("../../../veld-rules/src/helpers/text.rs");
 const CANONICAL: &str = include_str!("../runtime/canonical.rs");
 const CLIENT: &str = include_str!("../runtime/client.rs");
+const CONFIG: &str = include_str!("../runtime/config.rs");
+const CONDITIONAL: &str = include_str!("../runtime/conditional.rs");
+const IDEMPOTENCY: &str = include_str!("../runtime/idempotency.rs");
 const ERROR: &str = include_str!("../runtime/error.rs");
+const FLAGS: &str = include_str!("../runtime/flags.rs");
+const EVENTS: &str = include_str!("../runtime/events.rs");
 const PAGE: &str = include_str!("../runtime/page.rs");
+const PLATFORM: &str = include_str!("../runtime/platform.rs");
 const REGEX: &str = include_str!("../runtime/regex.rs");
 const SCHEMA: &str = include_str!("../runtime/schema.rs");
 const SERVER: &str = include_str!("../runtime/server.rs");
@@ -75,6 +241,8 @@ const TRANSPORT_REQWEST: &str = include_str!("../runtime/transport_reqwest.rs");
 const TRANSPORT_UREQ: &str = include_str!("../runtime/transport_ureq.rs");
 const UTIL: &str = include_str!("../runtime/util.rs");
 const ADAPTER_AXUM: &str = include_str!("../runtime/adapter_axum.rs");
+const KAFKA: &str = include_str!("../runtime/brokers/kafka.rs");
+const RABBITMQ: &str = include_str!("../runtime/brokers/rabbitmq.rs");
 
 /// The `src/veld/mod.rs` of a crate.
 #[must_use]
@@ -87,9 +255,16 @@ pub fn mod_rs(f: &Features) -> String {
     for (name, on) in [
         ("canonical", true),
         ("client", f.client),
+        ("config", f.config),
+        ("conditional", f.version),
         ("error", true),
+        ("events", f.events),
+        ("flags", f.flags_server),
+        ("idempotency", f.idempotency),
         ("page", true),
+        ("platform", f.platform()),
         ("regex", true),
+        ("rules", f.rules),
         ("schema", true),
         ("server", f.server),
         ("spec", true),
@@ -110,20 +285,47 @@ pub fn mod_rs(f: &Features) -> String {
     s
 }
 
+/// The `pub mod` lines of `src/adapters/mod.rs`, in name order.
+fn adapter_mods(f: &Features) -> String {
+    let mut out = String::new();
+    for (name, on) in [
+        ("axum", f.axum),
+        ("kafka", f.kafka),
+        ("rabbitmq", f.rabbitmq),
+    ] {
+        if on {
+            out.push_str(&format!("pub mod {name};\n"));
+        }
+    }
+    out
+}
+
 /// Emits `src/veld/*` and the adapter files the features ask for.
 pub fn emit(files: &mut FileSet, f: &Features) -> Result<(), Vec<GenDiagnostic>> {
     let mut put = |path: &str, src: &str, on: bool| -> Result<(), Vec<GenDiagnostic>> {
-        if on {
-            add_file(files, path, format!("{HEADER}\n\n{}", gate(src, f)))
-        } else {
-            Ok(())
+        if !on {
+            return Ok(());
         }
+        let kept = gate_regions(src, &|name| f.region(name))
+            .map_err(|e| vec![GenDiagnostic::new("E0805", format!("{path}: {e}"))])?;
+        add_file(files, path, format!("{HEADER}\n\n{}", gate(&kept, f)))
     };
     put("src/veld/canonical.rs", CANONICAL, true)?;
     put("src/veld/client.rs", CLIENT, f.client)?;
+    put("src/veld/config.rs", CONFIG, f.config)?;
+    put("src/veld/conditional.rs", CONDITIONAL, f.version)?;
+    put("src/veld/idempotency.rs", IDEMPOTENCY, f.idempotency)?;
     put("src/veld/error.rs", ERROR, true)?;
+    put("src/veld/events.rs", EVENTS, f.events)?;
+    put("src/veld/flags.rs", FLAGS, f.flags_server)?;
     put("src/veld/page.rs", PAGE, true)?;
+    put("src/veld/platform.rs", PLATFORM, f.platform())?;
     put("src/veld/regex.rs", REGEX, true)?;
+    put("src/veld/rules/mod.rs", RULES, f.rules)?;
+    put("src/veld/rules/decimal.rs", RULES_DECIMAL, f.rules)?;
+    put("src/veld/rules/instant.rs", RULES_INSTANT, f.rules)?;
+    put("src/veld/rules/num.rs", RULES_NUM, f.rules)?;
+    put("src/veld/rules/text.rs", RULES_TEXT, f.rules)?;
     put("src/veld/schema.rs", SCHEMA, true)?;
     put("src/veld/server.rs", SERVER, f.server)?;
     put("src/veld/spec.rs", SPEC, true)?;
@@ -136,8 +338,21 @@ pub fn emit(files: &mut FileSet, f: &Features) -> Result<(), Vec<GenDiagnostic>>
     put("src/veld/transport_ureq.rs", TRANSPORT_UREQ, f.ureq)?;
     put("src/veld/util.rs", UTIL, true)?;
     put("src/veld/mod.rs", &mod_rs(f), true)?;
+    put("src/adapters/kafka.rs", KAFKA, f.kafka)?;
+    put("src/adapters/rabbitmq.rs", RABBITMQ, f.rabbitmq)?;
     if f.axum {
         put("src/adapters/axum.rs", ADAPTER_AXUM, true)?;
+    }
+    if f.kafka || f.rabbitmq {
+        add_file(
+            files,
+            "src/adapters/mod.rs",
+            format!(
+                "{HEADER}\n\n//! Framework and broker adapters.\n\n{}",
+                adapter_mods(f)
+            ),
+        )?;
+    } else if f.axum {
         add_file(
             files,
             "src/adapters/mod.rs",
@@ -150,6 +365,126 @@ pub fn emit(files: &mut FileSet, f: &Features) -> Result<(), Vec<GenDiagnostic>>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The runtime files that carry regions of platform phase P1.
+    fn p1_sources() -> Vec<(&'static str, &'static str)> {
+        vec![
+            ("server", SERVER),
+            ("client", CLIENT),
+            ("schema", SCHEMA),
+            ("spec", SPEC),
+            ("events", EVENTS),
+            ("platform", PLATFORM),
+            ("rules", RULES),
+            ("transport_reqwest", TRANSPORT_REQWEST),
+            ("transport_ureq", TRANSPORT_UREQ),
+        ]
+    }
+
+    /// Every combination of the gates of platform phase P1 on top of everything else being on or off.
+    fn p1_combinations() -> Vec<Features> {
+        let mut all = Vec::new();
+        for others in [false, true] {
+            for bits in 0u32..256 {
+                let on = |bit: u32| bits & (1 << bit) != 0;
+                all.push(Features {
+                    visibility: on(0),
+                    tenancy: on(1),
+                    tenant_fields: on(2),
+                    audit_log: on(3),
+                    limits: on(4),
+                    limits_client: on(5),
+                    pii: on(6),
+                    tenant_events: on(7),
+                    server: others,
+                    client: others,
+                    sse: others,
+                    ws_server: others,
+                    ws_client: others,
+                    axum: others,
+                    rules: others,
+                    endpoint_rules: others,
+                    events: others,
+                    derived: others,
+                    flags: others,
+                    timed: others,
+                    timeouts: others,
+                    idempotency: others,
+                    outbox: others,
+                    rollout: others,
+                    ..Features::default()
+                });
+            }
+        }
+        all
+    }
+
+    fn lines_with(src: &str, prefix: &str) -> usize {
+        src.lines().filter(|l| l.trim().starts_with(prefix)).count()
+    }
+
+    /// The markers of every runtime file pair, and every combination of the gates of P1 resolves:
+    /// no region is left open, and none of the markers survives.
+    #[test]
+    fn the_markers_pair_in_every_combination_of_the_p1_gates() {
+        for (name, src) in p1_sources() {
+            assert_eq!(
+                lines_with(src, "// @if "),
+                lines_with(src, "// @end"),
+                "{name}: `// @if` and `// @end`"
+            );
+            assert_eq!(
+                lines_with(src, "// #if "),
+                lines_with(src, "// #endif"),
+                "{name}: `// #if` and `// #endif`"
+            );
+            for f in p1_combinations() {
+                let kept =
+                    gate_regions(src, &|n| f.region(n)).unwrap_or_else(|e| panic!("{name}: {e}"));
+                let out = gate(&kept, &f);
+                assert!(
+                    !out.lines()
+                        .any(|l| l.trim().starts_with("// @") || l.trim().starts_with("// #")),
+                    "{name}: a marker is left"
+                );
+            }
+        }
+    }
+
+    /// With the gates of P1 off, none of the words of the features is in a runtime file: a crate
+    /// that does not use them has the runtime it had.
+    #[test]
+    fn without_the_p1_gates_none_of_their_words_is_left() {
+        let off = Features {
+            server: true,
+            client: true,
+            sse: true,
+            ws_server: true,
+            ws_client: true,
+            axum: true,
+            rules: true,
+            ..Features::default()
+        };
+        for (name, src) in p1_sources().into_iter().filter(|(n, _)| *n != "platform") {
+            let kept =
+                gate_regions(src, &|n| off.region(n)).unwrap_or_else(|e| panic!("{name}: {e}"));
+            let out = gate(&kept, &off);
+            for word in [
+                "super::platform",
+                "TenantMark",
+                "veldtenant",
+                "limit_spec",
+                "retry_on_limit",
+                "audit_spec",
+                "AuditHold",
+                "request_clock",
+                "show_record",
+                "sleeper",
+            ] {
+                assert!(!out.contains(word), "{name}: `{word}`");
+            }
+        }
+    }
 
     #[test]
     fn gating_keeps_and_drops_blocks() {

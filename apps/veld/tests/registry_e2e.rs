@@ -182,19 +182,17 @@ service Orders at "/orders" {
 
 fn lib_toml(base: &str) -> String {
     format!(
-        "[project]\nname = \"libs\"\n\n[libraries.billing]\ncontracts = \"billing\"\npackage = \"@acme/billing\"\nversion = \"1.2.0\"\ndescription = \"Invoices\"\n\n[registry]\nurl = \"{base}\"\n"
+        "[library]\nname = \"billing\"\ncontracts = \"billing\"\npackage = \"@acme/billing\"\nversion = \"1.2.0\"\ndescription = \"Invoices\"\n\n[registry]\nurl = \"{base}\"\n"
     )
 }
 
-const APP_TOML: &str = r#"[project]
+const APP_TOML: &str = r#"[service]
 name = "app"
 contracts = "contracts"
 
-[[targets]]
+[server]
 name = "api"
-role = "server"
 emitter = "node"
-service = "app"
 out = "generated/server"
 "#;
 
@@ -374,7 +372,7 @@ fn publish_add_check_generate_and_tamper_against_the_real_registry() {
         "{toml}"
     );
     assert!(
-        toml.contains("[[targets]]"),
+        toml.contains("[server]"),
         "the rest of veld.toml is preserved"
     );
     let lock = fs::read_to_string(app.join("veld.lock")).unwrap();
@@ -484,7 +482,7 @@ const PAYSLIPS: &str =
 /// A library project that publishes `package` at `version` from `contracts_dir`.
 fn lib_project(base: &str, name: &str, version: &str) -> String {
     format!(
-        "[project]\nname = \"libs\"\n\n[libraries.{name}]\ncontracts = \"{name}\"\npackage = \"@acme/{name}\"\nversion = \"{version}\"\n\n[registry]\nurl = \"{base}\"\n"
+        "[library]\nname = \"{name}\"\ncontracts = \"{name}\"\npackage = \"@acme/{name}\"\nversion = \"{version}\"\n\n[registry]\nurl = \"{base}\"\n"
     )
 }
 

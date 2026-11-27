@@ -1,0 +1,60 @@
+// `emits` (spec/events.md section 11.1) is wrong when it stands on a flow with several edges,
+// names no event, repeats an edge with another event, or when a transition over an emitting edge
+// is in a service that publishes no channel that carries the event.
+
+event BookingPaid { bookingId: uuid }
+event BookingCancelled { bookingId: uuid }
+event Refunded { bookingId: uuid }
+
+channel BookingEvents {
+  carries BookingPaid, BookingCancelled
+  key bookingId
+}
+
+enum Several {
+  a, b, c
+  flow a -> b -> c emits BookingPaid
+}
+
+enum NotAnEvent {
+  a, b, c
+  flow a -> b emits Several
+  flow b -> c emits Missing
+}
+
+enum Twice {
+  a, b
+  flow a -> b emits BookingPaid
+  flow a -> b emits BookingCancelled
+}
+
+enum Status {
+  pending, paid, refunded
+  flow pending -> paid emits BookingPaid
+  flow paid -> refunded emits Refunded
+}
+
+model Booking { id: uuid, status: Status }
+
+service Bookings at "/bookings" {
+  publishes BookingEvents
+
+  post "/{id}/pay" pay(id: uuid) -> Booking {
+    fact booking: Booking = id
+    transition booking.status: pending -> paid
+  }
+
+  // `Refunded` is carried by no channel this service publishes.
+  post "/{id}/refund" refund(id: uuid) -> Booking {
+    fact booking: Booking = id
+    transition booking.status: paid -> refunded
+  }
+}
+
+// No `publishes` line at all.
+service Silent at "/silent" {
+  post "/{id}/pay" pay(id: uuid) -> Booking {
+    fact booking: Booking = id
+    transition booking.status: pending -> paid
+  }
+}

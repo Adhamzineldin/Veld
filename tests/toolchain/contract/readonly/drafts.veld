@@ -1,0 +1,9 @@
+/// A request body whose model has a required `@readonly` field (`spec/language.md` section 7).
+model Draft {
+  id: uuid @readonly
+  title: string
+}
+
+service Drafts at "/drafts" {
+  post "/" create(body: Draft) -> 201 Draft
+}

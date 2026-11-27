@@ -1,5 +1,8 @@
 package dev.veld.runtime;
 
+// #if rules
+import java.util.List;
+// #endif
 import java.util.Objects;
 
 /**
@@ -19,6 +22,10 @@ public abstract class VeldError extends RuntimeException {
   private final String title;
   private final int status;
   private volatile String op;
+  // #if rules
+  private transient volatile List<Violation> violations = List.of();
+  private transient volatile boolean local;
+  // #endif
 
   /**
    * Creates an error.
@@ -61,6 +68,26 @@ public abstract class VeldError extends RuntimeException {
     this.op = operation;
   }
 
+  // #if rules
+  /** The rule violations of the problem document; empty when it has none (spec/rules.md section 7). */
+  public final List<Violation> violations() {
+    return violations;
+  }
+
+  /** Whether the client raised this error itself, before sending the request. */
+  public final boolean raisedLocally() {
+    return local;
+  }
+
+  final void setViolations(List<Violation> found) {
+    this.violations = List.copyOf(found);
+  }
+
+  final void markLocal() {
+    this.local = true;
+  }
+
+  // #endif
   /** The typed data record. */
   public abstract Object data();
 

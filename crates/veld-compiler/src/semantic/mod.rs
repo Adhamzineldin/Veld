@@ -3,20 +3,83 @@
 
 pub mod annotations;
 mod collect;
+#[cfg(test)]
+mod delivery_tests;
+#[cfg(test)]
+mod derived_tests;
+mod duration;
+mod emits;
+#[cfg(test)]
+mod emits_tests;
+mod events;
+#[cfg(test)]
+mod events_groundwork_tests;
+#[cfg(test)]
+mod events_tests;
+mod examples;
+mod flags;
+#[cfg(test)]
+mod flags_tests;
 pub use collect::module_path;
+#[cfg(test)]
+mod audited_tests;
 mod inherit;
+#[cfg(test)]
+mod limit_tests;
+mod machine;
+#[cfg(test)]
+mod machine_tests;
+#[cfg(test)]
+mod message_key_tests;
+#[cfg(test)]
+mod pii_tests;
+mod policy;
+#[cfg(test)]
+mod policy_tests;
 pub mod regex;
 mod resolve;
+mod retain;
+#[cfg(test)]
+mod retain_tests;
+#[cfg(test)]
+mod rollout_tests;
+pub mod rules;
+#[cfg(test)]
+mod saga_tests;
+mod service_levels;
+#[cfg(test)]
+mod service_levels_tests;
 mod services;
 #[cfg(test)]
+mod tenant_tests;
+#[cfg(test)]
 mod tests;
+mod timed;
+#[cfg(test)]
+mod timed_tests;
 mod typeck;
+#[cfg(test)]
+mod version_tests;
+#[cfg(test)]
+mod visible_tests;
 
 use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::diagnostics::{Diagnostic, FileId, Span, has_errors};
 use crate::syntax::ast;
+pub use events::{
+    ChannelEntry, ChannelInfo, RChannel, RChannelKey, RHandler, RSubscription, legal_name,
+    topic_is_legal,
+};
+pub use examples::{
+    REventExample, REventExpect, RExample, RKey, RKeyStore, ROutcome, RSagaAnswer, RSagaExample,
+    RSagaExpect,
+};
+pub use policy::{PolicyEntry, PolicyInfo, RClause, RPolicy, RPolicyParam, RPrincipal};
+pub(crate) use rules::{RAllow, RBlock, RElse, REmitted, REnsure, RRequire, RSaga, RTransition};
+pub(crate) use rules::{RArg, RCall, RObjectField, RStep, RValue};
+pub use rules::{RDerived, RRule};
 use veld_ir::{Auth, Constraints, Literal, Method, PackageKind, Type};
 
 /// One parsed `.veld` file of a package.
@@ -64,6 +127,7 @@ pub enum DKind {
     Enum,
     Union,
     Const,
+    Event,
 }
 
 #[derive(Debug, Clone)]
@@ -74,6 +138,19 @@ pub struct RField {
     pub optional: bool,
     pub default: Option<Literal>,
     pub readonly: bool,
+    /// `@version` (`spec/rules.md` section 11.7).
+    pub version: bool,
+    /// A derived field (`spec/rules.md` section 17.2). Its checked expression is in
+    /// [`Resolved::own_derived`] of the declaration that wrote it.
+    pub derived: bool,
+    /// `@pii` and `@secret` (`spec/rules.md` section 19.3).
+    pub pii: bool,
+    pub secret: bool,
+    /// `@visible(when: e)` (`spec/platform.md` section 2). Its checked expression is in
+    /// [`Resolved::own_visible`] of the declaration that wrote it.
+    pub visible: bool,
+    /// `@tenant` (`spec/platform.md` section 3).
+    pub tenant: bool,
     pub inherited_from: Option<usize>,
     pub constraints: Constraints,
     pub example: Option<Literal>,
@@ -89,6 +166,29 @@ pub struct RVariant {
     pub docs: Option<String>,
     pub deprecated: Option<String>,
     pub span: Span,
+}
+
+/// One edge of a state machine.
+#[derive(Debug, Clone)]
+pub struct RFlow {
+    pub from: String,
+    pub to: String,
+    /// `after d` in milliseconds (`spec/platform.md` section 10); `None` for an ordinary edge.
+    pub after_ms: Option<i64>,
+    /// `when flag("name")`.
+    pub flag: Option<String>,
+    pub span: Span,
+    /// `emits Event` (`spec/events.md` section 11), once the name is looked up.
+    pub emits: Option<REmits>,
+}
+
+/// The event a flow emits: the name as written, and the event (an index into `Program::decls`)
+/// once it is resolved. `event` stays `None` when the name is no event (`E1011` was reported).
+#[derive(Debug, Clone)]
+pub struct REmits {
+    pub name: String,
+    pub span: Span,
+    pub event: Option<usize>,
 }
 
 #[derive(Debug, Clone)]
@@ -107,12 +207,24 @@ pub struct Resolved {
     pub fields: Vec<RField>,
     pub default_status: Option<u16>,
     pub variants: Vec<RVariant>,
+    /// The machine of an enum with flows (`spec/rules.md` section 10).
+    pub machine: machine::RMachine,
     pub discriminator: String,
     pub arms: Vec<RArm>,
     pub const_ty: Option<Type>,
     pub const_value: Option<Literal>,
     pub deprecated: Option<String>,
     pub cyclic: bool,
+    /// Checked rules the declaration writes itself, in source order (`spec/rules.md` section 5).
+    pub own_rules: Vec<RRule>,
+    /// Checked expressions of the derived fields the declaration writes itself, by field name
+    /// (`spec/rules.md` section 17.2).
+    pub own_derived: BTreeMap<String, RDerived>,
+    /// Checked `@visible` expressions of the fields the declaration writes itself, by field name
+    /// (`spec/platform.md` section 2).
+    pub own_visible: BTreeMap<String, rules::RVisible>,
+    /// `@retain` on a model (`spec/platform.md` section 23); checked after inheritance.
+    pub retain: Option<annotations::RetainAnn>,
 }
 
 #[derive(Debug)]
@@ -154,6 +266,29 @@ pub struct REndpoint {
     /// (status, error declaration), deduplicated, in source order with the
     /// implicit `ValidationError`, `Unauthorized` and `Internal` last.
     pub errors: Vec<(u16, usize)>,
+    /// The checked endpoint block (`spec/rules.md` section 9); empty without one.
+    pub rules: RBlock,
+    /// `@idempotent` (`spec/rules.md` section 11.8).
+    pub idempotent: Option<RIdempotent>,
+    /// The checked saga of a `saga post` endpoint (`spec/platform.md` section 17).
+    pub saga: Option<RSaga>,
+    /// `@timeout` in milliseconds, from the endpoint or its service (`spec/platform.md` section 12).
+    pub timeout_ms: Option<i64>,
+    /// `@slo`, from the endpoint or its service (`spec/platform.md` section 13).
+    pub slo: Option<service_levels::SloArgs>,
+    /// `@audited`, from the endpoint or its service (`spec/platform.md` section 4).
+    pub audited: bool,
+    /// `@limit`, from the endpoint or its service (`spec/platform.md` section 5).
+    pub limit: Option<veld_ir::Limit>,
+    pub span: Span,
+}
+
+/// A checked `@idempotent`.
+#[derive(Debug, Clone)]
+pub struct RIdempotent {
+    pub header: String,
+    pub required: bool,
+    /// The annotation.
     pub span: Span,
 }
 
@@ -167,6 +302,10 @@ pub struct ServiceInfo {
     pub auth: Auth,
     pub middleware: Vec<String>,
     pub endpoints: Vec<REndpoint>,
+    /// Channels the service publishes to (indices into `Program::channels`), in source order.
+    pub publishes: Vec<usize>,
+    pub publish_spans: Vec<Span>,
+    pub subscriptions: Vec<RSubscription>,
     pub span: Span,
 }
 
@@ -190,6 +329,10 @@ pub struct Scope {
     pub imports: Vec<ImportRec>,
     /// Local names of imports that failed to resolve; uses of them stay silent.
     pub poisoned: BTreeSet<String>,
+    /// The policies visible here: declared in this module, or imported.
+    pub policy_names: BTreeMap<String, PolicyEntry>,
+    /// The channels visible here: declared in this module, or imported.
+    pub channel_names: BTreeMap<String, ChannelEntry>,
 }
 
 /// The analysed workspace.
@@ -199,6 +342,16 @@ pub struct Program<'a> {
     pub modules: Vec<ModuleInfo<'a>>,
     pub decls: Vec<DeclInfo<'a>>,
     pub services: Vec<ServiceInfo>,
+    /// Checked examples (`spec/rules.md` section 12).
+    pub examples: Vec<RExample>,
+    /// Checked event examples (`spec/events.md` section 12).
+    pub event_examples: Vec<REventExample>,
+    /// Every `channel` of the workspace (`spec/events.md` section 4).
+    pub channels: Vec<ChannelInfo<'a>>,
+    /// Every `policy` of the workspace (`spec/rules.md` section 11.2).
+    pub policies: Vec<PolicyInfo<'a>>,
+    /// The principal of each package that declares one, by package index.
+    pub principals: BTreeMap<usize, RPrincipal>,
     pub scopes: Vec<Scope>,
     /// Prelude name -> declaration index.
     pub prelude: BTreeMap<String, usize>,
@@ -248,7 +401,19 @@ pub fn analyze_lenient<'a>(
     resolve::resolve_decls(&mut prog, diags);
     inherit::flatten(&mut prog, diags);
     typeck::check(&mut prog, diags);
+    events::check_channels(&mut prog, diags);
+    emits::resolve_flows(&mut prog, diags);
+    rules::check(&mut prog, diags);
+    rules::check_policies(&mut prog, diags);
+    rules::check_visible(&mut prog, diags);
+    rules::check_tenant(&prog, diags);
     services::analyze(&mut prog, diags);
+    rules::check_visible_endpoints(&prog, diags);
+    rules::check_tenant_services(&prog, diags);
+    rules::check_sagas(&mut prog, consumes, diags);
+    timed::check_unused_edges(&prog, diags);
+    examples::check(&mut prog, diags);
+    events::check_graph(&prog, diags);
     resolve::report_unused_imports(&prog, diags);
     collect::check_consumes(&prog, consumes, diags);
     prog

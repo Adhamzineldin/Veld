@@ -6,8 +6,13 @@ All notable changes to Veld are recorded here. The format follows [Keep a Change
 
 Restores the v1 features that 2.0.0-beta.1 dropped and the owner kept (see [`docs/v1-parity.md`](docs/v1-parity.md)).
 
+### Changed (breaking)
+
+- **The layout of `veld.toml` is a workspace** (`spec/workspace.md`): a root file with `[workspace]` and one small `veld.toml` per member (`[service]`, `[app]` or `[library]`) next to its code, or one file with a single member. `[server]` and `[client]` tables replace `[[targets]]`, and `out` defaults per emitter. A file in the earlier layout (`[project]`, `[services.*]`, `[libraries.*]`, `[[targets]]`) is the error `E0709`, which says what to write instead; there is no converter. Generated files, manifests and `veld.lock.ir.json` are unchanged. See [`docs/guides/workspaces.md`](docs/guides/workspaces.md).
+
 ### Added
 
+- **Members**: `-p`/`--package`, `--workspace` and the current member select what `generate`, `watch`, `clean`, `setup` and `test` work on; `veld generate --affected --since <ref>` selects the members a change can have affected and says why; `owners` appear in `veld diff` and `veld check --graph=json`. New diagnostics `E0709` to `E0712`.
 - **Website playground** (`/playground`): the real engine compiled to WebAssembly (`crates/veld-wasm`: compile, generate, format, OpenAPI export). Editor with live diagnostics, example presets, target picker, file tree, copy and zip download, offline after first load. `cargo test -p veld-wasm` proves every example and preset is byte-identical to the CLI, and `npm run test:wasm` replays that through the built `.wasm`.
 - **Lint** inside `veld check`: every v1 rule (unused model, empty service, empty model, empty constant, missing description, deprecated endpoint and field, file naming) plus the case rules of `spec/language.md` section 8. Codes `L0001` to `L0013`, levels `off`, `warn` or `error` under `[lint]` in `veld.toml`.
 - **"Did you mean" suggestions** on unknown types, modules, packages, annotations, imports and enum variants, also across modules and packages (`Usr` suggests `User` of another module together with the `use` line).

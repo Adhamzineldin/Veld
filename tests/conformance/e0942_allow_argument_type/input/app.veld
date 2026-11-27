@@ -1,0 +1,19 @@
+// `allow` passes arguments of the wrong type: swapped models, and a scalar for a model.
+
+model User { id: uuid }
+principal User
+
+model Booking { id: uuid, owner: uuid }
+
+policy Manage(user: User, booking: Booking) {
+  permit when booking.owner == user.id
+}
+
+@auth(bearer)
+service Bookings at "/bookings" {
+  get "/{id}" get(id: uuid) -> Booking {
+    fact booking: Booking = id
+    allow Manage(booking, user)
+    allow Manage(user, id)
+  }
+}

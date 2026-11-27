@@ -3,7 +3,7 @@
 
 use std::collections::BTreeSet;
 
-use veld_codegen::{FileSet, GenDiagnostic};
+use veld_codegen::{FileSet, GenDiagnostic, gate_regions};
 use veld_ir::Feature;
 
 use crate::tree::java_path;
@@ -11,6 +11,72 @@ use crate::util::{HEADER, add_file};
 
 /// The package the embedded sources declare. It is replaced by `<base>.runtime`.
 const SOURCE_PACKAGE: &str = "dev.veld.runtime";
+/// The runtime classes that exist only for a contract with rules (`spec/targets/java.md` section 8).
+const RULE_FILES: &[&str] = &[
+    "DigestHandler",
+    "RuleError",
+    "RuleWalk",
+    "Rules",
+    "Violation",
+];
+/// The runtime classes that exist only for a contract with endpoint rules (`spec/targets/java.md` section 9).
+const ENDPOINT_FILES: &[&str] = &["EndpointRules"];
+/// The runtime classes of the test handler, emitted only with the target option `testing`.
+const TESTING_FILES: &[&str] = &["TestSupport"];
+/// The runtime classes of the state machines of endpoints (`spec/targets/java.md` section 10).
+const MACHINE_FILES: &[&str] = &["Transition"];
+/// The runtime class of the due-moves runner (`spec/platform.md` section 10.1).
+const TIMED_FILES: &[&str] = &["DueMoves"];
+/// The measurement of the metrics hook (`spec/platform.md` section 13).
+const SLO_FILES: &[&str] = &["Metric"];
+/// The deadline of a request (`spec/platform.md` section 12).
+const TIMEOUT_FILES: &[&str] = &["Deadline"];
+/// The provider and the readings of the flags (`spec/platform.md` section 11).
+const FLAG_FILES: &[&str] = &["Flags"];
+/// The platform phase P1 state and features (`spec/targets/java.md` section 17).
+const PLATFORM_FILES: &[&str] = &["Platform"];
+/// The limiter of rate limits and the memory limiter (`spec/platform.md` section 5).
+const LIMIT_FILES: &[&str] = &["Limiter", "MemoryLimiter"];
+/// The audit event, its failure and the redaction (`spec/platform.md` section 4, `spec/rules.md`
+/// section 19.3).
+const AUDIT_FILES: &[&str] = &["AuditEvent", "AuditFailure", "Redact"];
+/// The runtime classes of the policies (`spec/targets/java.md` section 11).
+const POLICY_FILES: &[&str] = &["Policy"];
+/// The runtime class of audited rules (`@rollout(audit)`, `spec/rules.md` section 17.1).
+const ROLLOUT_FILES: &[&str] = &["Audit"];
+/// The runtime classes of a server with `@version` or `@idempotent` endpoints
+/// (`spec/targets/java.md` section 13).
+const CONDITIONAL_FILES: &[&str] = &[
+    "Conditions",
+    "IdempotencyStore",
+    "MemoryIdempotencyStore",
+    "StoredAnswer",
+];
+/// The runtime class of derived fields (`spec/rules.md` section 17.2, `spec/targets/java.md` section
+/// 15), emitted only for a target that has a model with a derived field. It needs the rule classes.
+const DERIVED_FILES: &[&str] = &["Derive"];
+/// The runtime class of the `If-Match` of a client call (`spec/targets/java.md` section 13).
+const PRECONDITION_FILES: &[&str] = &["IfMatch"];
+/// The runtime classes of events (`spec/events.md` sections 6 to 9), emitted only for a server that
+/// publishes or subscribes. They need the rule classes (`Flags::rules`).
+const EVENT_FILES: &[&str] = &["Events", "MemoryTransport", "Transport"];
+
+/// The runtime classes of the outbox of events phase E3 (`spec/events.md` section 11,
+/// `spec/targets/java.md` section 12.6): emitted only for a server with an emitting move.
+const OUTBOX_FILES: &[&str] = &["Emission", "MemoryOutbox", "Outbox", "OutboxEntry"];
+
+/// The canonical scalars (`Canon`), shared by the data of an event and the fingerprint of an
+/// idempotency key: emitted for a server with events or with `@idempotent`/`@version` endpoints.
+const CANON_FILES: &[&str] = &["Canon"];
+
+/// The message catalogs (`spec/platform.md` section 22): the choice of the language, the text of a
+/// message in it and, for a server with catalogs, the answer in the language of the request.
+const MESSAGE_FILES: &[&str] = &["Catalogs"];
+
+/// The runtime classes of the typed runtime config (`spec/targets/java.md` section 14): the check
+/// and its error. A target that has a runtime config only.
+const RUNTIME_CONFIG_FILES: &[&str] = &["RuntimeCheck", "VeldConfigException"];
+
 /// The package the embedded adapter sources declare. It is replaced by `<base>.adapters`.
 const ADAPTER_PACKAGE: &str = "dev.veld.adapters";
 
@@ -22,20 +88,51 @@ macro_rules! runtime_files {
 }
 
 runtime_files!(
+    "Audit",
+    "AuditEvent",
+    "AuditFailure",
+    "Canon",
+    "Catalogs",
     "ClientCore",
     "ClientDefaults",
     "ClientOptions",
     "Codec",
+    "Conditions",
+    "Deadline",
+    "Derive",
+    "DigestHandler",
+    "DueMoves",
+    "Emission",
+    "EndpointRules",
     "EndpointSpec",
+    "Events",
+    "Flags",
     "HandlerHooks",
+    "IdempotencyStore",
+    "IfMatch",
     "Issue",
     "Json",
     "JsonParser",
+    "Limiter",
+    "MemoryLimiter",
     "JsonWriter",
+    "MemoryIdempotencyStore",
+    "MemoryOutbox",
+    "MemoryTransport",
+    "Metric",
+    "Outbox",
+    "OutboxEntry",
     "Page",
+    "Platform",
+    "Policy",
     "Reconnect",
+    "Redact",
     "RequestContext",
+    "RuleError",
+    "RuleWalk",
     "Router",
+    "Rules",
+    "RuntimeCheck",
     "Schema",
     "ServerEndpoint",
     "SseEvent",
@@ -43,14 +140,20 @@ runtime_files!(
     "SseOptions",
     "SseParser",
     "SseStream",
+    "StoredAnswer",
+    "TestSupport",
+    "Transition",
+    "Transport",
     "UntypedError",
     "Veld",
+    "VeldConfigException",
     "VeldError",
     "VeldHandler",
     "VeldHttpError",
     "VeldRequest",
     "VeldResponse",
     "VeldTransportError",
+    "Violation",
     "Wire",
     "WsChannel",
     "WsConnection",
@@ -148,18 +251,272 @@ pub(crate) fn substitute(source: &str, base: &str, streaming: Streaming) -> Stri
     format!("{HEADER}\n{text}")
 }
 
-/// Adds the runtime classes the target needs to `files`.
+/// Adds the runtime classes the target needs to `files`. With `rules` the rule classes are added
+/// and the `// #if rules` regions of the other classes are kept (`veld_codegen::gate_regions`);
+/// without it the output is exactly what it was before rules existed.
 pub fn emit(
     files: &mut FileSet,
     base: &str,
     streaming: Streaming,
+    rules: bool,
+) -> Result<(), Vec<GenDiagnostic>> {
+    emit_with(
+        files,
+        base,
+        streaming,
+        Flags {
+            rules,
+            ..Flags::default()
+        },
+    )
+}
+
+/// Which optional parts of the runtime a target carries. `endpoint` needs `rules`; `testing` needs
+/// `endpoint` or `conditional` (a service with only a key, a guard or an `ETag` has a test handler);
+/// `derived` needs `rules`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Flags {
+    /// Invariants (`// #if rules` regions and the rule classes).
+    pub rules: bool,
+    /// Endpoint rules (`// #if endpoint` regions and `EndpointRules`).
+    pub endpoint: bool,
+    /// The test handler support (`// #if testing` regions and `TestSupport`).
+    pub testing: bool,
+    /// The transition guard of endpoints (`// #if machine` regions and `Transition`). Needs `endpoint`.
+    pub machine: bool,
+    /// Timed moves (`rules_timed`, `// #if timed` regions and `DueMoves`). Needs `machine`.
+    pub timed: bool,
+    /// Service levels (`slo`, `// #if slo` regions and `Metric`): the metrics hook. A server only.
+    pub slo: bool,
+    /// Deadlines (`timeouts`, `// #if timeouts` regions and `Deadline`): a server runs the pipeline of
+    /// an endpoint with a `@timeout` on a worker thread; a client uses the deadline as its default
+    /// timeout.
+    pub timeouts: bool,
+    /// Flags (`rules_flags`, `// #if flags` regions and `Flags`). Needs `rules`.
+    pub flags: bool,
+    /// Policies and the typed principal (`// #if policies` regions and `Policy`). Needs `rules`.
+    pub policies: bool,
+    /// Audited rules (`// #if rollout` regions and `Audit`). Needs `rules`.
+    pub rollout: bool,
+    /// Events (`Events`, `MemoryTransport`, `Transport`). Needs `rules`.
+    pub events: bool,
+    /// `@version` and `@idempotent` on the server side: `Conditions`, the store classes and the
+    /// `// #if conditional` regions. A server only.
+    pub conditional: bool,
+    /// `If-Match` and the idempotency key on a client call: `IfMatch` and the
+    /// `// #if preconditions` regions.
+    pub preconditions: bool,
+    /// Derived fields (`Derive` and the `// #if derived` regions). Needs `rules`.
+    pub derived: bool,
+    /// The outbox of events phase E3 (`// #if outbox` regions, `Outbox`, `MemoryOutbox`, `Emission`):
+    /// a server with a move that emits. Needs `events` and `machine`.
+    pub outbox: bool,
+    /// The typed runtime config (`spec/runtime-config.md`): `RuntimeCheck`, `VeldConfigException`
+    /// and the `// #if runtimecfg` regions. Without it a client keeps the environment fallback of
+    /// before, so a target without settings keeps its bytes.
+    pub runtime_config: bool,
+    /// Field visibility (`visibility`, `spec/platform.md` section 2): a server's answers can reach a
+    /// `@visible` field.
+    pub visibility: bool,
+    /// Tenancy (`tenancy`, section 3): a server's answers or facts can be tenant-scoped. Needs `rules`.
+    pub tenancy: bool,
+    /// The audit log (`audit`, section 4): an endpoint of a server is `@audited`.
+    pub audit: bool,
+    /// The capture of a violation (`capture-violations`, `spec/targets/java.md` section 18.2): the
+    /// event of `onRuleViolation` carries the request. Needs `rules` and `audit` (the state that
+    /// keeps the parameters and the facts, and the redaction, are the audit log's).
+    pub capture: bool,
+    /// Message catalogs (`messages`, `spec/platform.md` section 22): a member of the target has
+    /// catalogs. A violation has a `messageKey`, and `Catalogs` chooses the language.
+    pub messages: bool,
+    /// A server with catalogs and the rule classes: it answers in the language of the request.
+    /// Needs `messages` and `rules`.
+    pub messages_server: bool,
+    /// Rate limits of a server (`limits`, section 5): an endpoint has a `@limit`.
+    pub limits_server: bool,
+    /// Rate limits of a client: the call waits and sends again on a `429`.
+    pub limits: bool,
+    /// A declaration of the tree has a `@tenant` field (a client's request may lack it).
+    pub tenant_fields: bool,
+    /// A server publishes an event with a `@tenant` field: `veldtenant`. Needs `tenancy` and `events`.
+    pub tenant_events: bool,
+}
+
+impl Flags {
+    /// Any platform phase P1 feature of a server: `Platform` and the per-request state.
+    #[must_use]
+    pub fn platform(&self) -> bool {
+        self.visibility || self.tenancy || self.audit || self.limits_server
+    }
+
+    /// The answers of a server are shaped (visibility, the tenant check).
+    #[must_use]
+    pub fn shapes(&self) -> bool {
+        self.visibility || self.tenancy
+    }
+
+    /// An object schema carries platform marks.
+    #[must_use]
+    pub fn marks(&self) -> bool {
+        self.visibility || self.tenancy || self.audit
+    }
+}
+
+/// Like [`emit`], with the endpoint rules and test handler parts switched by `flags`.
+pub fn emit_with(
+    files: &mut FileSet,
+    base: &str,
+    streaming: Streaming,
+    flags: Flags,
 ) -> Result<(), Vec<GenDiagnostic>> {
     let package = package(base);
-    for (name, source) in RUNTIME.iter().filter(|(name, _)| !streaming.omits(name)) {
+    let wanted = |name: &str| {
+        !streaming.omits(name)
+            && (flags.rules || !RULE_FILES.contains(&name))
+            && (flags.endpoint || !ENDPOINT_FILES.contains(&name))
+            && (flags.testing || !TESTING_FILES.contains(&name))
+            && (flags.machine || !MACHINE_FILES.contains(&name))
+            && (flags.timed || !TIMED_FILES.contains(&name))
+            && (flags.slo || !SLO_FILES.contains(&name))
+            && (flags.timeouts || !TIMEOUT_FILES.contains(&name))
+            && (flags.flags || !FLAG_FILES.contains(&name))
+            && (flags.policies || !POLICY_FILES.contains(&name))
+            && (flags.rollout || !ROLLOUT_FILES.contains(&name))
+            && (flags.outbox || !OUTBOX_FILES.contains(&name))
+            && (flags.events || !EVENT_FILES.contains(&name))
+            && (flags.events || flags.conditional || flags.audit || !CANON_FILES.contains(&name))
+            && (flags.messages || !MESSAGE_FILES.contains(&name))
+            && (flags.audit || !AUDIT_FILES.contains(&name))
+            && (flags.limits_server || !LIMIT_FILES.contains(&name))
+            && (flags.derived || !DERIVED_FILES.contains(&name))
+            && (flags.conditional || !CONDITIONAL_FILES.contains(&name))
+            && (flags.preconditions || !PRECONDITION_FILES.contains(&name))
+            && (flags.runtime_config || !RUNTIME_CONFIG_FILES.contains(&name))
+            && (flags.platform() || !PLATFORM_FILES.contains(&name))
+    };
+    let enabled = |region: &str| match region {
+        "rules" => flags.rules,
+        "endpoint" => flags.endpoint,
+        "testing" => flags.testing,
+        "machine" => flags.machine,
+        "timed" => flags.timed,
+        "slo" => flags.slo,
+        "timeouts" => flags.timeouts,
+        "flags" => flags.flags,
+        "flags_conditional" => flags.flags && flags.conditional,
+        "testing_rules_flags" => flags.testing && flags.rules && flags.flags,
+        "no_flags" => !flags.flags,
+        "slo_timeouts" => flags.slo && flags.timeouts,
+        "slo_only" => flags.slo && !flags.timeouts,
+        "timeouts_only" => flags.timeouts && !flags.slo,
+        "wrapped_plain" => (flags.slo || flags.timeouts) && !flags.messages_server,
+        "no_wrap_plain" => !(flags.slo || flags.timeouts) && !flags.messages_server,
+        "wrapped_messages" => (flags.slo || flags.timeouts) && flags.messages_server,
+        "no_wrap_messages" => !(flags.slo || flags.timeouts) && flags.messages_server,
+        "messages" => flags.messages,
+        "not_messages" => !flags.messages,
+        "messages_server" => flags.messages_server,
+        "not_messages_server" => !flags.messages_server,
+        "messages_rules" => flags.messages && flags.rules,
+        "rules_not_messages" => flags.rules && !flags.messages,
+        "policies_messages" => flags.policies && flags.messages_server,
+        "policies_not_messages" => flags.policies && !flags.messages_server,
+        "machine_messages" => flags.machine && flags.messages_server,
+        "derived_messages" => flags.derived && flags.messages_server,
+        "conditional_messages" => flags.conditional && flags.messages_server,
+        "timed_messages" => flags.timed && flags.messages_server,
+        "timed_not_messages" => flags.timed && !flags.messages_server,
+        "timeouts_conditional" => flags.timeouts && flags.conditional,
+        "no_timeouts" => !flags.timeouts,
+        "timeouts_runtimecfg" => flags.timeouts && flags.runtime_config,
+        "policies" => flags.policies,
+        "rollout" => flags.rollout,
+        "conditional" => flags.conditional,
+        "plain" => !flags.conditional,
+        "conditional_rules" => flags.conditional && flags.rules,
+        "plain_rules" => !(flags.conditional && flags.rules),
+        "early" => flags.conditional && !flags.endpoint,
+        "derived" => flags.derived,
+        "rollout_derived" => flags.rollout && flags.derived,
+        "no_derived" => !flags.derived,
+        "derived_conditional" => flags.derived && flags.conditional,
+        "no_derived_conditional" => !flags.derived && flags.conditional,
+        "rules_no_derived" => flags.rules && !flags.derived,
+        "preconditions" => flags.preconditions,
+        "testing_conditional" => flags.testing && flags.conditional,
+        "testing_events" => flags.testing && flags.events,
+        "outbox" => flags.outbox,
+        "not_outbox" => !flags.outbox,
+        "testing_outbox" => flags.testing && flags.outbox,
+        "testing_rules" => flags.testing && flags.rules,
+        "testing_rules_conditional" => flags.testing && flags.rules && flags.conditional,
+        "testing_plain" => !(flags.testing && flags.conditional),
+        "runtimecfg" => flags.runtime_config,
+        "legacy" => !flags.runtime_config,
+        "runtimecfg_rules" => flags.runtime_config && flags.rules,
+        "platform" => flags.platform(),
+        "shapes" => flags.shapes(),
+        "marks" => flags.marks(),
+        "marks_rules" => flags.marks() && flags.rules,
+        "marks_derived" => flags.marks() && flags.derived,
+        "visibility" => flags.visibility,
+        "tenancy" => flags.tenancy,
+        "limits_server" => flags.limits_server,
+        "limits" => flags.limits,
+        "not_limits" => !flags.limits,
+        "preconditions_limits" => flags.preconditions && flags.limits,
+        "preconditions_not_limits" => flags.preconditions && !flags.limits,
+        "limits_runtimecfg" => flags.limits && flags.runtime_config,
+        "tenant_support" => flags.tenancy || flags.limits_server,
+        "audit" => flags.audit,
+        "declared_of" => flags.shapes() || flags.audit,
+        "not_audit" => !flags.audit,
+        "audit_timed" => flags.audit && flags.timed && !flags.capture,
+        "audit_plain" => flags.audit && !flags.timed && !flags.capture,
+        "capture" => flags.capture,
+        "not_capture" => !flags.capture,
+        "audit_not_capture" => flags.audit && !flags.capture,
+        "capture_timed" => flags.capture && flags.timed,
+        "capture_plain" => flags.capture && !flags.timed,
+        "audit_derived" => flags.audit && flags.derived,
+        "audit_plain_values" => flags.audit && !flags.derived,
+        "audit_visibility" => flags.audit && flags.visibility,
+        "audit_not_visibility" => flags.audit && !flags.visibility,
+        "platform_only" => flags.platform() && !flags.audit,
+        "tenant_events" => flags.tenant_events,
+        "not_tenant_events" => !flags.tenant_events,
+        "tenant_fields" => flags.tenant_fields,
+        "not_tenant_fields" => !flags.tenant_fields,
+        "platform_facts" => flags.tenancy || flags.audit,
+        "platform_conditional" => flags.platform() && flags.conditional,
+        "testing_platform" => flags.testing && flags.platform(),
+        "fin_flags" => flags.flags && !flags.platform(),
+        "fin_platform_flags" => flags.flags && flags.platform(),
+        "fin_platform" => flags.platform() && !flags.flags,
+        "sse_flags" => flags.flags && !flags.platform(),
+        "sse_no_flags" => !flags.flags && !flags.platform(),
+        "sse_platform_flags" => flags.flags && flags.platform(),
+        "sse_platform" => flags.platform() && !flags.flags,
+        "platform_early" => flags.platform() && !flags.endpoint && !flags.conditional,
+        "testing_platform_early" => {
+            flags.testing && flags.platform() && !flags.endpoint && !flags.conditional
+        }
+        "shapes_endpoint" => flags.shapes() && flags.endpoint,
+        "not_shapes_endpoint" => flags.endpoint && !flags.shapes(),
+        "not_shapes" => !flags.shapes(),
+        _ => false,
+    };
+    for (name, source) in RUNTIME.iter().filter(|(name, _)| wanted(name)) {
+        let gated = gate_regions(source, &enabled).map_err(|e| {
+            vec![GenDiagnostic::new(
+                "E0805",
+                format!("runtime class `{name}`: {e}"),
+            )]
+        })?;
         add_file(
             files,
             &java_path(&package, name),
-            substitute(source, base, streaming),
+            substitute(&gated, base, streaming),
         )?;
     }
     Ok(())
@@ -187,6 +544,189 @@ mod tests {
         assert_eq!(strip_regions(SAMPLE, WS), "a\nb\nd\ne\n");
     }
 
+    /// The gates the older features switch, in the combinations a target really has.
+    fn older() -> Vec<Flags> {
+        let rules = Flags {
+            rules: true,
+            ..Flags::default()
+        };
+        let endpoint = Flags {
+            endpoint: true,
+            testing: true,
+            ..rules
+        };
+        let everything = Flags {
+            machine: true,
+            conditional: true,
+            policies: true,
+            rollout: true,
+            flags: true,
+            derived: true,
+            slo: true,
+            timeouts: true,
+            runtime_config: true,
+            events: true,
+            preconditions: true,
+            ..endpoint
+        };
+        vec![
+            Flags::default(),
+            rules,
+            endpoint,
+            Flags {
+                conditional: true,
+                ..endpoint
+            },
+            Flags {
+                flags: true,
+                ..endpoint
+            },
+            Flags {
+                derived: true,
+                timeouts: true,
+                ..rules
+            },
+            Flags {
+                slo: true,
+                timeouts: true,
+                runtime_config: true,
+                ..rules
+            },
+            everything,
+        ]
+    }
+
+    /// Every combination of the gates of phase P1 with a set of older ones: the regions pair up
+    /// (`gate_regions` accepts the file), no marker survives, and the platform classes are there
+    /// exactly when a platform gate is on.
+    #[test]
+    fn the_regions_of_the_platform_features_pair_up_in_every_combination() {
+        for base in older() {
+            for bits in 0..64u32 {
+                let flags = Flags {
+                    visibility: bits & 1 != 0,
+                    tenancy: bits & 2 != 0,
+                    audit: bits & 4 != 0,
+                    limits_server: bits & 8 != 0,
+                    limits: bits & 16 != 0,
+                    tenant_fields: bits & 32 != 0,
+                    rules: base.rules || bits & 2 != 0,
+                    ..base
+                };
+                let mut files = FileSet::new();
+                emit_with(&mut files, "a.b", Streaming::default(), flags).unwrap();
+                let has_platform = files.paths().any(|p| p.ends_with("/runtime/Platform.java"));
+                assert_eq!(has_platform, flags.platform(), "{flags:?}");
+                for (path, bytes) in files.iter() {
+                    let text = String::from_utf8_lossy(bytes);
+                    assert!(
+                        !text.contains("// #if") && !text.contains("// #endif"),
+                        "{path}"
+                    );
+                    if !flags.platform() {
+                        assert!(!text.contains("Platform."), "{path} in {flags:?}");
+                    }
+                }
+            }
+        }
+    }
+
+    /// The capture of a violation (`spec/targets/java.md` section 18.2) needs the rule classes and the
+    /// state of the audit log: its regions pair up with every combination of the other gates, no
+    /// marker survives, and its code is there exactly when `capture` is on.
+    #[test]
+    fn the_regions_of_the_capture_pair_up_in_every_combination() {
+        for base in older() {
+            for bits in 0..32u32 {
+                let capture = bits & 1 != 0;
+                let flags = Flags {
+                    capture,
+                    audit: capture || bits & 2 != 0,
+                    tenancy: bits & 4 != 0,
+                    visibility: bits & 8 != 0,
+                    limits_server: bits & 16 != 0,
+                    rules: base.rules || capture || bits & 4 != 0,
+                    ..base
+                };
+                let mut files = FileSet::new();
+                emit_with(&mut files, "a.b", Streaming::default(), flags).unwrap();
+                for (path, bytes) in files.iter() {
+                    let text = String::from_utf8_lossy(bytes);
+                    assert!(
+                        !text.contains("// #if") && !text.contains("// #endif"),
+                        "{path} in {flags:?}"
+                    );
+                    if !capture {
+                        assert!(
+                            !text.contains("captureOf") && !text.contains("Platform.Captured"),
+                            "{path} in {flags:?}"
+                        );
+                    }
+                }
+                let walk = files
+                    .iter()
+                    .find(|(p, _)| p.ends_with("/runtime/RuleWalk.java"))
+                    .map(|(_, b)| String::from_utf8_lossy(b).into_owned())
+                    .unwrap_or_default();
+                assert_eq!(walk.contains("Platform.captureOf"), capture, "{flags:?}");
+            }
+        }
+    }
+
+    /// The message catalogs (`spec/targets/java.md` section 18.3): the regions of `messages` and
+    /// `messages_server` pair up with every combination of the other gates, no marker survives,
+    /// `Catalogs` is there exactly when a member has catalogs, and what answers in the language of a
+    /// request is there exactly when the server has them and the rule classes.
+    #[test]
+    fn the_regions_of_the_message_catalogs_pair_up_in_every_combination() {
+        for base in older() {
+            for bits in 0..16u32 {
+                let messages = bits & 1 != 0;
+                let server = messages && bits & 2 != 0;
+                let capture = bits & 4 != 0;
+                let flags = Flags {
+                    messages,
+                    messages_server: server,
+                    capture: capture && base.rules,
+                    audit: base.audit || (capture && base.rules),
+                    rules: base.rules || server,
+                    timed: base.timed && bits & 8 == 0,
+                    ..base
+                };
+                let mut files = FileSet::new();
+                emit_with(&mut files, "a.b", Streaming::default(), flags).unwrap();
+                let has = |name: &str| files.paths().any(|p| p.ends_with(name));
+                assert_eq!(has("/runtime/Catalogs.java"), messages, "{flags:?}");
+                for (path, bytes) in files.iter() {
+                    let text = String::from_utf8_lossy(bytes);
+                    assert!(
+                        !text.contains("// #if") && !text.contains("// #endif"),
+                        "{path} in {flags:?}"
+                    );
+                    if !messages {
+                        assert!(
+                            !text.contains("Catalogs") && !text.contains("messageKey"),
+                            "{path} in {flags:?}"
+                        );
+                    }
+                    if !server && path.ends_with("/runtime/RuleWalk.java") {
+                        assert!(!text.contains("Catalogs."), "{path} in {flags:?}");
+                    }
+                }
+                let catalogs = files
+                    .iter()
+                    .find(|(p, _)| p.ends_with("/runtime/Catalogs.java"))
+                    .map(|(_, b)| String::from_utf8_lossy(b).into_owned())
+                    .unwrap_or_default();
+                assert_eq!(
+                    catalogs.contains("static VeldResponse within("),
+                    server,
+                    "{flags:?}"
+                );
+            }
+        }
+    }
+
     #[test]
     fn no_marker_survives_and_only_needed_classes_are_emitted() {
         let both = Streaming {
@@ -195,7 +735,7 @@ mod tests {
         };
         for streaming in [Streaming::default(), SSE, WS, both] {
             let mut files = FileSet::new();
-            emit(&mut files, "a.b", streaming).unwrap();
+            emit(&mut files, "a.b", streaming, false).unwrap();
             let has = |prefix: &str| {
                 files
                     .paths()

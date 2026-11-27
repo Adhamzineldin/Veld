@@ -1,0 +1,81 @@
+// Derived fields end to end (spec/rules.md section 17.2): a request whose derived value decides a
+// `require` and an invariant, a fact and a principal that are given theirs once loaded, a result,
+// a declared error and a stream item that are given theirs before the output rules. Compiled as
+// the package `bookings` by crates/emitters/node/tests/derived.rs.
+
+model Line {
+  price: int @min(0)
+  qty: int
+  total: int = price * qty
+}
+
+model Cart {
+  items: Line[]
+  coupon: int = 0
+  subtotal: int = sum(items, i => i.total)
+  payable: int = subtotal - coupon
+  rule payableFits: payable >= 0 message "the coupon is larger than the cart"
+}
+
+model Wallet {
+  id: uuid
+  balance: int
+  held: int
+  available: int = balance - held
+  share: int = 100 / held
+}
+
+model User {
+  id: uuid
+  name: string
+  tag: string = name
+  level: int
+  share: int = 100 / level
+}
+
+principal User
+
+policy Named(user: User) {
+  permit when user.tag != ""
+}
+
+model Receipt {
+  id: uuid
+  amount: int
+  fee: int
+  net: int = amount - fee
+}
+
+// A derived field that reads a `@readonly` member: absent in a request, on the server and in the
+// client's local check alike.
+model Draft {
+  serial: int @readonly
+  qty: int
+  double: int = qty * 2
+  next: int = serial + 1
+  rule afterSerial: next > 0 message "the serial must be positive"
+}
+
+error NotEnough 402 {
+  needed: int
+  have: int
+  short: int = needed - have
+}
+
+@auth(bearer)
+service Shop at "/shop" {
+  post "/carts" createCart(body: Cart) -> 201 Cart
+
+  post "/pay/{id}" pay(id: uuid, body: Cart) -> Receipt | NotEnough {
+    fact wallet: Wallet = id
+    allow Named(user)
+    require body.payable <= wallet.available else NotEnough { needed: body.payable, have: wallet.available }
+    ensure result.net >= 0
+  }
+
+  post "/drafts" saveDraft(body: Draft) -> 201 Draft
+
+  get "/receipts" receipts(@query count: int) -> stream Receipt
+
+  get "/refuse" refuse() -> Receipt | NotEnough
+}

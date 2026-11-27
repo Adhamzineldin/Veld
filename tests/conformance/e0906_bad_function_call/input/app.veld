@@ -1,0 +1,20 @@
+model Calls {
+  n: int
+  name: string
+  tags: string[]
+  required: string
+  prefix: string
+  rule unknown: size(tags) > 0
+  rule noMin: min(n, 3) > 0
+  rule tooMany: len(name, name) > 0
+  rule tooFew: startsWith(name)
+  rule wrongType: len(n) > 0
+  rule patternNotLiteral: matches(name, prefix)
+  rule stringNeeded: contains(n, "x")
+  rule lambdaHere: len(x => x) > 0
+  rule lambdaMissing: all(tags)
+  rule notAList: all(name, c => c == "a")
+  rule neverAbsent: has(required)
+  rule hasOfExpression: has(n + 1)
+  rule daysOfString: days(name) > days(1)
+}

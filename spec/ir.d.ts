@@ -7,6 +7,9 @@ export interface Ir {
   decls: Decl[];
   services: Service[];
   consumes: Record<string, string[]>;
+  examples?: Example[];
+  policies?: Policy[];
+  channels?: Channel[];
 }
 
 export type PackageId = number;
@@ -15,10 +18,16 @@ export type DeclId = number;
 
 export type ServiceId = number;
 
+export type PolicyId = number;
+
+export type ChannelId = number;
+
 export interface Package {
   id: PackageId;
   name: string;
   kind: PackageKind;
+  messages?: Record<string, Record<string, string>>;
+  messages_dir?: string;
 }
 
 export type PackageKind = "service" | "library" | "registry" | "prelude";
@@ -43,6 +52,8 @@ export type Decl =
       origin: Origin;
       parent: DeclId | null;
       fields: Field[];
+      rules?: Rule[];
+      retain?: Retain;
     }
   | {
       kind: "error";
@@ -58,6 +69,7 @@ export type Decl =
       default_status: number | null;
       parent: DeclId | null;
       fields: Field[];
+      rules?: Rule[];
     }
   | {
       kind: "enum";
@@ -71,6 +83,8 @@ export type Decl =
       deprecated: string | null;
       origin: Origin;
       variants: Variant[];
+      flows?: Flow[];
+      finals?: string[];
     }
   | {
       kind: "union";
@@ -100,12 +114,35 @@ export type Decl =
       type: Type;
       value: Literal;
     }
+  | {
+      kind: "event";
+      id: DeclId;
+      package: PackageId;
+      module: string;
+      name: string;
+      qualified: string;
+      sig: string;
+      docs: string | null;
+      deprecated: string | null;
+      origin: Origin;
+      fields: Field[];
+      rules?: Rule[];
+      rules_digest?: string;
+    }
 
 export interface Variant {
   name: string;
   wire: string;
   docs: string | null;
   deprecated: string | null;
+}
+
+export interface Flow {
+  from: string;
+  to: string;
+  after_ms?: string;
+  flag?: string;
+  emits?: DeclId;
 }
 
 export interface UnionArm {
@@ -120,6 +157,15 @@ export interface Field {
   optional: boolean;
   default: Literal | null;
   readonly: boolean;
+  version?: boolean;
+  derived?: Expr;
+  derived_id?: string;
+  pii?: boolean;
+  secret?: boolean;
+  visible?: Expr;
+  visible_principal?: DeclId;
+  tenant?: boolean;
+  tenant_id?: string;
   inherited_from: DeclId | null;
   constraints: Constraints;
   example: Literal | null;
@@ -162,6 +208,457 @@ export interface EnumVariantLiteral {
   wire: string;
 }
 
+export type Rollout = "audit";
+
+export interface Rule {
+  name: string;
+  id: string;
+  expr: Expr;
+  message: string | null;
+  reads: string[];
+  reads_readonly: boolean;
+  inherited_from: DeclId | null;
+  docs: string | null;
+  deprecated: string | null;
+  rollout?: Rollout;
+  flag?: string;
+  origin: Origin;
+}
+
+export interface Expr {
+  t: ExprType;
+  e: ExprKind;
+}
+
+export type ExprType = Type | "duration";
+
+export type ExprKind =
+  | { lit: ExprLit }
+  | { path: PathRef }
+  | { now: boolean }
+  | { not: Expr }
+  | { neg: Expr }
+  | { bin: BinExpr }
+  | { has: PathRef }
+  | { call: CallExpr }
+  | { quant: QuantExpr }
+  | { list: Expr[] }
+  | { widen: Expr }
+  | { old: Expr }
+
+export type ExprLit =
+  | { bool: boolean }
+  | { int: number }
+  | { long: string }
+  | { float: number }
+  | { decimal: string }
+  | { string: string }
+  | { enum: EnumLit }
+
+export interface EnumLit {
+  decl: DeclId;
+  name: string;
+  wire: string;
+}
+
+export interface PathRef {
+  root: Root;
+  steps: Step[];
+}
+
+export interface Step {
+  name: string;
+  wire: string;
+  optional: boolean;
+}
+
+export type Root = "self" | "principal" | "result" | RootRef;
+
+export type RootRef =
+  | { var: string }
+  | { param: string }
+  | { fact: string }
+
+export interface BinExpr {
+  op: Op;
+  l: Expr;
+  r: Expr;
+}
+
+export type Op = "and" | "or" | "implies" | "eq" | "ne" | "lt" | "le" | "gt" | "ge" | "in" | "add" | "sub" | "mul" | "div" | "rem";
+
+export interface CallExpr {
+  f: Builtin;
+  args: Expr[];
+}
+
+export type Builtin = "len" | "matches" | "starts_with" | "ends_with" | "contains" | "days" | "hours" | "minutes" | "seconds" | "ms";
+
+export interface QuantExpr {
+  q: Quantifier;
+  list: Expr;
+  var: string;
+  body: Expr;
+}
+
+export type Quantifier = "all" | "any" | "count" | "sum";
+
+export interface EndpointRules {
+  facts: EndpointFact[];
+  requires: EndpointRequire[];
+  ensures: EndpointEnsure[];
+  transition?: EndpointTransition;
+  allows?: EndpointAllow[];
+  version?: EndpointVersion;
+}
+
+export interface EndpointVersion {
+  id: string;
+  fact: string;
+  field: string;
+  wire: string;
+  origin: Origin;
+}
+
+export interface Limit {
+  count: number;
+  per: LimitWindow;
+  by: LimitSubject;
+}
+
+export type LimitWindow = "second" | "minute" | "hour" | "day";
+
+export type LimitSubject = "user" | "tenant" | "ip";
+
+export interface Slo {
+  p50_ms?: string;
+  p90_ms?: string;
+  p95_ms?: string;
+  p99_ms?: string;
+  errors?: string;
+}
+
+export interface Idempotency {
+  header: string;
+  required: boolean;
+  caller: boolean;
+  origin: Origin;
+}
+
+export interface EndpointTransition {
+  id: string;
+  fact: string;
+  steps: Step[];
+  decl: DeclId;
+  from: string[];
+  to: string;
+  since?: Step[];
+  emits?: TransitionEmit[];
+  origin: Origin;
+}
+
+export interface TransitionEmit {
+  event: DeclId;
+  channel: ChannelId;
+}
+
+export interface EndpointAllow {
+  policy: PolicyId;
+  args: Expr[];
+  reads: string[];
+  origin: Origin;
+}
+
+export interface Policy {
+  name: string;
+  package: PackageId;
+  module: string;
+  qualified: string;
+  id: string;
+  params: PolicyParam[];
+  clauses: PolicyClause[];
+  docs: string | null;
+  origin: Origin;
+}
+
+export interface PolicyParam {
+  name: string;
+  type: Type;
+}
+
+export interface PolicyClause {
+  effect: PolicyEffect;
+  expr: Expr;
+  message: string | null;
+  flag?: string;
+  origin: Origin;
+}
+
+export type PolicyEffect = "permit" | "forbid";
+
+export interface ServicePrincipal {
+  decl: DeclId;
+  name: string;
+}
+
+export interface EndpointFact {
+  name: string;
+  type: Type;
+  optional: boolean;
+  key: Expr | null;
+  origin: Origin;
+}
+
+export interface EndpointRequire {
+  name: string | null;
+  id: string;
+  expr: Expr;
+  message: string | null;
+  reads: string[];
+  else: ElseError | null;
+  rollout?: Rollout;
+  flag?: string;
+  docs: string | null;
+  origin: Origin;
+}
+
+export interface ElseError {
+  decl: DeclId;
+  status: number;
+  fields: ElseField[];
+}
+
+export interface ElseField {
+  name: string;
+  wire: string;
+  value: Expr;
+}
+
+export interface EndpointEnsure {
+  name: string | null;
+  id: string;
+  expr: Expr;
+  message: string | null;
+  reads: string[];
+  rollout?: Rollout;
+  flag?: string;
+  docs: string | null;
+  origin: Origin;
+}
+
+export interface Retain {
+  after_ms: string;
+  since: string;
+  then: RetainThen;
+}
+
+export type RetainThen = "delete" | "anonymize";
+
+export interface ServiceFact {
+  name: string;
+  type: Type;
+  key: Type | null;
+  optional: boolean;
+}
+
+export interface Example {
+  name: string;
+  package: PackageId;
+  service?: ServiceId;
+  endpoint?: string;
+  givens: ExampleGiven[];
+  principal: ExampleValue | null;
+  now: string | null;
+  args: ExampleArg[];
+  returns: ExampleValue | null;
+  if_match?: ExampleIfMatch;
+  key?: ExampleKey;
+  saga?: ExampleSaga;
+  flags?: string[];
+  outcome?: ExampleOutcome;
+  event?: ExampleEvent;
+  expect?: EventExpect;
+  emitted?: DeclId[];
+  docs: string | null;
+  origin: Origin;
+}
+
+export interface ExampleGiven {
+  fact: string;
+  value: ExampleValue | null;
+}
+
+export interface ExampleArg {
+  param: string;
+  value: ExampleValue;
+}
+
+export type ExampleOutcome =
+  | { ok: ExampleValue | null }
+  | { error: ExampleErrorOutcome }
+
+export interface ExampleErrorOutcome {
+  decl: DeclId;
+  pattern: ExampleValue | null;
+}
+
+export type ExampleValue =
+  | { json: unknown }
+  | { ref: ExampleRef }
+  | { object: ExampleField[] }
+  | { list: ExampleValue[] }
+  | { absent: boolean }
+
+export interface ExampleRef {
+  given: string;
+  path: string[];
+}
+
+export interface ExampleField {
+  name: string;
+  wire: string;
+  value: ExampleValue;
+}
+
+export type ExampleIfMatch = "any" | IfMatchVersion;
+
+export interface IfMatchVersion {
+  version: string;
+}
+
+export interface ExampleKey {
+  value: string;
+  store?: KeyStore;
+}
+
+export type KeyStore = "other" | "running" | KeyStored;
+
+export interface KeyStored {
+  stored: ExampleOutcome;
+}
+
+export interface Saga {
+  steps: SagaStep[];
+  timeout_ms: string;
+  passes?: DeclId[];
+}
+
+export interface SagaStep {
+  name: string;
+  call: SagaCall;
+  compensate?: SagaCall;
+  origin: Origin;
+}
+
+export interface SagaCall {
+  service: ServiceId;
+  endpoint: string;
+  args: SagaArg[];
+}
+
+export interface SagaArg {
+  name: string;
+  value: SagaValue;
+}
+
+export type SagaValue = Expr | SagaObject;
+
+export interface SagaObject {
+  object: SagaField[];
+}
+
+export interface SagaField {
+  name: string;
+  wire: string;
+  value: SagaValue;
+}
+
+export interface ExampleSaga {
+  steps?: SagaGiven[];
+  undos?: SagaGiven[];
+  expect?: SagaExpect;
+}
+
+export interface SagaGiven {
+  step: string;
+  answer: SagaAnswer;
+}
+
+export type SagaAnswer = "unavailable" | SagaAnswered;
+
+export interface SagaAnswered {
+  answer: ExampleOutcome;
+}
+
+export type SagaExpect = "stuck" | SagaCompensated;
+
+export interface SagaCompensated {
+  compensated: string[];
+}
+
+export interface ExampleEvent {
+  decl: DeclId;
+  channel: ChannelId;
+  value: ExampleValue;
+}
+
+export type EventExpect = "rejected" | ExpectedCall[];
+
+export interface ExpectedCall {
+  service: ServiceId;
+  handler: string;
+  called: boolean;
+  once?: boolean;
+}
+
+export interface Channel {
+  name: string;
+  package: PackageId;
+  module: string;
+  qualified: string;
+  topic: string;
+  events: DeclId[];
+  key: ChannelKey | null;
+  docs: string | null;
+  deprecated: string | null;
+  retry?: Retry;
+  dead_letter?: boolean;
+  ordered?: boolean;
+  origin: Origin;
+}
+
+export interface Retry {
+  max: number;
+  backoff: Backoff;
+}
+
+export type Backoff = "fixed" | "exponential";
+
+export interface ChannelKey {
+  name: string;
+  wire: string;
+  type: Type;
+}
+
+export interface Publication {
+  channel: ChannelId;
+  origin: Origin;
+}
+
+export interface Subscription {
+  channel: ChannelId;
+  group: string;
+  handlers: Handler[];
+  origin: Origin;
+}
+
+export interface Handler {
+  event: DeclId;
+  name: string;
+  docs: string | null;
+  origin: Origin;
+}
+
 export interface Service {
   id: ServiceId;
   package: PackageId;
@@ -172,6 +669,11 @@ export interface Service {
   auth: Auth;
   middleware: string[];
   endpoints: Endpoint[];
+  facts?: ServiceFact[];
+  rules_digest?: string;
+  principal?: ServicePrincipal;
+  publishes?: Publication[];
+  subscriptions?: Subscription[];
   origin: Origin;
 }
 
@@ -189,6 +691,13 @@ export interface Endpoint {
   params: Param[];
   success: Success;
   errors: ErrorResponse[];
+  rules?: EndpointRules;
+  idempotency?: Idempotency;
+  saga?: Saga;
+  timeout_ms?: string;
+  slo?: Slo;
+  audited?: boolean;
+  limit?: Limit;
   origin: Origin;
 }
 
@@ -222,7 +731,7 @@ export interface Auth {
 
 export type AuthKind = "none" | "bearer" | "basic" | "api_key";
 
-export type Feature = "unions" | "constraints" | "auth" | "middleware" | "headers" | "streaming_sse" | "streaming_ws" | "page" | "consts" | "bytes";
+export type Feature = "unions" | "constraints" | "auth" | "middleware" | "headers" | "streaming_sse" | "streaming_ws" | "page" | "consts" | "bytes" | "rules_invariants" | "rules_endpoint" | "rules_transitions" | "rules_policies" | "rules_rollout" | "rules_version" | "idempotency" | "rules_derived" | "sagas" | "events" | "events_delivery" | "rules_timed" | "rules_flags" | "timeouts" | "slo" | "messages" | "retention" | "events_outbox" | "visibility" | "tenancy" | "audit" | "limits";
 
 export type Role = "server" | "client";
 

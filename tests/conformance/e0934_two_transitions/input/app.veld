@@ -1,0 +1,18 @@
+// An endpoint has at most one `transition`.
+
+enum Status {
+  pending, paid, cancelled
+  flow pending -> paid
+  flow pending -> cancelled
+  final paid, cancelled
+}
+
+model Booking { id: uuid, status: Status }
+
+service Bookings at "/bookings" {
+  post "/{id}/a" both(id: uuid) -> 204 {
+    fact booking: Booking = id
+    transition booking.status: pending -> paid
+    transition booking.status: pending -> cancelled
+  }
+}

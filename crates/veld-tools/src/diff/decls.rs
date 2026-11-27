@@ -4,15 +4,17 @@ use std::collections::BTreeMap;
 
 use veld_ir::{Const, Decl, DeclKind, Enum, Field, Ir, PackageKind, Union};
 
+use super::expr_text::expr_text;
 use super::usage::{Role, Usage};
 use super::{Change, ChangeKind, Ctx, push_constraint_changes};
 
 /// Declarations by qualified name. Prelude declarations come and go with their
 /// use (reported as added or removed errors on the endpoints), so they are skipped.
-fn by_name(ir: &Ir) -> BTreeMap<&str, &Decl> {
+pub(super) fn by_name(ir: &Ir) -> BTreeMap<&str, &Decl> {
     ir.decls
         .iter()
-        .filter(|d| ir.package(d.package).kind != PackageKind::Prelude)
+        // Events have their own comparison (`events.rs`).
+        .filter(|d| ir.package(d.package).kind != PackageKind::Prelude && !d.is_event())
         .map(|d| (d.qualified.as_str(), d))
         .collect()
 }
@@ -24,6 +26,7 @@ fn kind_name(d: &Decl) -> &'static str {
         DeclKind::Enum(_) => "enum",
         DeclKind::Union(_) => "union",
         DeclKind::Const(_) => "const",
+        DeclKind::Event(_) => "event",
     }
 }
 
@@ -63,6 +66,24 @@ fn diff_decl(ctx: &Ctx<'_>, o: &Decl, n: &Decl, role: Role, out: &mut Vec<Change
         (DeclKind::Union(a), DeclKind::Union(b)) if shape => diff_union(ctx, q, (a, b), role, out),
         (DeclKind::Const(a), DeclKind::Const(b)) => diff_const(ctx, q, a, b, out),
         (DeclKind::Enum(_), DeclKind::Enum(_)) | (DeclKind::Union(_), DeclKind::Union(_)) => {}
+        // `by_name` never yields an event: they are compared in `events.rs`.
+        (
+            DeclKind::Event(_),
+            DeclKind::Model(_)
+            | DeclKind::Error(_)
+            | DeclKind::Enum(_)
+            | DeclKind::Union(_)
+            | DeclKind::Const(_)
+            | DeclKind::Event(_),
+        )
+        | (
+            DeclKind::Model(_)
+            | DeclKind::Error(_)
+            | DeclKind::Enum(_)
+            | DeclKind::Union(_)
+            | DeclKind::Const(_),
+            DeclKind::Event(_),
+        ) => {}
         (
             DeclKind::Model(_) | DeclKind::Error(_),
             DeclKind::Model(_)
@@ -136,8 +157,10 @@ fn wire_map(fields: &[Field]) -> BTreeMap<&str, &Field> {
     fields.iter().map(|f| (f.wire.as_str(), f)).collect()
 }
 
+/// A caller must send the field. A derived field is never sent: the server computes it
+/// (`spec/rules.md` section 17.2).
 fn request_required(f: &Field) -> bool {
-    !f.optional && f.default.is_none()
+    !f.optional && f.default.is_none() && f.derived.is_none()
 }
 
 fn diff_fields(
@@ -167,18 +190,18 @@ fn diff_fields(
         if old.contains_key(w) {
             continue;
         }
-        if request_required(n) && role.request {
+        if request_required(n) && (role.request || role.stream) {
             out.push(Change::breaking(
                 ChangeKind::RequiredFieldAdded,
                 q,
                 format!("required field `{w}` was added to a request type"),
             ));
         } else {
-            out.push(Change::non_breaking(
-                ChangeKind::FieldAdded,
-                q,
-                format!("field `{w}` was added"),
-            ));
+            let what = match &n.derived {
+                Some(e) => format!("derived field `{w}` was added: `{}`", expr_text(e)),
+                None => format!("field `{w}` was added"),
+            };
+            out.push(Change::non_breaking(ChangeKind::FieldAdded, q, what));
         }
     }
 }
@@ -202,7 +225,7 @@ fn diff_field(
     }
     if !request_required(o) && request_required(n) {
         out.push(Change::when(
-            role.request,
+            role.request || role.stream,
             ChangeKind::FieldBecameRequired,
             q,
             format!("field `{w}` became required"),
@@ -210,12 +233,13 @@ fn diff_field(
     }
     if !o.optional && n.optional {
         out.push(Change::when(
-            role.response,
+            role.response || role.stream,
             ChangeKind::FieldBecameOptional,
             q,
             format!("field `{w}` became optional"),
         ));
     }
+    diff_derived(q, pair, role, out);
     push_constraint_changes(
         out,
         q,
@@ -232,6 +256,57 @@ fn diff_field(
     );
 }
 
+/// A field that became derived, stopped being derived, or whose expression changed
+/// (`spec/rules.md` section 17.2).
+///
+/// - A changed expression is possibly breaking, as a changed rule is: consumers may rely on the
+///   values the old one gave, and the tool cannot tell what the new one does to them.
+/// - A field that became derived is possibly breaking where callers send the type: what they sent
+///   is now ignored, without an error. Otherwise nothing a consumer sees changes.
+/// - A field that stopped being derived is not breaking by itself: a response keeps its field.
+///   Where callers send the type, it became required, which `FieldBecameRequired` reports.
+fn diff_derived(q: &str, pair: (&Field, &Field), role: Role, out: &mut Vec<Change>) {
+    let (o, n) = pair;
+    let w = &o.wire;
+    match (&o.derived, &n.derived) {
+        (Some(a), Some(b)) if o.derived_id != n.derived_id => {
+            out.push(Change::possibly_breaking(
+                ChangeKind::DerivedChanged,
+                q,
+                format!(
+                    "possibly breaking: derived field `{w}` changed from `{}` to `{}`; \
+                     consumers may rely on the values it had, and the tool cannot tell what \
+                     the new expression does to them",
+                    expr_text(a),
+                    expr_text(b)
+                ),
+            ));
+        }
+        (None, Some(e)) => {
+            let message = format!(
+                "field `{w}` became derived: the server computes it as `{}`{}",
+                expr_text(e),
+                if role.request {
+                    ", and a value a caller sends for it is now ignored"
+                } else {
+                    ""
+                }
+            );
+            out.push(if role.request {
+                Change::possibly_breaking(ChangeKind::FieldBecameDerived, q, message)
+            } else {
+                Change::non_breaking(ChangeKind::FieldBecameDerived, q, message)
+            });
+        }
+        (Some(_), None) => out.push(Change::non_breaking(
+            ChangeKind::FieldNoLongerDerived,
+            q,
+            format!("field `{w}` is no longer derived: the handler must supply it"),
+        )),
+        (Some(_), Some(_)) | (None, None) => {}
+    }
+}
+
 fn diff_enum(q: &str, o: &Enum, n: &Enum, role: Role, out: &mut Vec<Change>) {
     let old: Vec<&str> = o.variants.iter().map(|v| v.wire.as_str()).collect();
     let new: Vec<&str> = n.variants.iter().map(|v| v.wire.as_str()).collect();
@@ -243,7 +318,7 @@ fn diff_enum(q: &str, o: &Enum, n: &Enum, role: Role, out: &mut Vec<Change>) {
         ));
     }
     for w in new.iter().filter(|w| !old.contains(w)) {
-        let breaking = role.response && !role.request;
+        let breaking = (role.response && !role.request) || role.stream;
         out.push(Change::when(
             breaking,
             ChangeKind::EnumVariantAdded,
@@ -288,7 +363,7 @@ fn diff_union(ctx: &Ctx<'_>, q: &str, pair: (&Union, &Union), role: Role, out: &
         .iter()
         .filter(|b| !o.arms.iter().any(|a| a.label == b.label))
     {
-        let breaking = role.response && !role.request;
+        let breaking = (role.response && !role.request) || role.stream;
         out.push(Change::when(
             breaking,
             ChangeKind::UnionArmAdded,

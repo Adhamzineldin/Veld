@@ -1,0 +1,11 @@
+model Booking { id: uuid, guests: int }
+
+service Bookings at "/bookings" {
+  post "/" create(body: Booking) -> 201 Booking {
+    fact room: Booking = body.id
+    require bodyy.guests > 0
+    require roomm.guests > 0
+    require zzz > 0
+    ensure result.nope > 0
+  }
+}

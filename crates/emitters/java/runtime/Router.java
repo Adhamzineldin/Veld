@@ -45,6 +45,14 @@ public final class Router implements VeldHandler {
   private final List<Route> routes;
   private final StdSigs std;
   private final HandlerHooks hooks;
+  // #if conditional
+  private Map<String, Conditions> conditions = Map.of();
+  // #endif
+  // #if audit
+  /** The state of the audited requests in flight, by request: the pipeline may run on another thread. */
+  private final Map<VeldRequest, Platform.State> inflight =
+      Collections.synchronizedMap(new java.util.IdentityHashMap<>());
+  // #endif
 
   private Router(List<Route> routes, StdSigs std, HandlerHooks hooks) {
     this.routes = routes;
@@ -58,14 +66,60 @@ public final class Router implements VeldHandler {
    * @throws IllegalStateException when a hook an endpoint needs was not provided
    */
   public static VeldHandler create(List<ServerEndpoint> endpoints, StdSigs std, HandlerHooks hooks) {
+    // #if conditional
+    return create(endpoints, Map.of(), std, hooks);
+  }
+
+  /**
+   * Builds a handler from endpoint descriptions and the conditional headers of the endpoints that
+   * have them, by operation signature.
+   *
+   * @throws IllegalStateException when a hook an endpoint needs was not provided
+   */
+  public static VeldHandler create(
+      List<ServerEndpoint> endpoints, Map<String, Conditions> conditions, StdSigs std, HandlerHooks hooks) {
+    assertConditions(endpoints, conditions, hooks);
+    // #endif
     assertHooks(endpoints, hooks);
+    // #if rules
+    RuleWalk.announce(hooks.rulesOutput());
+    if (!hooks.validateRequests()) {
+      RuleWalk.announceUnvalidated(endpoints);
+    }
+    // #endif
     List<Route> routes = new ArrayList<>();
     for (ServerEndpoint e : endpoints) {
       routes.add(compile(e));
     }
     routes.sort((a, b) -> Integer.compare(a.names().size(), b.names().size()));
+    // #if conditional
+    Router router = new Router(List.copyOf(routes), std, hooks);
+    router.conditions = Map.copyOf(conditions);
+    return router;
+    // #endif
+    // #if plain
     return new Router(List.copyOf(routes), std, hooks);
+    // #endif
   }
+  // #if conditional
+
+  /** An {@code @idempotent} endpoint needs the store, and the caller hook when its scope has one. */
+  private static void assertConditions(
+      List<ServerEndpoint> endpoints, Map<String, Conditions> conditions, HandlerHooks hooks) {
+    for (ServerEndpoint e : endpoints) {
+      Conditions c = conditions.get(e.spec().sig());
+      if (c == null || c.idempotency() == null) {
+        continue;
+      }
+      if (hooks.idempotencyStore() == null) {
+        throw new IllegalStateException(e.spec().name() + ": the idempotency store is required");
+      }
+      if (c.idempotency().caller() && hooks.idempotencyCaller() == null) {
+        throw new IllegalStateException(e.spec().name() + ": the idempotency caller hook is required");
+      }
+    }
+  }
+  // #endif
 
   private static void assertHooks(List<ServerEndpoint> endpoints, HandlerHooks hooks) {
     for (ServerEndpoint e : endpoints) {
@@ -79,6 +133,14 @@ public final class Router implements VeldHandler {
           throw new IllegalStateException(e.spec().name() + ": middleware " + name + " is required");
         }
       }
+      // #if flags
+      if (!hooks.flagsOf(e.spec().sig()).isEmpty() && hooks.flagSource() == null) {
+        throw new IllegalStateException(e.spec().name() + ": hooks.flags is required");
+      }
+      // #endif
+      // #if limits_server
+      Platform.assertHooks(hooks, e.spec());
+      // #endif
     }
   }
 
@@ -120,7 +182,12 @@ public final class Router implements VeldHandler {
       }
       Matcher m = r.pattern().matcher(path);
       if (m.matches()) {
+        // #if audit
+        return Optional.of(audited(r, m, request));
+        // #endif
+        // #if not_audit
         return Optional.of(run(r, m, request));
+        // #endif
       }
     }
     return Optional.empty();
@@ -132,18 +199,224 @@ public final class Router implements VeldHandler {
     for (Route r : routes) {
       if (r.endpoint().spec().name().equals(endpoint)) {
         Matcher m = r.pattern().matcher(path);
+        // #if audit
+        return m.matches() ? Optional.of(audited(r, m, request)) : Optional.empty();
+        // #endif
+        // #if not_audit
         return m.matches() ? Optional.of(run(r, m, request)) : Optional.empty();
+        // #endif
       }
     }
     return Optional.empty();
   }
 
   // -- pipeline ------------------------------------------------------------------------------
+  // #if audit
 
+  /**
+   * The audit log of an audited endpoint (spec/platform.md section 4): wraps everything after the
+   * match, the deadline and the settlement of an idempotency key included, so that a {@code 504} and
+   * a pipeline that throws are recorded, once. The event is built from the answer that is about to
+   * be written and handed to the hook before it is.
+   */
+  private VeldResponse audited(Route route, Matcher match, VeldRequest request) {
+    EndpointSpec spec = route.endpoint().spec();
+    Platform.Audited info = hooks.audited(spec.sig());
+    // #endif
+    // #if capture
+    boolean capturing = hooks.capturing(spec.sig());
+    // #endif
+    // #if audit_timed
+    if (info == null || request.raw() instanceof DueMoves.Call) {
+      // #endif
+      // #if audit_plain
+    if (info == null) {
+      // #endif
+      // #if capture_timed
+    if ((info == null && !capturing) || request.raw() instanceof DueMoves.Call) {
+      // #endif
+      // #if capture_plain
+    if (info == null && !capturing) {
+      // #endif
+      // #if audit
+      return run(route, match, request);
+    }
+    Platform.State state = new Platform.State();
+    Platform.recording(state);
+    // #endif
+    // #if capture
+    if (capturing) {
+      state.capture();
+    }
+    // #endif
+    // #if audit
+    inflight.put(request, state);
+    VeldResponse response;
+    try {
+      response = run(route, match, request);
+    } catch (RuntimeException | Error err) {
+      // The caller gets what the adapter gives for a pipeline that throws; the event says 500.
+      Platform.record(hooks, spec, info, state, problem(std.internal(), "Internal", 500, spec.sig(), Json.object().build()));
+      throw err;
+    } finally {
+      inflight.remove(request);
+    }
+    Platform.record(hooks, spec, info, state, response);
+    return response;
+  }
+  // #endif
+
+  // #if slo
   private VeldResponse run(Route route, Matcher match, VeldRequest request) {
+    long started = System.nanoTime();
+    // #endif
+    // #if slo_timeouts
+    VeldResponse response = bounded(route, match, request);
+    // #endif
+    // #if slo_only
+    VeldResponse response = pipeline(route, match, request);
+    // #endif
+    // #if slo
+    measure(route.endpoint().spec(), response, started);
+    return response;
+  }
+
+  /** The metrics hook, once per request that matched an endpoint, with the answer that is ready (spec/platform.md section 13). */
+  private void measure(EndpointSpec spec, VeldResponse response, long started) {
+    HandlerHooks.MetricsHook hook = hooks.metrics();
+    if (hook == null) {
+      return;
+    }
+    try {
+      Map<String, Object> attributes = new LinkedHashMap<>();
+      attributes.put("http.request.method", spec.method());
+      attributes.put("http.route", spec.path());
+      attributes.put("http.response.status_code", response.status());
+      if (response.status() >= 500) {
+        attributes.put("error.type", Integer.toString(response.status()));
+      }
+      String sig = spec.sig();
+      attributes.put("veld.service", sig.substring("veld:".length(), sig.lastIndexOf('.')));
+      attributes.put("veld.endpoint", spec.name());
+      attributes.put("veld.operation", sig);
+      hook.metrics(new Metric("http.server.request.duration", "s", (System.nanoTime() - started) / 1e9, attributes));
+    } catch (RuntimeException | StackOverflowError ignored) {
+      // A failing hook must not change the response.
+    }
+  }
+
+  // #endif
+  // #if timeouts
+  private static final java.util.concurrent.ExecutorService WORKERS =
+      java.util.concurrent.Executors.newCachedThreadPool(task -> {
+        Thread worker = new Thread(task, "veld-request");
+        worker.setDaemon(true);
+        return worker;
+      });
+
+  /**
+   * The deadline of an endpoint (spec/platform.md section 12). A request that has one runs on a
+   * worker thread, which cannot be stopped: when the deadline passes first the answer is {@code 504
+   * DeadlineExceeded} with {@code timeoutMs}, the answer the pipeline gives later is dropped, its
+   * idempotency key is settled at the deadline and the worker's thread is interrupted once. A
+   * deadline is a declared error, not a failure: nothing goes to {@code onError}.
+   */
+  // #endif
+  // #if slo_timeouts
+  private VeldResponse bounded(Route route, Matcher match, VeldRequest request) {
+  // #endif
+  // #if timeouts_only
+  private VeldResponse run(Route route, Matcher match, VeldRequest request) {
+  // #endif
+  // #if timeouts
+    EndpointSpec spec = route.endpoint().spec();
+    long ms = hooks.timeoutMs(spec.sig());
+    if (ms <= 0) {
+      return pipeline(route, match, request);
+    }
+    Deadline bound = new Deadline(ms);
+    java.util.concurrent.Future<VeldResponse> work = WORKERS.submit(() -> {
+      bound.enter();
+      try {
+        return pipeline(route, match, request);
+      } finally {
+        Deadline.leave();
+      }
+    });
+    try {
+      return work.get(ms, java.util.concurrent.TimeUnit.MILLISECONDS);
+    } catch (java.util.concurrent.TimeoutException e) {
+      bound.fire();
+      work.cancel(true);
+      return deadlineExceeded(spec, ms);
+    } catch (java.util.concurrent.ExecutionException e) {
+      if (e.getCause() instanceof RuntimeException runtime) {
+        throw runtime;
+      }
+      if (e.getCause() instanceof Error error) {
+        throw error;
+      }
+      throw new IllegalStateException(e.getCause());
+    } catch (InterruptedException e) {
+      bound.fire();
+      work.cancel(true);
+      Thread.currentThread().interrupt();
+      return problem(std.internal(), "Internal", 500, spec.sig(), Json.object().build());
+    }
+  }
+
+  private VeldResponse deadlineExceeded(EndpointSpec spec, long ms) {
+    for (EndpointSpec.Declared d : spec.errors()) {
+      if (d.status() == 504) {
+        Json data = Json.object().put("timeoutMs", Json.of(Long.toString(ms))).build();
+        return problem(d.sig(), "DeadlineExceeded", 504, spec.sig(), data);
+      }
+    }
+    return problem(std.internal(), "Internal", 500, spec.sig(), Json.object().build());
+  }
+  // #endif
+  // #if wrapped_plain
+
+  private VeldResponse pipeline(Route route, Matcher match, VeldRequest request) {
+  // #endif
+  // #if no_wrap_plain
+  private VeldResponse run(Route route, Matcher match, VeldRequest request) {
+  // #endif
+  // #if wrapped_messages
+
+  private VeldResponse pipeline(Route route, Matcher match, VeldRequest request) {
+    return Catalogs.within(hooks, request, () -> localized(route, match, request));
+  }
+
+  /** The pipeline of a request, with its language in force on this thread. */
+  private VeldResponse localized(Route route, Matcher match, VeldRequest request) {
+  // #endif
+  // #if no_wrap_messages
+  private VeldResponse run(Route route, Matcher match, VeldRequest request) {
+    return Catalogs.within(hooks, request, () -> localized(route, match, request));
+  }
+
+  /** The pipeline of a request, with its language in force on this thread. */
+  private VeldResponse localized(Route route, Matcher match, VeldRequest request) {
+  // #endif
     ServerEndpoint ep = route.endpoint();
     EndpointSpec spec = ep.spec();
     RequestContext ctx = new RequestContext(spec.method(), normalizePath(request.path()), lowerHeaders(request.headers()), request.raw());
+    // #if timeouts
+    ctx.setDeadline(Deadline.current());
+    // #endif
+    // #if flags
+    Flags.View enclosing = Flags.current();
+    // #endif
+    // #if platform
+    Platform.State enclosingState = Platform.current();
+    // #endif
+    // #if audit
+    Platform.open(hooks, ctx, inflight.get(request));
+    // #endif
+    // #if platform_only
+    Platform.open(hooks, ctx, null);
+    // #endif
     try {
       Guarded guarded = guard(route, match, request, ctx, false);
       if (guarded.failure != null) {
@@ -155,11 +428,179 @@ public final class Router implements VeldHandler {
         return startSse(ep, ep.sse().call(params, ctx), ctx);
       }
       // veld:end
+      // #if conditional
+      Conditions found = conditions.get(spec.sig());
+      String key = found == null ? null : found.key(ctx);
+      if (key != null) {
+        return idempotent(route, found, key, guarded.bound, ctx, params);
+      }
+      // #endif
       return success(ep, ep.call().call(params, ctx));
     } catch (Exception | StackOverflowError err) {
       return failure(err, spec, ctx);
+      // #if fin_flags
+    } finally {
+      Flags.restore(enclosing);
+      // #endif
+      // #if fin_platform_flags
+    } finally {
+      Flags.restore(enclosing);
+      Platform.install(enclosingState);
+      // #endif
+      // #if fin_platform
+    } finally {
+      Platform.install(enclosingState);
+      // #endif
     }
   }
+  // #if conditional
+
+  /**
+   * Step 5b: a request with an idempotency key asks the store before anything else runs. A new key
+   * runs the rest of the pipeline and keeps its answer when it is below 500; a key with an answer
+   * sends it again; a key that is running or was used for other parameters is {@code 409}.
+   */
+  private VeldResponse idempotent(
+      Route route, Conditions conditions, String key, Bound bound, RequestContext ctx, Json.Obj params)
+      throws Exception {
+    ServerEndpoint ep = route.endpoint();
+    EndpointSpec spec = ep.spec();
+    Conditions.Idempotency idem = conditions.idempotency();
+    final String scope;
+    if (idem.caller()) {
+      String who = hooks.idempotencyCaller().caller(ctx.principal(), ctx);
+      if (who == null) {
+        throw new IllegalStateException(spec.name() + ": the idempotency caller hook returned no text");
+      }
+      scope = spec.sig() + "\n" + who;
+    } else {
+      scope = spec.sig();
+    }
+    IdempotencyStore store = hooks.idempotencyStore();
+    IdempotencyStore.Begin begun = store.begin(scope, key, fingerprint(bound));
+    if (begun instanceof IdempotencyStore.Begin.Replay replay) {
+      return replayed(replay.answer());
+    }
+    if (!(begun instanceof IdempotencyStore.Begin.Started)) {
+      String message = begun instanceof IdempotencyStore.Begin.Running
+          ? Conditions.RUNNING_MESSAGE
+          : Conditions.OTHER_MESSAGE;
+      Json data = Json.object().put("message", Json.of(message)).build();
+      return problem(idem.conflictSig(), "Conflict", idem.conflictStatus(), spec.sig(), data);
+    }
+    // #endif
+    // #if timeouts_conditional
+    Deadline deadline = Deadline.current();
+    if (deadline != null) {
+      // A request that hits its deadline settles its key at the deadline; what it settles later is a no-op.
+      deadline.lease(() -> {
+        try {
+          store.release(scope, key);
+        } catch (Exception | StackOverflowError err) {
+          observe(err, ctx);
+        }
+      });
+    }
+    // #endif
+    // #if conditional
+    boolean settled = false;
+    try {
+      VeldResponse response;
+      try {
+        response = success(ep, ep.call().call(params, ctx));
+      } catch (Exception | StackOverflowError err) {
+        response = failure(err, spec, ctx);
+      }
+      settle(store, scope, key, response, ctx);
+      settled = true;
+      return response;
+    } finally {
+      // #endif
+      // #if timeouts_conditional
+      if (!settled && Deadline.current() != null && !Deadline.current().claim()) {
+        settled = true;
+      }
+      // #endif
+      // #if conditional
+      if (!settled) {
+        try {
+          store.release(scope, key);
+        } catch (Exception | StackOverflowError err) {
+          observe(err, ctx);
+        }
+      }
+    }
+  }
+
+  /** Keeps the answer when it is below 500 and forgets the key otherwise; a failing store is only reported. */
+  private void settle(IdempotencyStore store, String scope, String key, VeldResponse response, RequestContext ctx) {
+    // #endif
+    // #if timeouts_conditional
+    if (Deadline.current() != null && !Deadline.current().claim()) {
+      return;
+    }
+    // #endif
+    // #if conditional
+    try {
+      if (response.status() < 500) {
+        store.complete(scope, key, stored(response));
+      } else {
+        store.release(scope, key);
+      }
+    } catch (Exception | StackOverflowError err) {
+      observe(err, ctx);
+    }
+  }
+
+  private void observe(Throwable err, RequestContext ctx) {
+    try {
+      if (hooks.onError() != null) {
+        hooks.onError().onError(err, ctx);
+      }
+    } catch (RuntimeException ignored) {
+      // A failing hook must not change the response.
+    }
+  }
+
+  private static StoredAnswer stored(VeldResponse response) {
+    byte[] body = response.body() == null ? new byte[0] : response.body().getBytes(StandardCharsets.UTF_8);
+    Map<String, String> headers = response.headers();
+    return new StoredAnswer(
+        response.status(), body, headers.get("content-type"), headers.get("etag"), headers.get("location"));
+  }
+
+  /** A stored answer sent again, marked with {@code Veld-Idempotent-Replay: true}. */
+  private static VeldResponse replayed(StoredAnswer answer) {
+    Map<String, String> headers = new LinkedHashMap<>();
+    if (answer.contentType() != null) {
+      headers.put("content-type", answer.contentType());
+    }
+    if (answer.etag() != null) {
+      headers.put("etag", answer.etag());
+    }
+    if (answer.location() != null) {
+      headers.put("location", answer.location());
+    }
+    headers.put("veld-idempotent-replay", "true");
+    String body = answer.body().length == 0 ? null : new String(answer.body(), StandardCharsets.UTF_8);
+    return new VeldResponse(answer.status(), headers, body);
+  }
+
+  /** The first 16 hex characters of the SHA-256 of the canonical JSON of the bound parameters. */
+  private static String fingerprint(Bound bound) {
+    try {
+      byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
+          .digest(new Json.Obj(bound.canonical).canonical().getBytes(StandardCharsets.UTF_8));
+      StringBuilder out = new StringBuilder();
+      for (int i = 0; i < 8; i++) {
+        out.append(Character.forDigit((digest[i] >> 4) & 0xf, 16)).append(Character.forDigit(digest[i] & 0xf, 16));
+      }
+      return out.toString();
+    } catch (java.security.NoSuchAlgorithmException e) {
+      throw new IllegalStateException("SHA-256 is not available", e);
+    }
+  }
+  // #endif
 
   /** The outcome of the part of the pipeline every transport shares: a response, or the bound values. */
   private static final class Guarded {
@@ -172,6 +613,25 @@ public final class Router implements VeldHandler {
       throws Exception {
     EndpointSpec spec = route.endpoint().spec();
     Guarded out = new Guarded();
+    // #if derived
+    Derive.take();
+    // #endif
+    // #if timed
+    boolean timer = request.raw() instanceof DueMoves.Call;
+    if (timer) {
+      // The due-moves runner: step 2 is replaced by the caller of the timer, and no middleware runs.
+      if (spec.auth() != null) {
+        ctx.setPrincipal(((DueMoves.Call) request.raw()).principal());
+        if (ctx.principal() == null) {
+          out.failure = problem(std.unauthorized(), "Unauthorized", 401, spec.sig(), Json.object().build());
+          return out;
+        }
+      }
+    }
+    // #endif
+    // #if timed
+    if (!timer) {
+    // #endif
     if (spec.auth() != null) {
       ctx.setPrincipal(authenticate(spec.auth(), ctx));
       if (ctx.principal() == null) {
@@ -179,15 +639,90 @@ public final class Router implements VeldHandler {
         return out;
       }
     }
+    // #if limits_server
+    VeldResponse limited = Platform.limited(hooks, spec, ctx);
+    if (limited != null) {
+      out.failure = limited;
+      return out;
+    }
+    // #endif
     for (String name : route.endpoint().middleware()) {
       hooks.middleware(name).run(ctx);
     }
+    // #if timed
+    }
+    // #endif
     out.bound = bind(route, match, request, ctx, ws, hooks.validateRequests());
+    // #if conditional
+    Conditions held = conditions.get(spec.sig());
+    List<Issue> header = held == null ? List.of() : held.issues(ctx);
+    out.bound.issues.addAll(0, header);
+    // #endif
     if (!out.bound.issues.isEmpty()) {
       out.failure = problem(std.validation(), "ValidationError", 422, spec.sig(), issuesData(out.bound.issues));
     }
+    // #if audit
+    if (out.failure == null) {
+      // Step 4 has passed: the audit event has the parameters, also when step 5 then refuses the request.
+      Platform.parameters(Platform.current(), out.bound.prepared);
+    }
+    // #endif
+    // #if flags
+    if (out.failure == null) {
+      readFlags(spec, ctx);
+    }
+    // #endif
+    // #if rules
+    if (out.failure == null && hooks.validateRequests()) {
+      out.failure = RuleWalk.inputFailure(spec, hooks, out.bound.values, std);
+    }
+    // #endif
+    // #if conditional_rules
+    if (!header.isEmpty() && out.bound.issues.size() == header.size() && hooks.validateRequests()) {
+      VeldResponse merged = RuleWalk.inputFailure(spec, hooks, out.bound.values, std, header);
+      if (merged != null) {
+        out.failure = merged;
+      }
+    }
+    // #endif
+    // #if derived
+    if (out.failure == null && !hooks.validateRequests()) {
+      out.failure = RuleWalk.derivedFailure(spec, hooks, std);
+    }
+    Derive.take();
+    // #endif
     return out;
   }
+  // #if flags
+
+  /**
+   * Reads every flag the endpoint can reach once, after authentication, and puts the readings in
+   * force for the rest of the request (spec/platform.md section 11). A provider that fails makes that
+   * flag a failed reading and goes to {@code onError}.
+   */
+  private void readFlags(EndpointSpec spec, RequestContext ctx) {
+    java.util.List<String> names = hooks.flagsOf(spec.sig());
+    if (names.isEmpty()) {
+      return;
+    }
+    Flags.View view = Flags.read(
+        names,
+        hooks.flagSource(),
+        ctx,
+        new Flags.Context(ctx.principal(), null, spec.sig()),
+        error -> {
+          try {
+            if (hooks.onError() != null) {
+              hooks.onError().onError(error, ctx);
+            }
+          } catch (RuntimeException ignored) {
+            // A failing hook must not change the response.
+          }
+        });
+    ctx.setFlags(view);
+    Flags.install(view);
+  }
+  // #endif
   // veld:sse
 
   /**
@@ -198,8 +733,22 @@ public final class Router implements VeldHandler {
     EndpointSpec spec = ep.spec();
     Stream<String> frames = SseFrames.open(
         source,
+        // #if sse_flags
+        event -> Flags.with(ctx.flags(), () -> sseFrame(spec, event)),
+        err -> Flags.with(ctx.flags(), () -> SseEvent.frame(failure(err, spec, ctx).body(), null, "error", null)));
+        // #endif
+        // #if sse_no_flags
         event -> sseFrame(spec, event),
         err -> SseEvent.frame(failure(err, spec, ctx).body(), null, "error", null));
+        // #endif
+        // #if sse_platform_flags
+        event -> Platform.with(ctx.platform(), () -> Flags.with(ctx.flags(), () -> sseFrame(spec, event))),
+        err -> Platform.with(ctx.platform(), () -> Flags.with(ctx.flags(), () -> SseEvent.frame(failure(err, spec, ctx).body(), null, "error", null))));
+        // #endif
+        // #if sse_platform
+        event -> Platform.with(ctx.platform(), () -> sseFrame(spec, event)),
+        err -> Platform.with(ctx.platform(), () -> SseEvent.frame(failure(err, spec, ctx).body(), null, "error", null)));
+        // #endif
     Map<String, String> headers = Map.of(
         "content-type", "text/event-stream", "cache-control", "no-cache", "x-accel-buffering", "no");
     return new VeldResponse(spec.status(), headers, null, frames);
@@ -210,12 +759,24 @@ public final class Router implements VeldHandler {
       throw new IllegalStateException(spec.name() + ": a stream needs an item type");
     }
     Json wire = Wire.prepare(spec.success(), event.data(), Wire.Mode.RESPONSE);
+    // #if derived
+    wire = Derive.output(spec.success(), wire);
+    // #endif
     if (hooks.validateResponses()) {
       List<Issue> issues = Wire.validate(spec.success(), wire, "$", false);
       if (!issues.isEmpty()) {
         throw new IllegalStateException(spec.name() + ": stream item failed validation: " + issues);
       }
     }
+    // #if rules
+    RuleWalk.checkItem(spec, hooks, wire);
+    // #endif
+    // #if tenancy
+    Platform.tenantItem(hooks, spec, wire, Platform.current().ctx());
+    // #endif
+    // #if visibility
+    wire = Platform.shown(spec.success(), wire, Platform.current().ctx());
+    // #endif
     return SseEvent.frame(Wire.canonicalOf(spec.success(), wire), event.id(), event.event(), event.retry());
   }
   // veld:end
@@ -240,6 +801,9 @@ public final class Router implements VeldHandler {
   private void startWs(Route route, Matcher match, VeldRequest request, WsSocket socket) {
     WsConnection conn = new WsConnection(
             route.endpoint().spec(), socket, hooks.validateResponses(), hooks.validateRequests(), std);
+    // #if rules
+    conn.rules(hooks);
+    // #endif
     conn.attach();
     Thread thread = new Thread(() -> runWs(route, match, request, conn), "veld-ws");
     thread.setDaemon(true);
@@ -251,17 +815,43 @@ public final class Router implements VeldHandler {
     EndpointSpec spec = ep.spec();
     RequestContext ctx = new RequestContext(
         "WS", normalizePath(request.path()), wsHeaders(spec, request), request.raw());
+    // #if flags
+    Flags.View enclosing = Flags.current();
+    // #endif
+    // #if platform
+    Platform.State enclosingState = Platform.current();
+    Platform.open(hooks, ctx, null);
+    // #endif
     try {
       Guarded guarded = guard(route, match, request, ctx, true);
       if (guarded.failure != null) {
         conn.fail(guarded.failure);
         return;
       }
+      // #if flags
+      conn.flags(Flags.current());
+      // #endif
+      // #if shapes
+      conn.platform(hooks, ctx.platform());
+      // #endif
       conn.ready();
       ep.ws().call(new Json.Obj(guarded.bound.values), ctx, conn);
       conn.finish(1000, "done");
     } catch (Exception | StackOverflowError err) {
       conn.fail(failure(err, spec, ctx));
+      // #if fin_flags
+    } finally {
+      Flags.restore(enclosing);
+      // #endif
+      // #if fin_platform_flags
+    } finally {
+      Flags.restore(enclosing);
+      Platform.install(enclosingState);
+      // #endif
+      // #if fin_platform
+    } finally {
+      Platform.install(enclosingState);
+      // #endif
     }
   }
 
@@ -367,25 +957,118 @@ public final class Router implements VeldHandler {
       throw new IllegalStateException(spec.name() + ": implementation returned no value");
     }
     Json wire = Wire.prepare(spec.success(), result, Wire.Mode.RESPONSE);
+    // #if derived
+    wire = Derive.output(spec.success(), wire);
+    // #endif
+    // #if rules
+    VeldResponse broken = RuleWalk.outputFailure(spec, hooks, spec.success(), wire, true, std);
+    if (broken != null) {
+      return broken;
+    }
+    // #endif
+    // #if endpoint
+    VeldResponse unmet = EndpointRules.ensureFailure(spec, hooks, wire, std);
+    if (unmet != null) {
+      return unmet;
+    }
+    // #endif
+    // #if tenancy
+    VeldResponse foreign =
+        Platform.tenantFailure(hooks, spec, spec.success(), wire, "result", Platform.current().ctx(), std);
+    if (foreign != null) {
+      return foreign;
+    }
+    // #endif
     if (hooks.validateResponses()) {
       List<Issue> issues = Wire.validate(spec.success(), wire, "$", false);
       if (!issues.isEmpty()) {
         throw new IllegalStateException(spec.name() + ": response failed validation: " + issues);
       }
     }
+    // #if conditional
+    Map<String, String> headers = new LinkedHashMap<>();
+    headers.put("content-type", "application/json");
+    Conditions owed = conditions.get(spec.sig());
+    String etag = owed == null ? null : owed.etagOf(wire);
+    if (etag != null) {
+      headers.put("etag", etag);
+    }
+    // #endif
+    // #if visibility
+    wire = Platform.shown(spec.success(), wire, Platform.current().ctx());
+    // #endif
+    // #if conditional
+    return new VeldResponse(spec.status(), headers, wire.write());
+    // #endif
+    // #if plain
     return new VeldResponse(spec.status(), Map.of("content-type", "application/json"), wire.write());
+    // #endif
   }
 
   private VeldResponse failure(Throwable err, EndpointSpec spec, RequestContext ctx) {
+    // #if endpoint
+    EndpointRules.discard();
+    if (err instanceof EndpointRules.Early early) {
+      // #endif
+      // #if shapes_endpoint
+      return shaped(spec, early.response());
+      // #endif
+      // #if not_shapes_endpoint
+      return early.response();
+      // #endif
+      // #if endpoint
+    }
+    // #endif
+    // #if early
+    if (err instanceof Conditions.Early early) {
+      return early.response();
+    }
+    // #endif
+    // #if platform_early
+    if (err instanceof Platform.Early early) {
+      return early.response();
+    }
+    // #endif
+    // #if rules
+    if (err instanceof RuleWalk.Rejected) {
+      // #endif
+      // #if derived
+      RuleWalk.report(
+          hooks, spec, RuleWalk.Position.OUTPUT, RuleWalk.Outcome.REJECTED, ((RuleWalk.Rejected) err).violations(), System.nanoTime());
+      // #endif
+      // #if rules
+      return problem(std.internal(), "Internal", 500, spec.sig(), Json.object().build());
+    }
+    // #endif
     if (err instanceof VeldError ve) {
       for (EndpointSpec.Declared d : spec.errors()) {
         if (d.sig().equals(ve.sig())) {
           ve.setOp(spec.sig());
           Json data = Wire.prepare(d.schema(), ve.dataWire(), Wire.Mode.RESPONSE);
+          // #if derived
+          data = Derive.output(d.schema(), data);
+          // #endif
+          // #if rules
+          VeldResponse broken = RuleWalk.outputFailure(spec, hooks, d.schema(), data, false, std);
+          if (broken != null) {
+            return broken;
+          }
+          // #endif
+          // #if shapes
+          return shaped(spec, problem(d.sig(), ve.title(), d.status(), spec.sig(), data));
+          // #endif
+          // #if not_shapes
           return problem(d.sig(), ve.title(), d.status(), spec.sig(), data);
+          // #endif
         }
       }
     }
+    // #if timeouts
+    if (Deadline.current() != null && Deadline.current().fired()) {
+      // The answer was given at the deadline: what the handler throws now is not a failure to report.
+      return problem(std.internal(), "Internal", 500, spec.sig(), Json.object().build());
+    }
+    // #endif
     try {
       if (hooks.onError() != null) {
         hooks.onError().onError(err, ctx);
@@ -396,6 +1079,13 @@ public final class Router implements VeldHandler {
     return problem(std.internal(), "Internal", 500, spec.sig(), Json.object().build());
   }
 
+  // #if shapes
+  /** A declared error about to be sent: its data is checked for another tenant's values and shown to the caller. */
+  private VeldResponse shaped(EndpointSpec spec, VeldResponse response) {
+    return Platform.errorAnswer(hooks, spec, response, std);
+  }
+
+  // #endif
   static VeldResponse problem(String sig, String title, int status, String op, Json data) {
     Json body = Json.object()
         .put("type", Json.of(sig))
@@ -406,6 +1096,26 @@ public final class Router implements VeldHandler {
         .build();
     return new VeldResponse(status, Map.of("content-type", "application/problem+json"), body.write());
   }
+  // #if rules
+
+  /** A problem document that also carries the {@code violations} member (spec/rules.md section 7). */
+  static VeldResponse problem(
+      String sig, String title, int status, String op, Json data, List<Violation> violations) {
+    List<Json> listed = new ArrayList<>();
+    for (Violation v : violations) {
+      listed.add(v.toWire());
+    }
+    Json body = Json.object()
+        .put("type", Json.of(sig))
+        .put("title", Json.of(title))
+        .put("status", Json.of((long) status))
+        .put("operation", Json.of(op))
+        .put("data", data)
+        .put("violations", Json.array(listed))
+        .build();
+    return new VeldResponse(status, Map.of("content-type", "application/problem+json"), body.write());
+  }
+  // #endif
 
   // -- binding -------------------------------------------------------------------------------
 
@@ -413,6 +1123,14 @@ public final class Router implements VeldHandler {
     boolean check = true;
     final Map<String, Json> values = new LinkedHashMap<>();
     final List<Issue> issues = new ArrayList<>();
+    // #if audit
+    /** The parameters in wire form, with their defaults and without the placeholders of a read-only field. */
+    final Map<String, Json> prepared = new LinkedHashMap<>();
+    // #endif
+    // #if conditional
+    /** The parameters as the fingerprint of an idempotency key sees them: defaults applied, no placeholders. */
+    final Map<String, Json> canonical = new LinkedHashMap<>();
+    // #endif
   }
 
   private static Bound bind(Route r, Matcher m, VeldRequest req, RequestContext ctx, boolean ws, boolean check) {
@@ -457,6 +1175,12 @@ public final class Router implements VeldHandler {
     List<Issue> issues = b.check ? Wire.validate(p.type(), v, loc, false) : List.of();
     b.issues.addAll(issues);
     if (issues.isEmpty()) {
+      // #if conditional
+      b.canonical.put(p.name(), Canon.scalars(p.type(), v, true));
+      // #endif
+      // #if audit
+      b.prepared.put(p.name(), v);
+      // #endif
       b.values.put(p.name(), v);
     }
   }
@@ -468,6 +1192,11 @@ public final class Router implements VeldHandler {
     }
     Map<String, Json> wire = new LinkedHashMap<>();
     for (Schema.Field f : s.fields) {
+      // #if derived
+      if (s.derives(f.wire())) {
+        continue;
+      }
+      // #endif
       List<String> raw = query.get(f.wire());
       if (raw != null) {
         wire.put(f.wire(), coerceMany(f.type(), raw));
@@ -477,7 +1206,27 @@ public final class Router implements VeldHandler {
     List<Issue> issues = b.check ? Wire.validate(p.type(), obj, p.location(), true) : List.of();
     b.issues.addAll(issues);
     if (issues.isEmpty()) {
-      b.values.put(p.name(), Wire.prepare(p.type(), obj, Wire.Mode.REQUEST));
+      // #if derived
+      Json prepared = Derive.input(p.type(), Wire.prepare(p.type(), obj, Wire.Mode.REQUEST), p.location());
+      // #endif
+      // #if no_derived_conditional
+      b.canonical.put(p.name(), Canon.scalars(p.type(), Wire.prepare(p.type(), obj, Wire.Mode.REQUEST), true));
+      // #endif
+      // #if derived_conditional
+      b.canonical.put(p.name(), Canon.scalars(p.type(), prepared, true));
+      // #endif
+      // #if no_derived
+      b.values.put(p.name(), Wire.fillReadonly(p.type(), Wire.prepare(p.type(), obj, Wire.Mode.REQUEST)));
+      // #endif
+      // #if derived
+      b.values.put(p.name(), Wire.fillReadonly(p.type(), prepared));
+      // #endif
+      // #if audit_plain_values
+      b.prepared.put(p.name(), Wire.prepare(p.type(), obj, Wire.Mode.REQUEST));
+      // #endif
+      // #if audit_derived
+      b.prepared.put(p.name(), prepared);
+      // #endif
     }
   }
 
@@ -502,7 +1251,27 @@ public final class Router implements VeldHandler {
     List<Issue> issues = b.check ? Wire.validate(p.type(), raw, "body", true) : List.of();
     b.issues.addAll(issues);
     if (issues.isEmpty()) {
-      b.values.put(p.name(), Wire.prepare(p.type(), raw, Wire.Mode.REQUEST));
+      // #if derived
+      Json prepared = Derive.input(p.type(), Wire.prepare(p.type(), raw, Wire.Mode.REQUEST), p.location());
+      // #endif
+      // #if no_derived_conditional
+      b.canonical.put(p.name(), Canon.scalars(p.type(), Wire.prepare(p.type(), raw, Wire.Mode.REQUEST), true));
+      // #endif
+      // #if derived_conditional
+      b.canonical.put(p.name(), Canon.scalars(p.type(), prepared, true));
+      // #endif
+      // #if no_derived
+      b.values.put(p.name(), Wire.fillReadonly(p.type(), Wire.prepare(p.type(), raw, Wire.Mode.REQUEST)));
+      // #endif
+      // #if derived
+      b.values.put(p.name(), Wire.fillReadonly(p.type(), prepared));
+      // #endif
+      // #if audit_plain_values
+      b.prepared.put(p.name(), Wire.prepare(p.type(), raw, Wire.Mode.REQUEST));
+      // #endif
+      // #if audit_derived
+      b.prepared.put(p.name(), prepared);
+      // #endif
     }
   }
 

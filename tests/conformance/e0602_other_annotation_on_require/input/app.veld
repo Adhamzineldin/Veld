@@ -1,0 +1,20 @@
+// No other annotation becomes legal on a `require` or an `ensure` (spec/rules.md section
+// 17.1): `@deprecated` is allowed on an invariant but is `E0602` on a statement, and an unknown
+// one is still `E0601`.
+
+model M {
+  n: int
+  @deprecated("fine on an invariant")
+  rule a: n > 0
+}
+
+service S at "/s" {
+  post "/" f(body: M) -> 201 M {
+    @deprecated("not here")
+    require body.n > 0
+    @wire("x")
+    ensure result.n > 0
+    @bogus
+    require body.n > 1
+  }
+}

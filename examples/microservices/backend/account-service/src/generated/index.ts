@@ -6,6 +6,7 @@ export * from './deps/transactions/models/transactions';
 export * from './errors/accounts';
 export * from './models/accounts';
 export * from './prelude';
+export * from './runtime';
 export * from './server/accounts';
 export * from './server/adapters';
 export * as iam from './clients/iam/index';

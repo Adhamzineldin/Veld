@@ -26,7 +26,9 @@ pub fn hover(a: &Analysis, file: FileId, offset: u32) -> Option<HoverText> {
             span: h.span,
         });
     }
-    scalar_at(ix, file, offset)
+    crate::hover_rules::hover(a, file, offset)
+        .or_else(|| crate::hover_events::channel_hover(a, file, offset))
+        .or_else(|| scalar_at(ix, file, offset))
 }
 
 /// Hover for built-in type names (`string`, `Page`, ...), found by scanning the word.
@@ -55,7 +57,7 @@ fn scalar_at(ix: &Index, file: FileId, offset: u32) -> Option<HoverText> {
     Some(HoverText { markdown: md, span })
 }
 
-fn src(ix: &Index, span: Span) -> &str {
+pub(crate) fn src(ix: &Index, span: Span) -> &str {
     ix.sources
         .text(span.file)
         .and_then(|t| t.get(span.start as usize..span.end as usize))
@@ -99,12 +101,26 @@ fn describe(a: &Analysis, h: &Hit) -> Option<String> {
                 .iter()
                 .map(|t| format!("{t:?}").to_lowercase())
                 .collect();
+            let note = annotation_note(n).map_or_else(String::new, |t| format!("\n\n{t}"));
             Some(format!(
-                "```veld\n{}\n```\nAnnotation, allowed on: {}.",
+                "```veld\n{}\n```\nAnnotation, allowed on: {}.{note}",
                 spec.usage,
                 targets.join(", ")
             ))
         }
+    }
+}
+
+/// What an annotation does, for the ones whose name does not say it.
+fn annotation_note(name: &str) -> Option<&'static str> {
+    match name {
+        "version" => Some(
+            "The version of the model: a response that is such a model carries `ETag`, and an endpoint whose first fact is one compares `If-Match` with it (`412 PreconditionFailed` when they differ).",
+        ),
+        "idempotent" => Some(
+            "A request with the key in the header (`Idempotency-Key` unless `header:` names another) is answered once: the stored answer is sent again for the same parameters, and `409 Conflict` for other parameters or a request still running. `required: true` makes the header mandatory.",
+        ),
+        _ => None,
     }
 }
 
@@ -125,6 +141,8 @@ fn header(ix: &Index, d: &DeclEntry) -> String {
         DeclKind::Union(_) => format!("union {}", d.name),
         DeclKind::Const(c) => format!("const {}: {}", d.name, src(ix, c.ty.span)),
         DeclKind::Service(_) => format!("service {}", d.name),
+        DeclKind::Event(_) => format!("event {}", d.name),
+        DeclKind::Channel(_) => format!("channel {}", d.name),
     }
 }
 
@@ -136,10 +154,11 @@ fn kind_word(d: &DeclEntry) -> &'static str {
         DKind::Enum => "enum",
         DKind::Union => "union",
         DKind::Const => "const",
+        DKind::Event => "event",
     }
 }
 
-fn decl_hover(a: &Analysis, d: &DeclEntry) -> String {
+pub(crate) fn decl_hover(a: &Analysis, d: &DeclEntry) -> String {
     let ix = &a.index;
     let mut out = format!("```veld\n{}\n```\n", header(ix, d));
     if let Some(docs) = &d.docs {
@@ -175,7 +194,7 @@ fn decl_hover(a: &Analysis, d: &DeclEntry) -> String {
     out
 }
 
-fn field_hover(ix: &Index, decl: usize, field: usize) -> Option<String> {
+pub(crate) fn field_hover(ix: &Index, decl: usize, field: usize) -> Option<String> {
     let d = ix.decls.get(decl)?;
     let f = decl_fields(ix, d).get(field)?;
     let resolved = d.fields.iter().find(|r| r.name == f.name.name);
@@ -192,7 +211,7 @@ fn field_hover(ix: &Index, decl: usize, field: usize) -> Option<String> {
     Some(out)
 }
 
-fn variant_hover(ix: &Index, decl: usize, variant: usize) -> Option<String> {
+pub(crate) fn variant_hover(ix: &Index, decl: usize, variant: usize) -> Option<String> {
     let d = ix.decls.get(decl)?;
     let DeclKind::Enum(e) = &ix.decl_ast(d)?.kind else {
         return None;
@@ -210,10 +229,10 @@ fn variant_hover(ix: &Index, decl: usize, variant: usize) -> Option<String> {
 fn service_hover(ix: &Index, s: usize) -> Option<String> {
     let entry = ix.services.get(s)?;
     let ast = service_ast(ix, s)?;
-    let mut out = format!(
-        "```veld\nservice {} at \"{}\"\n```\n",
-        entry.name, ast.prefix.value
-    );
+    let mut out = match &ast.prefix {
+        Some(p) => format!("```veld\nservice {} at \"{}\"\n```\n", entry.name, p.value),
+        None => format!("```veld\nservice {}\n```\n", entry.name),
+    };
     if let Some(d) = &entry.docs {
         out.push_str(&format!("{d}\n\n"));
     }
@@ -234,7 +253,7 @@ fn status_list(ix: &Index, ep: &EndpointEntry) -> String {
     errs.join(", ")
 }
 
-fn endpoint_hover(a: &Analysis, service: usize, endpoint: usize) -> Option<String> {
+pub(crate) fn endpoint_hover(a: &Analysis, service: usize, endpoint: usize) -> Option<String> {
     let ix = &a.index;
     let sd = service_ast(ix, service)?;
     let ast_ep = sd.endpoints.get(endpoint)?;
@@ -269,7 +288,7 @@ fn endpoint_hover(a: &Analysis, service: usize, endpoint: usize) -> Option<Strin
         None => out.push_str(&format!(
             "- `{} {}{}`\n",
             ast_ep.method_span_text(ix),
-            sd.prefix.value,
+            sd.prefix.as_ref().map_or("", |p| p.value.as_str()),
             ast_ep.path.value
         )),
     }
@@ -286,7 +305,12 @@ impl MethodText for ast::Endpoint {
     }
 }
 
-fn param_hover(ix: &Index, service: usize, endpoint: usize, param: usize) -> Option<String> {
+pub(crate) fn param_hover(
+    ix: &Index,
+    service: usize,
+    endpoint: usize,
+    param: usize,
+) -> Option<String> {
     let sd = service_ast(ix, service)?;
     let ep = sd.endpoints.get(endpoint)?;
     let p = ep.params.get(param)?;
@@ -322,7 +346,7 @@ mod tests {
         (tmp, a)
     }
 
-    const TOML: &str = "[project]\nname = \"p\"\n[services.s]\ncontracts = \"c\"\n";
+    const TOML: &str = "[service]\nname = \"s\"\ncontracts = \"c\"\n";
 
     fn hover_at(
         a: &Analysis,
@@ -377,5 +401,41 @@ mod tests {
         let (tmp, a) = analysis(&[("veld.toml", TOML), ("c/m.veld", src)]);
         assert!(hover_at(&a, tmp.path(), "c/m.veld", "int", 1).contains("Built-in scalar"));
         assert!(hover_at(&a, tmp.path(), "c/m.veld", "min", 1).contains("@min(n)"));
+    }
+
+    #[test]
+    fn rollout_has_hover_text_on_a_rule_a_require_and_an_ensure() {
+        let src = "model A {\n  x: int\n  @rollout(audit)\n  rule r: x > 0\n}\nservice S at \"/s\" {\n  post \"/\" f(body: A) -> 201 A {\n    @rollout(audit)\n    require true\n    @rollout(audit)\n    ensure true\n  }\n}\n";
+        let (tmp, a) = analysis(&[("veld.toml", TOML), ("c/m.veld", src)]);
+        for needle in [
+            "rollout(audit)\n  rule",
+            "rollout(audit)\n    require",
+            "rollout(audit)\n    ensure",
+        ] {
+            let md = hover_at(&a, tmp.path(), "c/m.veld", needle, 1);
+            assert!(md.contains("@rollout(audit)"), "{md}");
+            assert!(md.contains("rule, require, ensure"), "{md}");
+        }
+    }
+
+    #[test]
+    fn version_and_idempotent_say_what_they_do() {
+        let src = "model A {\n  id: uuid\n  @version\n  revision: long\n}\nservice S at \"/s\" {\n  @idempotent(required: true)\n  put \"/{id}\" f(id: uuid) -> A {\n    fact a: A = id\n  }\n}\n";
+        let (tmp, a) = analysis(&[("veld.toml", TOML), ("c/m.veld", src)]);
+        let md = hover_at(&a, tmp.path(), "c/m.veld", "version\n  revision", 1);
+        assert!(
+            md.contains("@version") && md.contains("allowed on: field"),
+            "{md}"
+        );
+        assert!(md.contains("ETag") && md.contains("If-Match"), "{md}");
+        let md = hover_at(&a, tmp.path(), "c/m.veld", "idempotent(", 1);
+        assert!(
+            md.contains("@idempotent(header:") && md.contains("allowed on: endpoint"),
+            "{md}"
+        );
+        assert!(
+            md.contains("409 Conflict") && md.contains("required: true"),
+            "{md}"
+        );
     }
 }

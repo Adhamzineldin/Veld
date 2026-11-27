@@ -5,6 +5,7 @@ model Book {
 }
 
 /// Read-only book catalog.
+@auth(none)
 service Catalog at "/books" {
   /// Looks up a book by ISBN.
   get "/{isbn}" lookup(isbn: string) -> Book | NotFound

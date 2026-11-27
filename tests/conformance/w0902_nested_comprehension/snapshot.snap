@@ -1,0 +1,814 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+warning[W0902]: nested comprehension over a list without `@length(max: n)`
+ --> app/app.veld:13:34
+   |
+13 |   rule unbounded: all(rows, r => all(r.cells, c => c.v > 0))
+   |                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  = help: the cost grows with the product of both lists; bound them with `@length(max: n)`
+
+warning[W0902]: nested comprehension over a list without `@length(max: n)`
+ --> app/app.veld:14:41
+   |
+14 |   rule innerUnbounded: all(capped, r => all(r.cells, c => c.v > 0))
+   |                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  = help: the cost grows with the product of both lists; bound them with `@length(max: n)`
+
+warning[W0902]: nested comprehension over a list without `@length(max: n)`
+ --> app/app.veld:15:39
+   |
+15 |   rule outerUnbounded: all(rows, r => all(r.bounded, c => c.v > 0))
+   |                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  = help: the cost grows with the product of both lists; bound them with `@length(max: n)`
+
+== ir ==
+{
+  "ir_version": "1.1",
+  "packages": [
+    {
+      "id": 0,
+      "name": "app",
+      "kind": "service"
+    }
+  ],
+  "decls": [
+    {
+      "id": 0,
+      "package": 0,
+      "module": "app",
+      "name": "Cell",
+      "qualified": "app:app.Cell",
+      "sig": "veld:app/Cell@addded0e1f02b8e1",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 1,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "v",
+          "wire": "v",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 2,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "package": 0,
+      "module": "app",
+      "name": "Grid",
+      "qualified": "app:app.Grid",
+      "sig": "veld:app/Grid@e96b94520014656b",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 10,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "rows",
+          "wire": "rows",
+          "type": {
+            "list": {
+              "decl": 2
+            }
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 11,
+            "col": 3
+          }
+        },
+        {
+          "name": "capped",
+          "wire": "capped",
+          "type": {
+            "list": {
+              "decl": 2
+            }
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": 10,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 12,
+            "col": 3
+          }
+        }
+      ],
+      "rules": [
+        {
+          "name": "unbounded",
+          "id": "veld:app/Grid.unbounded@9b59f12615a558e5",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "quant": {
+                "q": "all",
+                "list": {
+                  "t": {
+                    "list": {
+                      "decl": 2
+                    }
+                  },
+                  "e": {
+                    "path": {
+                      "root": "self",
+                      "steps": [
+                        {
+                          "name": "rows",
+                          "wire": "rows",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                },
+                "var": "r",
+                "body": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "quant": {
+                      "q": "all",
+                      "list": {
+                        "t": {
+                          "list": {
+                            "decl": 0
+                          }
+                        },
+                        "e": {
+                          "path": {
+                            "root": {
+                              "var": "r"
+                            },
+                            "steps": [
+                              {
+                                "name": "cells",
+                                "wire": "cells",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "var": "c",
+                      "body": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "bin": {
+                            "op": "gt",
+                            "l": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "path": {
+                                  "root": {
+                                    "var": "c"
+                                  },
+                                  "steps": [
+                                    {
+                                      "name": "v",
+                                      "wire": "v",
+                                      "optional": false
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            "r": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "lit": {
+                                  "int": 0
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "rows"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 13,
+            "col": 8
+          }
+        },
+        {
+          "name": "innerUnbounded",
+          "id": "veld:app/Grid.innerUnbounded@db52d397c8aa8bef",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "quant": {
+                "q": "all",
+                "list": {
+                  "t": {
+                    "list": {
+                      "decl": 2
+                    }
+                  },
+                  "e": {
+                    "path": {
+                      "root": "self",
+                      "steps": [
+                        {
+                          "name": "capped",
+                          "wire": "capped",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                },
+                "var": "r",
+                "body": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "quant": {
+                      "q": "all",
+                      "list": {
+                        "t": {
+                          "list": {
+                            "decl": 0
+                          }
+                        },
+                        "e": {
+                          "path": {
+                            "root": {
+                              "var": "r"
+                            },
+                            "steps": [
+                              {
+                                "name": "cells",
+                                "wire": "cells",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "var": "c",
+                      "body": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "bin": {
+                            "op": "gt",
+                            "l": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "path": {
+                                  "root": {
+                                    "var": "c"
+                                  },
+                                  "steps": [
+                                    {
+                                      "name": "v",
+                                      "wire": "v",
+                                      "optional": false
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            "r": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "lit": {
+                                  "int": 0
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "capped"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 14,
+            "col": 8
+          }
+        },
+        {
+          "name": "outerUnbounded",
+          "id": "veld:app/Grid.outerUnbounded@e6664c0e9d390de2",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "quant": {
+                "q": "all",
+                "list": {
+                  "t": {
+                    "list": {
+                      "decl": 2
+                    }
+                  },
+                  "e": {
+                    "path": {
+                      "root": "self",
+                      "steps": [
+                        {
+                          "name": "rows",
+                          "wire": "rows",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                },
+                "var": "r",
+                "body": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "quant": {
+                      "q": "all",
+                      "list": {
+                        "t": {
+                          "list": {
+                            "decl": 0
+                          }
+                        },
+                        "e": {
+                          "path": {
+                            "root": {
+                              "var": "r"
+                            },
+                            "steps": [
+                              {
+                                "name": "bounded",
+                                "wire": "bounded",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "var": "c",
+                      "body": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "bin": {
+                            "op": "gt",
+                            "l": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "path": {
+                                  "root": {
+                                    "var": "c"
+                                  },
+                                  "steps": [
+                                    {
+                                      "name": "v",
+                                      "wire": "v",
+                                      "optional": false
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            "r": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "lit": {
+                                  "int": 0
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "rows"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 15,
+            "col": 8
+          }
+        },
+        {
+          "name": "bothBounded",
+          "id": "veld:app/Grid.bothBounded@0c50ee82ef08ff63",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "quant": {
+                "q": "all",
+                "list": {
+                  "t": {
+                    "list": {
+                      "decl": 2
+                    }
+                  },
+                  "e": {
+                    "path": {
+                      "root": "self",
+                      "steps": [
+                        {
+                          "name": "capped",
+                          "wire": "capped",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                },
+                "var": "r",
+                "body": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "quant": {
+                      "q": "all",
+                      "list": {
+                        "t": {
+                          "list": {
+                            "decl": 0
+                          }
+                        },
+                        "e": {
+                          "path": {
+                            "root": {
+                              "var": "r"
+                            },
+                            "steps": [
+                              {
+                                "name": "bounded",
+                                "wire": "bounded",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "var": "c",
+                      "body": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "bin": {
+                            "op": "gt",
+                            "l": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "path": {
+                                  "root": {
+                                    "var": "c"
+                                  },
+                                  "steps": [
+                                    {
+                                      "name": "v",
+                                      "wire": "v",
+                                      "optional": false
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            "r": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "lit": {
+                                  "int": 0
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "capped"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 16,
+            "col": 8
+          }
+        },
+        {
+          "name": "flat",
+          "id": "veld:app/Grid.flat@91a48d49269afd47",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "quant": {
+                "q": "all",
+                "list": {
+                  "t": {
+                    "list": {
+                      "decl": 2
+                    }
+                  },
+                  "e": {
+                    "path": {
+                      "root": "self",
+                      "steps": [
+                        {
+                          "name": "rows",
+                          "wire": "rows",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                },
+                "var": "r",
+                "body": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "gt",
+                      "l": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "call": {
+                            "f": "len",
+                            "args": [
+                              {
+                                "t": {
+                                  "list": {
+                                    "decl": 0
+                                  }
+                                },
+                                "e": {
+                                  "path": {
+                                    "root": {
+                                      "var": "r"
+                                    },
+                                    "steps": [
+                                      {
+                                        "name": "cells",
+                                        "wire": "cells",
+                                        "optional": false
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "lit": {
+                            "int": 0
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "rows"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 17,
+            "col": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "package": 0,
+      "module": "app",
+      "name": "Row",
+      "qualified": "app:app.Row",
+      "sig": "veld:app/Row@579138234c483e7a",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 5,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "cells",
+          "wire": "cells",
+          "type": {
+            "list": {
+              "decl": 0
+            }
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 6,
+            "col": 3
+          }
+        },
+        {
+          "name": "bounded",
+          "wire": "bounded",
+          "type": {
+            "list": {
+              "decl": 0
+            }
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": 10,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 7,
+            "col": 3
+          }
+        }
+      ]
+    }
+  ],
+  "services": [],
+  "consumes": {}
+}

@@ -9,10 +9,29 @@
 //! because the clients that can break are the ones built against it. A type the
 //! old IR never uses falls back to the new IR.
 
+mod audit;
+mod changed;
+mod conditional;
+mod data_marks;
 mod decls;
+mod delivery;
+mod emits;
+mod endpoint_rules;
 mod endpoints;
+mod event_fields;
+mod events;
+pub(crate) mod expr_text;
+mod flags;
+mod limits;
+mod retention;
+mod rules;
+mod saga;
+mod service_levels;
+mod tenancy;
 mod usage;
+mod visibility;
 
+pub use changed::{ChangedRule, RuleSite, changed_rules};
 use serde::Serialize;
 use veld_ir::{Constraints, Ir, Type};
 
@@ -21,6 +40,10 @@ use veld_ir::{Constraints, Ir, Type};
 #[serde(rename_all = "snake_case")]
 pub enum Severity {
     Breaking,
+    /// The tool cannot tell: a rule expression changed and no solver says whether it is tighter
+    /// or looser, or a change in an event, a channel, a `publishes` line or a subscription that
+    /// `spec/events.md` section 16 does not decide.
+    PossiblyBreaking,
     NonBreaking,
 }
 
@@ -65,6 +88,81 @@ pub enum ChangeKind {
     AuthAdded,
     AuthChanged,
     AuthRemoved,
+    InvariantAdded,
+    InvariantRemoved,
+    InvariantChanged,
+    RuleMessageChanged,
+    RequireAdded,
+    RequireRemoved,
+    RequireChanged,
+    RequireErrorChanged,
+    EnsureAdded,
+    EnsureRemoved,
+    EnsureChanged,
+    FactChanged,
+    FlowRemoved,
+    FlowAdded,
+    FlowTimingChanged,
+    FlagChanged,
+    TimeoutChanged,
+    SloChanged,
+    TransitionChanged,
+    EventAdded,
+    EventRemoved,
+    EventChanged,
+    EmitsAdded,
+    EmitsRemoved,
+    EmitsTopicChanged,
+    ChannelAdded,
+    ChannelRemoved,
+    ChannelChanged,
+    ChannelRetryAdded,
+    ChannelRetryRemoved,
+    ChannelRetryChanged,
+    ChannelDeadLetterAdded,
+    ChannelDeadLetterRemoved,
+    ChannelOrderedAdded,
+    ChannelOrderedRemoved,
+    PublishesAdded,
+    PublishesRemoved,
+    SubscriptionAdded,
+    SubscriptionRemoved,
+    SubscriptionChanged,
+    VersionAdded,
+    VersionRemoved,
+    VersionFieldChanged,
+    GuardAdded,
+    GuardRemoved,
+    GuardChanged,
+    IdempotencyAdded,
+    IdempotencyRemoved,
+    IdempotencyHeaderChanged,
+    IdempotencyRequiredChanged,
+    DerivedChanged,
+    FieldBecameDerived,
+    FieldNoLongerDerived,
+    SagaAdded,
+    SagaRemoved,
+    SagaChanged,
+    PiiAdded,
+    PiiRemoved,
+    SecretAdded,
+    SecretRemoved,
+    RetentionAdded,
+    RetentionRemoved,
+    RetentionShortened,
+    RetentionLengthened,
+    RetentionSinceChanged,
+    RetentionThenChanged,
+    VisibleAdded,
+    VisibleChanged,
+    VisibleRemoved,
+    TenantAdded,
+    TenantChanged,
+    TenantRemoved,
+    AuditAdded,
+    AuditRemoved,
+    LimitChanged,
 }
 
 /// One difference between the old and the new contract.
@@ -97,6 +195,14 @@ impl Change {
         Change::new(kind, Severity::Breaking, subject, message)
     }
 
+    pub(crate) fn possibly_breaking(
+        kind: ChangeKind,
+        subject: &str,
+        message: impl Into<String>,
+    ) -> Change {
+        Change::new(kind, Severity::PossiblyBreaking, subject, message)
+    }
+
     pub(crate) fn non_breaking(
         kind: ChangeKind,
         subject: &str,
@@ -120,10 +226,23 @@ impl Change {
     }
 }
 
-/// True when any change is breaking.
+/// True when any change is breaking or possibly breaking. A rule whose expression changed fails
+/// a CI check even though the tool cannot prove the direction: passing a tightened rule silently
+/// is the worse error.
 #[must_use]
 pub fn has_breaking(changes: &[Change]) -> bool {
-    changes.iter().any(|c| c.severity == Severity::Breaking)
+    changes.iter().any(|c| c.severity.fails_check())
+}
+
+impl Severity {
+    /// Whether this severity fails `--strict` and blocks `generate`.
+    #[must_use]
+    pub fn fails_check(self) -> bool {
+        match self {
+            Severity::Breaking | Severity::PossiblyBreaking => true,
+            Severity::NonBreaking => false,
+        }
+    }
 }
 
 /// Both IRs, for comparisons that need to resolve declaration ids.
@@ -224,13 +343,71 @@ pub(crate) fn push_constraint_changes(
 /// Compares two IRs and lists every change, breaking or not, in a stable order.
 #[must_use]
 pub fn diff(old: &Ir, new: &Ir) -> Vec<Change> {
+    if flags::involved(old, new) {
+        // A statement behind a flag is judged on its own (`spec/platform.md` section 11); the rest
+        // is compared as if those statements were not there.
+        let (o, n) = flags::strip(old, new);
+        let mut out = diff_plain(&o, &n);
+        flags::diff_flagged(old, new, &mut out);
+        return out;
+    }
+    diff_plain(old, new)
+}
+
+fn diff_plain(old: &Ir, new: &Ir) -> Vec<Change> {
     let ctx = Ctx { old, new };
     let usage = usage::Usage::of(old, new);
     let mut out = Vec::new();
     decls::diff_decls(&ctx, &usage, &mut out);
+    conditional::diff_version_fields(&ctx, &mut out);
+    data_marks::diff_data_marks(&ctx, &mut out);
+    retention::diff_retention(&ctx, &mut out);
+    visibility::diff_visibility(&ctx, &mut out);
+    tenancy::diff_tenancy(&ctx, &mut out);
+    rules::diff_decl_rules(&ctx, &usage, &mut out);
     endpoints::diff_endpoints(&ctx, &mut out);
+    events::diff_events(&ctx, &mut out);
+    delivery::diff_delivery(&ctx, &mut out);
+    emits::diff_emits(&ctx, &mut out);
+    emits::diff_emit_channels(&ctx, &mut out);
     out
 }
 
 #[cfg(test)]
+mod audit_tests;
+#[cfg(test)]
+mod changed_tests;
+#[cfg(test)]
+mod conditional_tests;
+#[cfg(test)]
+mod data_marks_tests;
+#[cfg(test)]
+mod delivery_tests;
+#[cfg(test)]
+mod derived_tests;
+#[cfg(test)]
+mod event_table_tests;
+#[cfg(test)]
+mod event_tests;
+#[cfg(test)]
+mod flags_tests;
+#[cfg(test)]
+mod limits_tests;
+#[cfg(test)]
+mod retention_tests;
+#[cfg(test)]
+mod rollout_tests;
+#[cfg(test)]
+mod rule_tests;
+#[cfg(test)]
+mod saga_tests;
+#[cfg(test)]
+mod service_levels_tests;
+#[cfg(test)]
+mod tenancy_tests;
+#[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod timed_tests;
+#[cfg(test)]
+mod visibility_tests;

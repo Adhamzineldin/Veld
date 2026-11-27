@@ -1,0 +1,26 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0907]: rule `same` is already declared in `Twice`, counting inherited rules
+ --> app/app.veld:10:8
+   |
+10 |   rule same: a < 100
+   |        ^^^^
+ --> app/app.veld:9:8
+  |
+9 |   rule same: a > 0
+  |        ---- first declared here
+
+error[E0907]: rule `ordered` is already declared in `Child`, counting inherited rules
+ --> app/app.veld:15:8
+   |
+15 |   rule ordered: step > 0
+   |        ^^^^^^^
+ --> app/app.veld:4:8
+  |
+4 |   rule ordered: low <= high
+  |        ------- first declared here
+
+== ir ==
+(no IR: compilation failed)

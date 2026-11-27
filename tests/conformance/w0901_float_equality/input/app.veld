@@ -1,0 +1,7 @@
+model Floats {
+  a: float
+  b: float
+  rule same: a == b
+  rule differs: a != 0.5
+  rule fine: a < b
+}

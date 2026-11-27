@@ -1,0 +1,13 @@
+// A fact read in `ensure` must be inside `old(...)`: the handler may have changed it
+// (spec/rules.md 9.4).
+
+model Room { id: uuid, capacity: int }
+model Booking { id: uuid, guests: int }
+
+service Bookings at "/bookings" {
+  post "/" create(body: Booking) -> 201 Booking {
+    fact room: Room = body.id
+    ensure room.capacity >= result.guests
+    ensure old(room.capacity) >= 0
+  }
+}

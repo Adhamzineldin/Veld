@@ -1,0 +1,57 @@
+// Where invariants are checked: nesting, inheritance, unions, request position, defaults (spec/rules.md 5.1, 5.2).
+
+model Base {
+  low: int
+  high: int
+  rule ordered: low <= high
+}
+
+model Range extends Base {
+  step: int
+  rule stepFits: step <= high - low
+}
+
+model Grid {
+  rows: Range[]
+  named: Map<string, Base>
+  main?: Range
+  page: Page<Base>
+  rule hasRows: len(rows) > 0
+  rule pageFull: len(page.items) <= page.size
+}
+
+model Card {
+  last4: string
+  rule four: len(last4) == 4
+}
+
+model Bank {
+  iban: string
+}
+
+union Payment { card: Card, bank: Bank }
+
+model Checkout {
+  payment: Payment
+  backup?: Payment
+}
+
+model Draft {
+  id: uuid @readonly
+  title: string
+  copies: int = 1
+  createdBy: string @readonly
+  rule titled: len(title) > 0
+  rule hasCopies: copies >= 1
+  rule ownerNamed: len(createdBy) > 0
+}
+
+model Form {
+  start: date
+  end: date
+  guests: int
+  note?: string
+  rule ordered: start <= end
+  rule some: guests >= 1
+  rule noteShort: has(note) implies len(note) <= 3
+}

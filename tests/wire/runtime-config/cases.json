@@ -1,0 +1,1374 @@
+{
+  "version": 1,
+  "models": {
+    "server": {
+      "target": "bookings",
+      "type": "BookingsRuntime",
+      "settings": [
+        {
+          "path": "rules.output",
+          "kind": "list",
+          "values": [
+            "strict",
+            "audit",
+            "off"
+          ],
+          "required": false,
+          "default": "strict"
+        },
+        {
+          "path": "services.iam.url",
+          "kind": "url",
+          "required": true
+        },
+        {
+          "path": "services.payments.url",
+          "kind": "url",
+          "required": true
+        }
+      ]
+    },
+    "client": {
+      "target": "web",
+      "type": "WebRuntime",
+      "settings": [
+        {
+          "path": "services.bookings.url",
+          "kind": "url",
+          "required": true
+        },
+        {
+          "path": "services.iam.url",
+          "kind": "url",
+          "required": true
+        }
+      ]
+    },
+    "ordering": {
+      "target": "card-service",
+      "type": "CardServiceRuntime",
+      "settings": [
+        {
+          "path": "services.a-b.url",
+          "kind": "url",
+          "required": true
+        },
+        {
+          "path": "services.a.url",
+          "kind": "url",
+          "required": true
+        }
+      ]
+    },
+    "rules_only": {
+      "target": "orders",
+      "type": "OrdersRuntime",
+      "settings": [
+        {
+          "path": "rules.output",
+          "kind": "list",
+          "values": [
+            "strict",
+            "audit",
+            "off"
+          ],
+          "required": false,
+          "default": "strict"
+        }
+      ]
+    }
+  },
+  "type_names": [
+    {
+      "target": "bookings",
+      "type": "BookingsRuntime"
+    },
+    {
+      "target": "web",
+      "type": "WebRuntime"
+    },
+    {
+      "target": "card-service",
+      "type": "CardServiceRuntime"
+    },
+    {
+      "target": "my_api",
+      "type": "MyApiRuntime"
+    },
+    {
+      "target": "v1.api",
+      "type": "V1ApiRuntime"
+    },
+    {
+      "target": "api.v2",
+      "type": "ApiV2Runtime"
+    },
+    {
+      "target": "web2",
+      "type": "Web2Runtime"
+    },
+    {
+      "target": "orders-API",
+      "type": "OrdersApiRuntime"
+    },
+    {
+      "target": "a--b__c",
+      "type": "ABCRuntime"
+    },
+    {
+      "target": "3d-app",
+      "type": "T3dAppRuntime"
+    },
+    {
+      "target": "---",
+      "type": "TargetRuntime"
+    }
+  ],
+  "urls": [
+    {
+      "input": "http://iam:3001",
+      "normalized": "http://iam:3001"
+    },
+    {
+      "input": "https://iam.internal",
+      "normalized": "https://iam.internal"
+    },
+    {
+      "input": "HTTP://IAM",
+      "normalized": "HTTP://IAM"
+    },
+    {
+      "input": "http://user:pw@iam:80/base",
+      "normalized": "http://user:pw@iam:80/base"
+    },
+    {
+      "input": "http://[::1]:8080",
+      "normalized": "http://[::1]:8080"
+    },
+    {
+      "input": "http://[::1]",
+      "normalized": "http://[::1]"
+    },
+    {
+      "input": "http://a_b.c-d/path?x=1#f",
+      "normalized": "http://a_b.c-d/path?x=1#f"
+    },
+    {
+      "input": "http://host:65535",
+      "normalized": "http://host:65535"
+    },
+    {
+      "input": "http://iam:3001/",
+      "normalized": "http://iam:3001"
+    },
+    {
+      "input": "http://iam//",
+      "normalized": "http://iam"
+    },
+    {
+      "input": "http://iam/v1/",
+      "normalized": "http://iam/v1"
+    },
+    {
+      "input": "",
+      "normalized": null
+    },
+    {
+      "input": "iam:3001",
+      "normalized": null
+    },
+    {
+      "input": "ftp://iam",
+      "normalized": null
+    },
+    {
+      "input": "http://",
+      "normalized": null
+    },
+    {
+      "input": "http:///x",
+      "normalized": null
+    },
+    {
+      "input": "https://:80",
+      "normalized": null
+    },
+    {
+      "input": "http://host:",
+      "normalized": null
+    },
+    {
+      "input": "http://host:65536",
+      "normalized": null
+    },
+    {
+      "input": "http://host:123456",
+      "normalized": null
+    },
+    {
+      "input": "http://host:80a",
+      "normalized": null
+    },
+    {
+      "input": "http://ho st",
+      "normalized": null
+    },
+    {
+      "input": " http://host",
+      "normalized": null
+    },
+    {
+      "input": "http://host ",
+      "normalized": null
+    },
+    {
+      "input": "http://host\n",
+      "normalized": null
+    },
+    {
+      "input": "http://hôst",
+      "normalized": null
+    },
+    {
+      "input": "http://[]",
+      "normalized": null
+    },
+    {
+      "input": "http://[::1",
+      "normalized": null
+    },
+    {
+      "input": "http://a:b:c",
+      "normalized": null
+    },
+    {
+      "input": "http://@",
+      "normalized": null
+    },
+    {
+      "input": "/relative",
+      "normalized": null
+    },
+    {
+      "input": "https:/host",
+      "normalized": null
+    }
+  ],
+  "cases": [
+    {
+      "name": "both urls, default mode, trailing slash dropped",
+      "model": "server",
+      "from": "value",
+      "input": {
+        "services": {
+          "iam": {
+            "url": "http://iam:3001"
+          },
+          "payments": {
+            "url": "https://pay.internal/"
+          }
+        }
+      },
+      "expect": {
+        "values": {
+          "rules.output": "strict",
+          "services.iam.url": "http://iam:3001",
+          "services.payments.url": "https://pay.internal"
+        }
+      }
+    },
+    {
+      "name": "mode audit",
+      "model": "server",
+      "from": "value",
+      "input": {
+        "rules": {
+          "output": "audit"
+        },
+        "services": {
+          "iam": {
+            "url": "http://iam:3001"
+          },
+          "payments": {
+            "url": "https://pay.internal/"
+          }
+        }
+      },
+      "expect": {
+        "values": {
+          "rules.output": "audit",
+          "services.iam.url": "http://iam:3001",
+          "services.payments.url": "https://pay.internal"
+        }
+      }
+    },
+    {
+      "name": "mode off",
+      "model": "server",
+      "from": "value",
+      "input": {
+        "rules": {
+          "output": "off"
+        },
+        "services": {
+          "iam": {
+            "url": "http://iam:3001"
+          },
+          "payments": {
+            "url": "https://pay.internal/"
+          }
+        }
+      },
+      "expect": {
+        "values": {
+          "rules.output": "off",
+          "services.iam.url": "http://iam:3001",
+          "services.payments.url": "https://pay.internal"
+        }
+      }
+    },
+    {
+      "name": "an empty object lists every required path",
+      "model": "server",
+      "from": "value",
+      "input": {},
+      "expect": {
+        "problems": [
+          {
+            "path": "services.iam.url",
+            "message": "services.iam.url is missing"
+          },
+          {
+            "path": "services.payments.url",
+            "message": "services.payments.url is missing"
+          }
+        ],
+        "error": "invalid runtime config: services.iam.url is missing; services.payments.url is missing"
+      }
+    },
+    {
+      "name": "null is the same as an empty object",
+      "model": "server",
+      "from": "value",
+      "input": null,
+      "expect": {
+        "problems": [
+          {
+            "path": "services.iam.url",
+            "message": "services.iam.url is missing"
+          },
+          {
+            "path": "services.payments.url",
+            "message": "services.payments.url is missing"
+          }
+        ],
+        "error": "invalid runtime config: services.iam.url is missing; services.payments.url is missing"
+      }
+    },
+    {
+      "name": "null parents are absent",
+      "model": "server",
+      "from": "value",
+      "input": {
+        "services": null,
+        "rules": null
+      },
+      "expect": {
+        "problems": [
+          {
+            "path": "services.iam.url",
+            "message": "services.iam.url is missing"
+          },
+          {
+            "path": "services.payments.url",
+            "message": "services.payments.url is missing"
+          }
+        ],
+        "error": "invalid runtime config: services.iam.url is missing; services.payments.url is missing"
+      }
+    },
+    {
+      "name": "a url that is null or empty is missing",
+      "model": "server",
+      "from": "value",
+      "input": {
+        "services": {
+          "iam": {
+            "url": null
+          },
+          "payments": {
+            "url": ""
+          }
+        }
+      },
+      "expect": {
+        "problems": [
+          {
+            "path": "services.iam.url",
+            "message": "services.iam.url is missing"
+          },
+          {
+            "path": "services.payments.url",
+            "message": "services.payments.url is missing"
+          }
+        ],
+        "error": "invalid runtime config: services.iam.url is missing; services.payments.url is missing"
+      }
+    },
+    {
+      "name": "a url without a scheme",
+      "model": "server",
+      "from": "value",
+      "input": {
+        "services": {
+          "iam": {
+            "url": "iam:3001"
+          },
+          "payments": {
+            "url": "http://p"
+          }
+        }
+      },
+      "expect": {
+        "problems": [
+          {
+            "path": "services.iam.url",
+            "message": "services.iam.url must be an http or https URL"
+          }
+        ],
+        "error": "invalid runtime config: services.iam.url must be an http or https URL"
+      }
+    },
+    {
+      "name": "a url with another scheme",
+      "model": "server",
+      "from": "value",
+      "input": {
+        "services": {
+          "iam": {
+            "url": "ftp://iam"
+          },
+          "payments": {
+            "url": "http://p"
+          }
+        }
+      },
+      "expect": {
+        "problems": [
+          {
+            "path": "services.iam.url",
+            "message": "services.iam.url must be an http or https URL"
+          }
+        ],
+        "error": "invalid runtime config: services.iam.url must be an http or https URL"
+      }
+    },
+    {
+      "name": "a url with no host",
+      "model": "server",
+      "from": "value",
+      "input": {
+        "services": {
+          "iam": {
+            "url": "http://"
+          },
+          "payments": {
+            "url": "http:///x"
+          }
+        }
+      },
+      "expect": {
+        "problems": [
+          {
+            "path": "services.iam.url",
+            "message": "services.iam.url must be an http or https URL"
+          },
+          {
+            "path": "services.payments.url",
+            "message": "services.payments.url must be an http or https URL"
+          }
+        ],
+        "error": "invalid runtime config: services.iam.url must be an http or https URL; services.payments.url must be an http or https URL"
+      }
+    },
+    {
+      "name": "a url with a space",
+      "model": "server",
+      "from": "value",
+      "input": {
+        "services": {
+          "iam": {
+            "url": "http://i am"
+          },
+          "payments": {
+            "url": " http://p"
+          }
+        }
+      },
+      "expect": {
+        "problems": [
+          {
+            "path": "services.iam.url",
+            "message": "services.iam.url must be an http or https URL"
+          },
+          {
+            "path": "services.payments.url",
+            "message": "services.payments.url must be an http or https URL"
+          }
+        ],
+        "error": "invalid runtime config: services.iam.url must be an http or https URL; services.payments.url must be an http or https URL"
+      }
+    },
+    {
+      "name": "a url that is not a string",
+      "model": "server",
+      "from": "value",
+      "input": {
+        "services": {
+          "iam": {
+            "url": 5
+          },
+          "payments": {
+            "url": [
+              "http://p"
+            ]
+          }
+        }
+      },
+      "expect": {
+        "problems": [
+          {
+            "path": "services.iam.url",
+            "message": "services.iam.url must be an http or https URL"
+          },
+          {
+            "path": "services.payments.url",
+            "message": "services.payments.url must be an http or https URL"
+          }
+        ],
+        "error": "invalid runtime config: services.iam.url must be an http or https URL; services.payments.url must be an http or https URL"
+      }
+    },
+    {
+      "name": "the scheme may be in any case and every trailing slash goes",
+      "model": "server",
+      "from": "value",
+      "input": {
+        "services": {
+          "iam": {
+            "url": "HTTP://iam//"
+          },
+          "payments": {
+            "url": "http://p:8080/v1/"
+          }
+        }
+      },
+      "expect": {
+        "values": {
+          "rules.output": "strict",
+          "services.iam.url": "HTTP://iam",
+          "services.payments.url": "http://p:8080/v1"
+        }
+      }
+    },
+    {
+      "name": "a mode outside the list",
+      "model": "server",
+      "from": "value",
+      "input": {
+        "rules": {
+          "output": "loud"
+        },
+        "services": {
+          "iam": {
+            "url": "http://iam:3001"
+          },
+          "payments": {
+            "url": "https://pay.internal/"
+          }
+        }
+      },
+      "expect": {
+        "problems": [
+          {
+            "path": "rules.output",
+            "message": "rules.output must be \"strict\", \"audit\" or \"off\""
+          }
+        ],
+        "error": "invalid runtime config: rules.output must be \"strict\", \"audit\" or \"off\""
+      }
+    },
+    {
+      "name": "the list is case sensitive",
+      "model": "server",
+      "from": "value",
+      "input": {
+        "rules": {
+          "output": "Strict"
+        },
+        "services": {
+          "iam": {
+            "url": "http://iam:3001"
+          },
+          "payments": {
+            "url": "https://pay.internal/"
+          }
+        }
+      },
+      "expect": {
+        "problems": [
+          {
+            "path": "rules.output",
+            "message": "rules.output must be \"strict\", \"audit\" or \"off\""
+          }
+        ],
+        "error": "invalid runtime config: rules.output must be \"strict\", \"audit\" or \"off\""
+      }
+    },
+    {
+      "name": "an empty mode is not the default",
+      "model": "server",
+      "from": "value",
+      "input": {
+        "rules": {
+          "output": ""
+        },
+        "services": {
+          "iam": {
+            "url": "http://iam:3001"
+          },
+          "payments": {
+            "url": "https://pay.internal/"
+          }
+        }
+      },
+      "expect": {
+        "problems": [
+          {
+            "path": "rules.output",
+            "message": "rules.output must be \"strict\", \"audit\" or \"off\""
+          }
+        ],
+        "error": "invalid runtime config: rules.output must be \"strict\", \"audit\" or \"off\""
+      }
+    },
+    {
+      "name": "a null mode is the default",
+      "model": "server",
+      "from": "value",
+      "input": {
+        "rules": {
+          "output": null
+        },
+        "services": {
+          "iam": {
+            "url": "http://iam:3001"
+          },
+          "payments": {
+            "url": "https://pay.internal/"
+          }
+        }
+      },
+      "expect": {
+        "values": {
+          "rules.output": "strict",
+          "services.iam.url": "http://iam:3001",
+          "services.payments.url": "https://pay.internal"
+        }
+      }
+    },
+    {
+      "name": "a mode that is not a string",
+      "model": "server",
+      "from": "value",
+      "input": {
+        "rules": {
+          "output": 1
+        },
+        "services": {
+          "iam": {
+            "url": "http://iam:3001"
+          },
+          "payments": {
+            "url": "https://pay.internal/"
+          }
+        }
+      },
+      "expect": {
+        "problems": [
+          {
+            "path": "rules.output",
+            "message": "rules.output must be \"strict\", \"audit\" or \"off\""
+          }
+        ],
+        "error": "invalid runtime config: rules.output must be \"strict\", \"audit\" or \"off\""
+      }
+    },
+    {
+      "name": "a misspelt key is a problem",
+      "model": "server",
+      "from": "value",
+      "input": {
+        "rules": {
+          "ouput": "off"
+        },
+        "services": {
+          "iam": {
+            "url": "http://iam:3001"
+          },
+          "payments": {
+            "url": "https://pay.internal/"
+          }
+        }
+      },
+      "expect": {
+        "problems": [
+          {
+            "path": "rules.ouput",
+            "message": "rules.ouput is not a setting"
+          }
+        ],
+        "error": "invalid runtime config: rules.ouput is not a setting"
+      }
+    },
+    {
+      "name": "an unknown service",
+      "model": "server",
+      "from": "value",
+      "input": {
+        "services": {
+          "iam": {
+            "url": "http://i"
+          },
+          "payments": {
+            "url": "http://p"
+          },
+          "cards": {
+            "url": "http://c"
+          }
+        }
+      },
+      "expect": {
+        "problems": [
+          {
+            "path": "services.cards",
+            "message": "services.cards is not a setting"
+          }
+        ],
+        "error": "invalid runtime config: services.cards is not a setting"
+      }
+    },
+    {
+      "name": "an unknown key inside a service",
+      "model": "server",
+      "from": "value",
+      "input": {
+        "services": {
+          "iam": {
+            "url": "http://i",
+            "port": 1
+          },
+          "payments": {
+            "url": "http://p"
+          }
+        }
+      },
+      "expect": {
+        "problems": [
+          {
+            "path": "services.iam.port",
+            "message": "services.iam.port is not a setting"
+          }
+        ],
+        "error": "invalid runtime config: services.iam.port is not a setting"
+      }
+    },
+    {
+      "name": "an unknown top-level key",
+      "model": "server",
+      "from": "value",
+      "input": {
+        "services": {
+          "iam": {
+            "url": "http://iam:3001"
+          },
+          "payments": {
+            "url": "https://pay.internal/"
+          }
+        },
+        "extra": true
+      },
+      "expect": {
+        "problems": [
+          {
+            "path": "extra",
+            "message": "extra is not a setting"
+          }
+        ],
+        "error": "invalid runtime config: extra is not a setting"
+      }
+    },
+    {
+      "name": "a dotted key is not a path",
+      "model": "server",
+      "from": "value",
+      "input": {
+        "services.iam.url": "http://i",
+        "services": {
+          "payments": {
+            "url": "http://p"
+          }
+        }
+      },
+      "expect": {
+        "problems": [
+          {
+            "path": "services.iam.url",
+            "message": "services.iam.url is missing"
+          },
+          {
+            "path": "services.iam.url",
+            "message": "services.iam.url is not a setting"
+          }
+        ],
+        "error": "invalid runtime config: services.iam.url is missing; services.iam.url is not a setting"
+      }
+    },
+    {
+      "name": "an object position that holds a string or a number",
+      "model": "server",
+      "from": "value",
+      "input": {
+        "services": "x",
+        "rules": 3
+      },
+      "expect": {
+        "problems": [
+          {
+            "path": "rules",
+            "message": "rules must be an object"
+          },
+          {
+            "path": "services",
+            "message": "services must be an object"
+          },
+          {
+            "path": "services.iam.url",
+            "message": "services.iam.url is missing"
+          },
+          {
+            "path": "services.payments.url",
+            "message": "services.payments.url is missing"
+          }
+        ],
+        "error": "invalid runtime config: rules must be an object; services must be an object; services.iam.url is missing; services.payments.url is missing"
+      }
+    },
+    {
+      "name": "the value itself is not an object",
+      "model": "server",
+      "from": "value",
+      "input": 5,
+      "expect": {
+        "problems": [
+          {
+            "path": "runtime config",
+            "message": "runtime config must be an object"
+          },
+          {
+            "path": "services.iam.url",
+            "message": "services.iam.url is missing"
+          },
+          {
+            "path": "services.payments.url",
+            "message": "services.payments.url is missing"
+          }
+        ],
+        "error": "invalid runtime config: runtime config must be an object; services.iam.url is missing; services.payments.url is missing"
+      }
+    },
+    {
+      "name": "every problem at once, in path order",
+      "model": "server",
+      "from": "value",
+      "input": {
+        "rules": {
+          "ouput": "off",
+          "output": "loud"
+        },
+        "services": {
+          "iam": {
+            "url": "iam:3001"
+          },
+          "cards": {
+            "url": "http://c"
+          }
+        },
+        "extra": 1
+      },
+      "expect": {
+        "problems": [
+          {
+            "path": "extra",
+            "message": "extra is not a setting"
+          },
+          {
+            "path": "rules.ouput",
+            "message": "rules.ouput is not a setting"
+          },
+          {
+            "path": "rules.output",
+            "message": "rules.output must be \"strict\", \"audit\" or \"off\""
+          },
+          {
+            "path": "services.cards",
+            "message": "services.cards is not a setting"
+          },
+          {
+            "path": "services.iam.url",
+            "message": "services.iam.url must be an http or https URL"
+          },
+          {
+            "path": "services.payments.url",
+            "message": "services.payments.url is missing"
+          }
+        ],
+        "error": "invalid runtime config: extra is not a setting; rules.ouput is not a setting; rules.output must be \"strict\", \"audit\" or \"off\"; services.cards is not a setting; services.iam.url must be an http or https URL; services.payments.url is missing"
+      }
+    },
+    {
+      "name": "a client with both urls",
+      "model": "client",
+      "from": "value",
+      "input": {
+        "services": {
+          "bookings": {
+            "url": "http://b/"
+          },
+          "iam": {
+            "url": "http://i"
+          }
+        }
+      },
+      "expect": {
+        "values": {
+          "services.bookings.url": "http://b",
+          "services.iam.url": "http://i"
+        }
+      }
+    },
+    {
+      "name": "a client has no rules section",
+      "model": "client",
+      "from": "value",
+      "input": {
+        "rules": {
+          "output": "off"
+        },
+        "services": {
+          "bookings": {
+            "url": "http://b"
+          },
+          "iam": {
+            "url": "http://i"
+          }
+        }
+      },
+      "expect": {
+        "problems": [
+          {
+            "path": "rules",
+            "message": "rules is not a setting"
+          }
+        ],
+        "error": "invalid runtime config: rules is not a setting"
+      }
+    },
+    {
+      "name": "a client with one url missing",
+      "model": "client",
+      "from": "value",
+      "input": {
+        "services": {
+          "iam": {
+            "url": "http://i"
+          }
+        }
+      },
+      "expect": {
+        "problems": [
+          {
+            "path": "services.bookings.url",
+            "message": "services.bookings.url is missing"
+          }
+        ],
+        "error": "invalid runtime config: services.bookings.url is missing"
+      }
+    },
+    {
+      "name": "a dash sorts before a dot",
+      "model": "ordering",
+      "from": "value",
+      "input": {},
+      "expect": {
+        "problems": [
+          {
+            "path": "services.a-b.url",
+            "message": "services.a-b.url is missing"
+          },
+          {
+            "path": "services.a.url",
+            "message": "services.a.url is missing"
+          }
+        ],
+        "error": "invalid runtime config: services.a-b.url is missing; services.a.url is missing"
+      }
+    },
+    {
+      "name": "a dash sorts before a dot, values",
+      "model": "ordering",
+      "from": "value",
+      "input": {
+        "services": {
+          "a": {
+            "url": "http://a"
+          },
+          "a-b": {
+            "url": "http://ab"
+          }
+        }
+      },
+      "expect": {
+        "values": {
+          "services.a-b.url": "http://ab",
+          "services.a.url": "http://a"
+        }
+      }
+    },
+    {
+      "name": "only the optional setting, absent",
+      "model": "rules_only",
+      "from": "value",
+      "input": {},
+      "expect": {
+        "values": {
+          "rules.output": "strict"
+        }
+      }
+    },
+    {
+      "name": "only the optional setting, set",
+      "model": "rules_only",
+      "from": "value",
+      "input": {
+        "rules": {
+          "output": "off"
+        }
+      },
+      "expect": {
+        "values": {
+          "rules.output": "off"
+        }
+      }
+    },
+    {
+      "name": "a flat map",
+      "model": "server",
+      "from": "map",
+      "input": {
+        "services.iam.url": "http://i/",
+        "services.payments.url": "http://p",
+        "rules.output": "audit"
+      },
+      "expect": {
+        "values": {
+          "rules.output": "audit",
+          "services.iam.url": "http://i",
+          "services.payments.url": "http://p"
+        }
+      }
+    },
+    {
+      "name": "a flat map without the optional path",
+      "model": "server",
+      "from": "map",
+      "input": {
+        "services.iam.url": "http://i",
+        "services.payments.url": "http://p"
+      },
+      "expect": {
+        "values": {
+          "rules.output": "strict",
+          "services.iam.url": "http://i",
+          "services.payments.url": "http://p"
+        }
+      }
+    },
+    {
+      "name": "a flat map with problems",
+      "model": "server",
+      "from": "map",
+      "input": {
+        "services.iam.url": "nope",
+        "rules.ouput": "off"
+      },
+      "expect": {
+        "problems": [
+          {
+            "path": "rules.ouput",
+            "message": "rules.ouput is not a setting"
+          },
+          {
+            "path": "services.iam.url",
+            "message": "services.iam.url must be an http or https URL"
+          },
+          {
+            "path": "services.payments.url",
+            "message": "services.payments.url is missing"
+          }
+        ],
+        "error": "invalid runtime config: rules.ouput is not a setting; services.iam.url must be an http or https URL; services.payments.url is missing"
+      }
+    },
+    {
+      "name": "a flat map with an empty required value",
+      "model": "server",
+      "from": "map",
+      "input": {
+        "services.iam.url": "",
+        "services.payments.url": "http://p"
+      },
+      "expect": {
+        "problems": [
+          {
+            "path": "services.iam.url",
+            "message": "services.iam.url is missing"
+          }
+        ],
+        "error": "invalid runtime config: services.iam.url is missing"
+      }
+    },
+    {
+      "name": "a prefix is not a path in a flat map",
+      "model": "server",
+      "from": "map",
+      "input": {
+        "services": "x",
+        "services.iam.url": "http://i",
+        "services.payments.url": "http://p"
+      },
+      "expect": {
+        "problems": [
+          {
+            "path": "services",
+            "message": "services is not a setting"
+          }
+        ],
+        "error": "invalid runtime config: services is not a setting"
+      }
+    },
+    {
+      "name": "fromEnv with every variable",
+      "model": "server",
+      "from": "env",
+      "names": {
+        "services.iam.url": "IAM_URL",
+        "services.payments.url": "PAY_URL",
+        "rules.output": "RULES"
+      },
+      "env": {
+        "IAM_URL": "http://i/",
+        "PAY_URL": "http://p",
+        "RULES": "off"
+      },
+      "expect": {
+        "values": {
+          "rules.output": "off",
+          "services.iam.url": "http://i",
+          "services.payments.url": "http://p"
+        }
+      }
+    },
+    {
+      "name": "fromEnv: the optional variable is not set",
+      "model": "server",
+      "from": "env",
+      "names": {
+        "services.iam.url": "IAM_URL",
+        "services.payments.url": "PAY_URL",
+        "rules.output": "RULES"
+      },
+      "env": {
+        "IAM_URL": "http://i",
+        "PAY_URL": "http://p"
+      },
+      "expect": {
+        "values": {
+          "rules.output": "strict",
+          "services.iam.url": "http://i",
+          "services.payments.url": "http://p"
+        }
+      }
+    },
+    {
+      "name": "fromEnv: the optional variable is empty",
+      "model": "server",
+      "from": "env",
+      "names": {
+        "services.iam.url": "IAM_URL",
+        "services.payments.url": "PAY_URL",
+        "rules.output": "RULES"
+      },
+      "env": {
+        "IAM_URL": "http://i",
+        "PAY_URL": "http://p",
+        "RULES": ""
+      },
+      "expect": {
+        "values": {
+          "rules.output": "strict",
+          "services.iam.url": "http://i",
+          "services.payments.url": "http://p"
+        }
+      }
+    },
+    {
+      "name": "fromEnv: required variables not set",
+      "model": "server",
+      "from": "env",
+      "names": {
+        "services.iam.url": "IAM_URL",
+        "services.payments.url": "PAY_URL",
+        "rules.output": "RULES"
+      },
+      "env": {},
+      "expect": {
+        "problems": [
+          {
+            "path": "services.iam.url",
+            "message": "services.iam.url is missing (environment variable IAM_URL is not set)"
+          },
+          {
+            "path": "services.payments.url",
+            "message": "services.payments.url is missing (environment variable PAY_URL is not set)"
+          }
+        ],
+        "error": "invalid runtime config: services.iam.url is missing (environment variable IAM_URL is not set); services.payments.url is missing (environment variable PAY_URL is not set)"
+      }
+    },
+    {
+      "name": "fromEnv: an empty variable counts as not set",
+      "model": "server",
+      "from": "env",
+      "names": {
+        "services.iam.url": "IAM_URL",
+        "services.payments.url": "PAY_URL",
+        "rules.output": "RULES"
+      },
+      "env": {
+        "IAM_URL": "",
+        "PAY_URL": "http://p"
+      },
+      "expect": {
+        "problems": [
+          {
+            "path": "services.iam.url",
+            "message": "services.iam.url is missing (environment variable IAM_URL is not set)"
+          }
+        ],
+        "error": "invalid runtime config: services.iam.url is missing (environment variable IAM_URL is not set)"
+      }
+    },
+    {
+      "name": "fromEnv: what the variable holds is checked",
+      "model": "server",
+      "from": "env",
+      "names": {
+        "services.iam.url": "IAM_URL",
+        "services.payments.url": "PAY_URL",
+        "rules.output": "RULES"
+      },
+      "env": {
+        "IAM_URL": "iam",
+        "PAY_URL": "http://p",
+        "RULES": "loud"
+      },
+      "expect": {
+        "problems": [
+          {
+            "path": "rules.output",
+            "message": "rules.output must be \"strict\", \"audit\" or \"off\""
+          },
+          {
+            "path": "services.iam.url",
+            "message": "services.iam.url must be an http or https URL"
+          }
+        ],
+        "error": "invalid runtime config: rules.output must be \"strict\", \"audit\" or \"off\"; services.iam.url must be an http or https URL"
+      }
+    },
+    {
+      "name": "fromEnv: a path that is not a setting",
+      "model": "server",
+      "from": "env",
+      "names": {
+        "services.iam.url": "IAM_URL",
+        "services.payments.url": "PAY_URL",
+        "rules.output": "RULES",
+        "rules.ouput": "TYPO"
+      },
+      "env": {
+        "IAM_URL": "http://i",
+        "PAY_URL": "http://p"
+      },
+      "expect": {
+        "problems": [
+          {
+            "path": "rules.ouput",
+            "message": "rules.ouput is not a setting"
+          }
+        ],
+        "error": "invalid runtime config: rules.ouput is not a setting"
+      }
+    },
+    {
+      "name": "fromEnv: a required path without a name",
+      "model": "server",
+      "from": "env",
+      "names": {
+        "services.iam.url": "IAM_URL"
+      },
+      "env": {
+        "IAM_URL": "http://i"
+      },
+      "expect": {
+        "problems": [
+          {
+            "path": "services.payments.url",
+            "message": "services.payments.url is missing"
+          }
+        ],
+        "error": "invalid runtime config: services.payments.url is missing"
+      }
+    },
+    {
+      "name": "fromEnv: a client",
+      "model": "client",
+      "from": "env",
+      "names": {
+        "services.bookings.url": "B",
+        "services.iam.url": "I"
+      },
+      "env": {
+        "B": "http://b",
+        "I": "http://i/"
+      },
+      "expect": {
+        "values": {
+          "services.bookings.url": "http://b",
+          "services.iam.url": "http://i"
+        }
+      }
+    }
+  ]
+}

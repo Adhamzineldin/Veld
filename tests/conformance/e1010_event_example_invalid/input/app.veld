@@ -1,0 +1,38 @@
+event Paid { id: uuid }
+model Plain { a: int }
+channel A { carries Paid }
+channel B { carries Paid }
+channel Other { carries Paid }
+
+service Publisher { publishes A, B }
+
+service Consumer {
+  subscribes A as "g" { on Paid -> handle }
+}
+
+example "two channels carry it and none is named" {
+  given event Paid { }
+  expect Consumer.handle called
+}
+
+example "no such handler" {
+  given event Paid { } on A
+  expect Consumer.nope called
+}
+
+example "rejected with a call" {
+  given event Paid { } on A
+  expect rejected
+  expect Consumer.handle called
+}
+
+example "not an event" {
+  given event Plain { } on A
+  expect rejected
+}
+
+example "a handler named twice" {
+  given event Paid { } on A
+  expect Consumer.handle called
+  expect Consumer.handle not called
+}

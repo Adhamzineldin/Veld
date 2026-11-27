@@ -1,0 +1,32 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0921]: `RoomFull` is not one of the errors of endpoint `create`
+ --> app/app.veld:10:34
+   |
+10 |     require body.guests > 0 else RoomFull { capacity: 1 }
+   |                                  ^^^^^^^^
+  = help: add it to the responses (`-> ... | RoomFull`); declared: RoomClosed, ValidationError, Internal
+
+error[E0921]: `Status` is not an error
+ --> app/app.veld:11:34
+   |
+11 |     require body.guests > 1 else Status
+   |                                  ^^^^^^
+
+error[E0921]: `Booking` is not an error
+ --> app/app.veld:12:34
+   |
+12 |     require body.guests > 2 else Booking
+   |                                  ^^^^^^^
+
+error[E0921]: `Unauthorized` is not one of the errors of endpoint `create`
+ --> app/app.veld:14:34
+   |
+14 |     require body.guests > 4 else Unauthorized
+   |                                  ^^^^^^^^^^^^
+  = help: add it to the responses (`-> ... | Unauthorized`); declared: RoomClosed, ValidationError, Internal
+
+== ir ==
+(no IR: compilation failed)

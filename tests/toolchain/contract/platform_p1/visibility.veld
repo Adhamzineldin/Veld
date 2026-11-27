@@ -1,0 +1,67 @@
+// Field visibility (spec/platform.md section 2), the contract of the shared toolchain tests of
+// the Node, Java and Rust servers. Every endpoint says which case it is for.
+
+model User {
+  id: uuid
+  roles: string[]
+}
+
+principal User
+
+model Guest {
+  id: uuid
+  name: string
+  // A field of a model that is nested in another: hidden for one caller, present for another.
+  phone?: string @visible(when: user.id == id || "support" in user.roles)
+}
+
+model Booking {
+  id: uuid
+  guest: Guest
+  divisor: int = 1
+  opensAt: datetime
+  // Only support sees it.
+  note?: string @visible(when: "support" in user.roles)
+  // An expression that cannot be evaluated (a division by zero) hides the field, for everyone.
+  ratio?: string @visible(when: 10 / divisor > 1)
+  // The clock of the request: hidden before the opening time, shown from it on.
+  early?: string @visible(when: now >= opensAt)
+}
+
+error Refused 409 {
+  reason: string
+  // The data of a declared error is filtered too.
+  who?: string @visible(when: "support" in user.roles)
+}
+
+@auth(bearer)
+service Desk at "/desk" {
+  // One value: the guest's own phone is there for the guest, not for another caller.
+  get "/{id}" getBooking(id: uuid) -> Booking
+
+  // A list: each element is judged for the caller, and `hidden` of the audit names the index.
+  get "/" listBookings() -> Booking[]
+
+  // A page: each item of `items` is judged for the caller.
+  get "/page" pageBookings() -> Page<Booking>
+
+  // An `ensure` sees the whole value, the field that visibility then drops.
+  get "/checked/{id}" checkedBooking(id: uuid) -> Booking {
+    ensure has(result.note) message "a booking always has a note"
+  }
+
+  // A declared error: its `who` is judged for the caller.
+  post "/{id}/cancel" cancelBooking(id: uuid) -> Booking | Refused {
+    fact booking: Booking = id
+    require booking.divisor > 0 else Refused { reason: "closed", who: "front desk" }
+  }
+
+  // A stream item is judged for the caller too.
+  get "/live" liveBookings() -> stream Booking
+}
+
+// A service whose endpoints have no caller: every `@visible` field is dropped.
+@auth(none)
+service Notices at "/notices" {
+  get "/{id}" publicBooking(id: uuid) -> Booking
+}

@@ -26,7 +26,7 @@ const metas = import.meta.glob('./presets/*/preset.json', { import: 'default', e
   PresetMeta
 >;
 
-const ORDER = ['hello', 'microservices', 'library-package', 'streaming', 'errors'];
+const ORDER = ['hello', 'bookings', 'microservices', 'library-package', 'streaming', 'errors'];
 
 function load(): Preset[] {
   const presets: Preset[] = [];

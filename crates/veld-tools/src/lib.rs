@@ -4,18 +4,35 @@
 //! Every tool is a pure function over source text or the IR. None of them
 //! touches the file system.
 
+pub mod asyncapi;
 pub mod deps;
 pub mod diff;
 pub mod fmt;
 pub mod gate;
 pub mod lint;
 pub mod openapi;
+mod retention_export;
+pub mod rulebook;
+pub mod runtime_schema;
+pub mod slo;
+mod timed;
 
-pub use deps::{DepGraph, DepsFormat, deps};
-pub use diff::{Change, ChangeKind, Severity, diff, has_breaking};
+pub use asyncapi::{NoChannels, asyncapi};
+pub use deps::{DepGraph, DepsFormat, deps, deps_with_owners};
+pub use diff::{
+    Change, ChangeKind, ChangedRule, RuleSite, Severity, changed_rules, diff, has_breaking,
+};
 pub use fmt::format;
 pub use gate::{GateDecision, GatePolicy, GateResult, breaking_gate};
 pub use openapi::openapi;
+pub use retention_export::retention_report;
+pub use rulebook::{NO_RULES, rule_book};
+pub use runtime_schema::runtime_schema;
+pub use slo::openslo;
+pub use timed::{TimedMove, timed_line, timed_moves};
+
+#[cfg(test)]
+mod retention_export_tests;
 
 #[cfg(test)]
 pub(crate) mod testutil {

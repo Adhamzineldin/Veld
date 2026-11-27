@@ -1,0 +1,22 @@
+[package]
+name = "version-harness"
+version = "0.0.0"
+edition = "2021"
+publish = false
+default-run = "version-harness"
+
+[[bin]]
+name = "version-harness"
+path = "src/main.rs"
+
+[[bin]]
+name = "version-serve"
+path = "src/bin/serve.rs"
+
+[dependencies]
+rooms-server = { path = "../server" }
+rooms-client = { path = "../client" }
+axum = "0.8"
+reqwest = "0.13"
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time"] }

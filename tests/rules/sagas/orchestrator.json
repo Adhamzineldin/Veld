@@ -1,0 +1,3130 @@
+[
+  {
+    "name": "every step succeeds",
+    "endpoint": "Checkout.checkout",
+    "id": "k-1",
+    "params": {
+      "body": {
+        "roomId": "r-1",
+        "amount": 100
+      }
+    },
+    "script": {
+      "steps": {
+        "hold": [
+          {
+            "kind": "ok",
+            "value": {
+              "id": "h-1",
+              "bookingId": "b-1"
+            }
+          }
+        ],
+        "charge": [
+          {
+            "kind": "ok",
+            "value": {
+              "id": "c-1"
+            }
+          }
+        ],
+        "confirm": [
+          {
+            "kind": "ok",
+            "value": {
+              "id": "b-1"
+            }
+          }
+        ]
+      }
+    },
+    "expect": {
+      "status": "completed",
+      "answer": {
+        "status": 201,
+        "error": null,
+        "body": {
+          "id": "b-1"
+        }
+      },
+      "calls": [
+        {
+          "phase": "step",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "hold",
+          "key": "k-1.hold",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "roomId": "r-1"
+            }
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "step",
+          "step": "charge",
+          "service": "Payments",
+          "endpoint": "charge",
+          "key": "k-1.charge",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "amount": 100
+            }
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "step",
+          "step": "confirm",
+          "service": "Bookings",
+          "endpoint": "confirm",
+          "key": "k-1.confirm",
+          "attempt": 1,
+          "args": {
+            "id": "b-1"
+          },
+          "at_ms": 0
+        }
+      ],
+      "compensated": [],
+      "save_statuses": [
+        "running",
+        "running",
+        "running",
+        "completed"
+      ],
+      "step_statuses": {
+        "hold": "done",
+        "charge": "done",
+        "confirm": "done"
+      }
+    }
+  },
+  {
+    "name": "the first step is refused: there is nothing to undo",
+    "endpoint": "Checkout.checkout",
+    "id": "k-1",
+    "params": {
+      "body": {
+        "roomId": "r-1",
+        "amount": 100
+      }
+    },
+    "script": {
+      "steps": {
+        "hold": [
+          {
+            "kind": "error",
+            "decl": "RoomFull",
+            "data": {
+              "capacity": 2
+            }
+          }
+        ]
+      }
+    },
+    "expect": {
+      "status": "compensated",
+      "answer": {
+        "status": 409,
+        "error": "RoomFull",
+        "body": {
+          "capacity": 2
+        }
+      },
+      "calls": [
+        {
+          "phase": "step",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "hold",
+          "key": "k-1.hold",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "roomId": "r-1"
+            }
+          },
+          "at_ms": 0
+        }
+      ],
+      "compensated": [],
+      "save_statuses": [
+        "running",
+        "compensating",
+        "compensated"
+      ],
+      "step_statuses": {
+        "hold": "failed",
+        "charge": "pending",
+        "confirm": "pending"
+      }
+    }
+  },
+  {
+    "name": "the second step is refused: the first is undone",
+    "endpoint": "Checkout.checkout",
+    "id": "k-1",
+    "params": {
+      "body": {
+        "roomId": "r-1",
+        "amount": 100
+      }
+    },
+    "script": {
+      "steps": {
+        "hold": [
+          {
+            "kind": "ok",
+            "value": {
+              "id": "h-1",
+              "bookingId": "b-1"
+            }
+          }
+        ],
+        "charge": [
+          {
+            "kind": "error",
+            "decl": "PaymentDeclined",
+            "data": {
+              "reason": "funds"
+            }
+          }
+        ]
+      }
+    },
+    "expect": {
+      "status": "compensated",
+      "answer": {
+        "status": 402,
+        "error": "PaymentDeclined",
+        "body": {
+          "reason": "funds"
+        }
+      },
+      "calls": [
+        {
+          "phase": "step",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "hold",
+          "key": "k-1.hold",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "roomId": "r-1"
+            }
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "step",
+          "step": "charge",
+          "service": "Payments",
+          "endpoint": "charge",
+          "key": "k-1.charge",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "amount": 100
+            }
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "undo",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "release",
+          "key": "k-1.hold.undo",
+          "attempt": 1,
+          "args": {
+            "id": "h-1"
+          },
+          "at_ms": 0
+        }
+      ],
+      "compensated": [
+        "hold"
+      ],
+      "save_statuses": [
+        "running",
+        "running",
+        "compensating",
+        "compensating",
+        "compensated"
+      ],
+      "step_statuses": {
+        "hold": "undone",
+        "charge": "failed",
+        "confirm": "pending"
+      }
+    }
+  },
+  {
+    "name": "the last step is refused with an error the saga does not declare: both steps are undone in reverse order",
+    "endpoint": "Checkout.checkout",
+    "id": "k-1",
+    "params": {
+      "body": {
+        "roomId": "r-1",
+        "amount": 100
+      }
+    },
+    "script": {
+      "steps": {
+        "hold": [
+          {
+            "kind": "ok",
+            "value": {
+              "id": "h-1",
+              "bookingId": "b-1"
+            }
+          }
+        ],
+        "charge": [
+          {
+            "kind": "ok",
+            "value": {
+              "id": "c-1"
+            }
+          }
+        ],
+        "confirm": [
+          {
+            "kind": "error",
+            "decl": "NotFound",
+            "data": {}
+          }
+        ]
+      }
+    },
+    "expect": {
+      "status": "compensated",
+      "answer": {
+        "status": 502,
+        "error": "SagaFailed",
+        "body": {
+          "step": "confirm",
+          "compensated": true
+        }
+      },
+      "calls": [
+        {
+          "phase": "step",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "hold",
+          "key": "k-1.hold",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "roomId": "r-1"
+            }
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "step",
+          "step": "charge",
+          "service": "Payments",
+          "endpoint": "charge",
+          "key": "k-1.charge",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "amount": 100
+            }
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "step",
+          "step": "confirm",
+          "service": "Bookings",
+          "endpoint": "confirm",
+          "key": "k-1.confirm",
+          "attempt": 1,
+          "args": {
+            "id": "b-1"
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "undo",
+          "step": "charge",
+          "service": "Payments",
+          "endpoint": "refund",
+          "key": "k-1.charge.undo",
+          "attempt": 1,
+          "args": {
+            "id": "c-1"
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "undo",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "release",
+          "key": "k-1.hold.undo",
+          "attempt": 1,
+          "args": {
+            "id": "h-1"
+          },
+          "at_ms": 0
+        }
+      ],
+      "compensated": [
+        "charge",
+        "hold"
+      ],
+      "save_statuses": [
+        "running",
+        "running",
+        "running",
+        "compensating",
+        "compensating",
+        "compensating",
+        "compensated"
+      ],
+      "step_statuses": {
+        "hold": "undone",
+        "charge": "undone",
+        "confirm": "failed"
+      }
+    }
+  },
+  {
+    "name": "a step without a compensation is skipped",
+    "endpoint": "Checkout.review",
+    "id": "k-1",
+    "params": {
+      "body": {
+        "roomId": "r-1",
+        "amount": 100
+      }
+    },
+    "script": {
+      "steps": {
+        "a": [
+          {
+            "kind": "ok",
+            "value": {
+              "id": "a-1",
+              "bookingId": "bk-1"
+            }
+          }
+        ],
+        "b": [
+          {
+            "kind": "ok",
+            "value": {
+              "id": "ch-1"
+            }
+          }
+        ],
+        "c": [
+          {
+            "kind": "ok",
+            "value": {
+              "id": "c-1",
+              "bookingId": "bk-2"
+            }
+          }
+        ],
+        "d": [
+          {
+            "kind": "error",
+            "decl": "NotFound",
+            "data": {}
+          }
+        ]
+      }
+    },
+    "expect": {
+      "status": "compensated",
+      "answer": {
+        "status": 502,
+        "error": "SagaFailed",
+        "body": {
+          "step": "d",
+          "compensated": true
+        }
+      },
+      "calls": [
+        {
+          "phase": "step",
+          "step": "a",
+          "service": "Rooms",
+          "endpoint": "hold",
+          "key": "k-1.a",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "roomId": "r-1"
+            }
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "step",
+          "step": "b",
+          "service": "Payments",
+          "endpoint": "charge",
+          "key": "k-1.b",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "amount": 100
+            }
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "step",
+          "step": "c",
+          "service": "Rooms",
+          "endpoint": "hold",
+          "key": "k-1.c",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "roomId": "r-1"
+            }
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "step",
+          "step": "d",
+          "service": "Bookings",
+          "endpoint": "confirm",
+          "key": "k-1.d",
+          "attempt": 1,
+          "args": {
+            "id": "c-1"
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "undo",
+          "step": "c",
+          "service": "Rooms",
+          "endpoint": "release",
+          "key": "k-1.c.undo",
+          "attempt": 1,
+          "args": {
+            "id": "c-1"
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "undo",
+          "step": "a",
+          "service": "Rooms",
+          "endpoint": "release",
+          "key": "k-1.a.undo",
+          "attempt": 1,
+          "args": {
+            "id": "a-1"
+          },
+          "at_ms": 0
+        }
+      ],
+      "compensated": [
+        "c",
+        "a"
+      ],
+      "save_statuses": [
+        "running",
+        "running",
+        "running",
+        "running",
+        "compensating",
+        "compensating",
+        "compensating",
+        "compensated"
+      ],
+      "step_statuses": {
+        "a": "undone",
+        "b": "done",
+        "c": "undone",
+        "d": "failed"
+      }
+    }
+  },
+  {
+    "name": "a call that does not answer is made again with the same key, after 200 ms and then twice as long",
+    "endpoint": "Checkout.checkout",
+    "id": "k-1",
+    "params": {
+      "body": {
+        "roomId": "r-1",
+        "amount": 100
+      }
+    },
+    "script": {
+      "steps": {
+        "hold": [
+          {
+            "kind": "none"
+          },
+          {
+            "kind": "none"
+          },
+          {
+            "kind": "none"
+          },
+          {
+            "kind": "ok",
+            "value": {
+              "id": "h-1",
+              "bookingId": "b-1"
+            }
+          }
+        ],
+        "charge": [
+          {
+            "kind": "ok",
+            "value": {
+              "id": "c-1"
+            }
+          }
+        ],
+        "confirm": [
+          {
+            "kind": "ok",
+            "value": {
+              "id": "b-1"
+            }
+          }
+        ]
+      }
+    },
+    "expect": {
+      "status": "completed",
+      "answer": {
+        "status": 201,
+        "error": null,
+        "body": {
+          "id": "b-1"
+        }
+      },
+      "calls": [
+        {
+          "phase": "step",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "hold",
+          "key": "k-1.hold",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "roomId": "r-1"
+            }
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "step",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "hold",
+          "key": "k-1.hold",
+          "attempt": 2,
+          "args": {
+            "body": {
+              "roomId": "r-1"
+            }
+          },
+          "at_ms": 200
+        },
+        {
+          "phase": "step",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "hold",
+          "key": "k-1.hold",
+          "attempt": 3,
+          "args": {
+            "body": {
+              "roomId": "r-1"
+            }
+          },
+          "at_ms": 600
+        },
+        {
+          "phase": "step",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "hold",
+          "key": "k-1.hold",
+          "attempt": 4,
+          "args": {
+            "body": {
+              "roomId": "r-1"
+            }
+          },
+          "at_ms": 1400
+        },
+        {
+          "phase": "step",
+          "step": "charge",
+          "service": "Payments",
+          "endpoint": "charge",
+          "key": "k-1.charge",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "amount": 100
+            }
+          },
+          "at_ms": 1400
+        },
+        {
+          "phase": "step",
+          "step": "confirm",
+          "service": "Bookings",
+          "endpoint": "confirm",
+          "key": "k-1.confirm",
+          "attempt": 1,
+          "args": {
+            "id": "b-1"
+          },
+          "at_ms": 1400
+        }
+      ],
+      "compensated": []
+    }
+  },
+  {
+    "name": "a 5xx is no answer",
+    "endpoint": "Checkout.checkout",
+    "id": "k-1",
+    "params": {
+      "body": {
+        "roomId": "r-1",
+        "amount": 100
+      }
+    },
+    "script": {
+      "steps": {
+        "hold": [
+          {
+            "kind": "ok",
+            "value": {
+              "id": "h-1",
+              "bookingId": "b-1"
+            }
+          }
+        ],
+        "charge": [
+          {
+            "kind": "error",
+            "decl": "Internal",
+            "data": {},
+            "status": 500
+          },
+          {
+            "kind": "ok",
+            "value": {
+              "id": "c-1"
+            }
+          }
+        ],
+        "confirm": [
+          {
+            "kind": "ok",
+            "value": {
+              "id": "b-1"
+            }
+          }
+        ]
+      }
+    },
+    "expect": {
+      "status": "completed",
+      "answer": {
+        "status": 201,
+        "error": null,
+        "body": {
+          "id": "b-1"
+        }
+      },
+      "calls": [
+        {
+          "phase": "step",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "hold",
+          "key": "k-1.hold",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "roomId": "r-1"
+            }
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "step",
+          "step": "charge",
+          "service": "Payments",
+          "endpoint": "charge",
+          "key": "k-1.charge",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "amount": 100
+            }
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "step",
+          "step": "charge",
+          "service": "Payments",
+          "endpoint": "charge",
+          "key": "k-1.charge",
+          "attempt": 2,
+          "args": {
+            "body": {
+              "amount": 100
+            }
+          },
+          "at_ms": 200
+        },
+        {
+          "phase": "step",
+          "step": "confirm",
+          "service": "Bookings",
+          "endpoint": "confirm",
+          "key": "k-1.confirm",
+          "attempt": 1,
+          "args": {
+            "id": "b-1"
+          },
+          "at_ms": 200
+        }
+      ],
+      "compensated": []
+    }
+  },
+  {
+    "name": "a call that never answers: the deadline passes, learning gets no answer either, the saga is stuck",
+    "endpoint": "Checkout.checkout",
+    "id": "k-1",
+    "params": {
+      "body": {
+        "roomId": "r-1",
+        "amount": 100
+      }
+    },
+    "script": {
+      "steps": {
+        "hold": [
+          {
+            "kind": "ok",
+            "value": {
+              "id": "h-1",
+              "bookingId": "b-1"
+            }
+          }
+        ],
+        "charge": [
+          {
+            "kind": "ok",
+            "value": {
+              "id": "c-1"
+            }
+          }
+        ],
+        "confirm": [
+          {
+            "kind": "none"
+          }
+        ]
+      }
+    },
+    "expect": {
+      "status": "stuck",
+      "answer": {
+        "status": 502,
+        "error": "SagaFailed",
+        "body": {
+          "step": "confirm",
+          "compensated": false
+        }
+      },
+      "calls": [
+        {
+          "phase": "step",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "hold",
+          "key": "k-1.hold",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "roomId": "r-1"
+            }
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "step",
+          "step": "charge",
+          "service": "Payments",
+          "endpoint": "charge",
+          "key": "k-1.charge",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "amount": 100
+            }
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "step",
+          "step": "confirm",
+          "service": "Bookings",
+          "endpoint": "confirm",
+          "key": "k-1.confirm",
+          "attempt": 1,
+          "args": {
+            "id": "b-1"
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "step",
+          "step": "confirm",
+          "service": "Bookings",
+          "endpoint": "confirm",
+          "key": "k-1.confirm",
+          "attempt": 2,
+          "args": {
+            "id": "b-1"
+          },
+          "at_ms": 200
+        },
+        {
+          "phase": "step",
+          "step": "confirm",
+          "service": "Bookings",
+          "endpoint": "confirm",
+          "key": "k-1.confirm",
+          "attempt": 3,
+          "args": {
+            "id": "b-1"
+          },
+          "at_ms": 600
+        },
+        {
+          "phase": "step",
+          "step": "confirm",
+          "service": "Bookings",
+          "endpoint": "confirm",
+          "key": "k-1.confirm",
+          "attempt": 4,
+          "args": {
+            "id": "b-1"
+          },
+          "at_ms": 1400
+        },
+        {
+          "phase": "step",
+          "step": "confirm",
+          "service": "Bookings",
+          "endpoint": "confirm",
+          "key": "k-1.confirm",
+          "attempt": 5,
+          "args": {
+            "id": "b-1"
+          },
+          "at_ms": 3000
+        },
+        {
+          "phase": "step",
+          "step": "confirm",
+          "service": "Bookings",
+          "endpoint": "confirm",
+          "key": "k-1.confirm",
+          "attempt": 6,
+          "args": {
+            "id": "b-1"
+          },
+          "at_ms": 6200
+        },
+        {
+          "phase": "step",
+          "step": "confirm",
+          "service": "Bookings",
+          "endpoint": "confirm",
+          "key": "k-1.confirm",
+          "attempt": 7,
+          "args": {
+            "id": "b-1"
+          },
+          "at_ms": 11200
+        },
+        {
+          "phase": "step",
+          "step": "confirm",
+          "service": "Bookings",
+          "endpoint": "confirm",
+          "key": "k-1.confirm",
+          "attempt": 8,
+          "args": {
+            "id": "b-1"
+          },
+          "at_ms": 16200
+        },
+        {
+          "phase": "step",
+          "step": "confirm",
+          "service": "Bookings",
+          "endpoint": "confirm",
+          "key": "k-1.confirm",
+          "attempt": 9,
+          "args": {
+            "id": "b-1"
+          },
+          "at_ms": 21200
+        },
+        {
+          "phase": "step",
+          "step": "confirm",
+          "service": "Bookings",
+          "endpoint": "confirm",
+          "key": "k-1.confirm",
+          "attempt": 10,
+          "args": {
+            "id": "b-1"
+          },
+          "at_ms": 26200
+        },
+        {
+          "phase": "learn",
+          "step": "confirm",
+          "service": "Bookings",
+          "endpoint": "confirm",
+          "key": "k-1.confirm",
+          "attempt": 11,
+          "args": {
+            "id": "b-1"
+          },
+          "at_ms": 31200
+        },
+        {
+          "phase": "learn",
+          "step": "confirm",
+          "service": "Bookings",
+          "endpoint": "confirm",
+          "key": "k-1.confirm",
+          "attempt": 12,
+          "args": {
+            "id": "b-1"
+          },
+          "at_ms": 31400
+        },
+        {
+          "phase": "learn",
+          "step": "confirm",
+          "service": "Bookings",
+          "endpoint": "confirm",
+          "key": "k-1.confirm",
+          "attempt": 13,
+          "args": {
+            "id": "b-1"
+          },
+          "at_ms": 31800
+        },
+        {
+          "phase": "learn",
+          "step": "confirm",
+          "service": "Bookings",
+          "endpoint": "confirm",
+          "key": "k-1.confirm",
+          "attempt": 14,
+          "args": {
+            "id": "b-1"
+          },
+          "at_ms": 32600
+        },
+        {
+          "phase": "learn",
+          "step": "confirm",
+          "service": "Bookings",
+          "endpoint": "confirm",
+          "key": "k-1.confirm",
+          "attempt": 15,
+          "args": {
+            "id": "b-1"
+          },
+          "at_ms": 34200
+        },
+        {
+          "phase": "learn",
+          "step": "confirm",
+          "service": "Bookings",
+          "endpoint": "confirm",
+          "key": "k-1.confirm",
+          "attempt": 16,
+          "args": {
+            "id": "b-1"
+          },
+          "at_ms": 37400
+        },
+        {
+          "phase": "learn",
+          "step": "confirm",
+          "service": "Bookings",
+          "endpoint": "confirm",
+          "key": "k-1.confirm",
+          "attempt": 17,
+          "args": {
+            "id": "b-1"
+          },
+          "at_ms": 42400
+        },
+        {
+          "phase": "learn",
+          "step": "confirm",
+          "service": "Bookings",
+          "endpoint": "confirm",
+          "key": "k-1.confirm",
+          "attempt": 18,
+          "args": {
+            "id": "b-1"
+          },
+          "at_ms": 47400
+        },
+        {
+          "phase": "learn",
+          "step": "confirm",
+          "service": "Bookings",
+          "endpoint": "confirm",
+          "key": "k-1.confirm",
+          "attempt": 19,
+          "args": {
+            "id": "b-1"
+          },
+          "at_ms": 52400
+        },
+        {
+          "phase": "learn",
+          "step": "confirm",
+          "service": "Bookings",
+          "endpoint": "confirm",
+          "key": "k-1.confirm",
+          "attempt": 20,
+          "args": {
+            "id": "b-1"
+          },
+          "at_ms": 57400
+        }
+      ],
+      "compensated": [],
+      "stuck_hook": true,
+      "save_statuses": [
+        "running",
+        "running",
+        "running",
+        "compensating",
+        "stuck"
+      ],
+      "step_statuses": {
+        "hold": "done",
+        "charge": "done",
+        "confirm": "unknown"
+      }
+    }
+  },
+  {
+    "name": "an unanswered step that turns out to have succeeded is undone",
+    "endpoint": "Checkout.quick",
+    "id": "k-1",
+    "params": {
+      "body": {
+        "roomId": "r-1",
+        "amount": 100
+      }
+    },
+    "script": {
+      "steps": {
+        "hold": [
+          {
+            "kind": "ok",
+            "value": {
+              "id": "h-1",
+              "bookingId": "b-1"
+            }
+          }
+        ],
+        "confirm": [
+          {
+            "kind": "none"
+          },
+          {
+            "kind": "none"
+          },
+          {
+            "kind": "none"
+          },
+          {
+            "kind": "ok",
+            "value": {
+              "id": "b-1"
+            }
+          }
+        ]
+      }
+    },
+    "expect": {
+      "status": "compensated",
+      "answer": {
+        "status": 502,
+        "error": "SagaFailed",
+        "body": {
+          "step": "confirm",
+          "compensated": true
+        }
+      },
+      "calls": [
+        {
+          "phase": "step",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "hold",
+          "key": "k-1.hold",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "roomId": "r-1"
+            }
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "step",
+          "step": "confirm",
+          "service": "Bookings",
+          "endpoint": "confirm",
+          "key": "k-1.confirm",
+          "attempt": 1,
+          "args": {
+            "id": "b-1"
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "step",
+          "step": "confirm",
+          "service": "Bookings",
+          "endpoint": "confirm",
+          "key": "k-1.confirm",
+          "attempt": 2,
+          "args": {
+            "id": "b-1"
+          },
+          "at_ms": 200
+        },
+        {
+          "phase": "step",
+          "step": "confirm",
+          "service": "Bookings",
+          "endpoint": "confirm",
+          "key": "k-1.confirm",
+          "attempt": 3,
+          "args": {
+            "id": "b-1"
+          },
+          "at_ms": 600
+        },
+        {
+          "phase": "learn",
+          "step": "confirm",
+          "service": "Bookings",
+          "endpoint": "confirm",
+          "key": "k-1.confirm",
+          "attempt": 4,
+          "args": {
+            "id": "b-1"
+          },
+          "at_ms": 1400
+        },
+        {
+          "phase": "undo",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "release",
+          "key": "k-1.hold.undo",
+          "attempt": 1,
+          "args": {
+            "id": "h-1"
+          },
+          "at_ms": 1400
+        }
+      ],
+      "compensated": [
+        "hold"
+      ],
+      "save_statuses": [
+        "running",
+        "running",
+        "compensating",
+        "compensating",
+        "compensating",
+        "compensated"
+      ],
+      "step_statuses": {
+        "hold": "undone",
+        "confirm": "done"
+      }
+    }
+  },
+  {
+    "name": "an answer that arrives after the deadline is lost",
+    "endpoint": "Checkout.quick",
+    "id": "k-1",
+    "params": {
+      "body": {
+        "roomId": "r-1",
+        "amount": 100
+      }
+    },
+    "script": {
+      "steps": {
+        "hold": [
+          {
+            "kind": "ok",
+            "value": {
+              "id": "h-1",
+              "bookingId": "b-1"
+            }
+          }
+        ],
+        "confirm": [
+          {
+            "kind": "ok",
+            "value": {
+              "id": "b-1"
+            },
+            "after_ms": 5000
+          },
+          {
+            "kind": "ok",
+            "value": {
+              "id": "b-1"
+            }
+          }
+        ]
+      }
+    },
+    "expect": {
+      "status": "compensated",
+      "answer": {
+        "status": 502,
+        "error": "SagaFailed",
+        "body": {
+          "step": "confirm",
+          "compensated": true
+        }
+      },
+      "calls": [
+        {
+          "phase": "step",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "hold",
+          "key": "k-1.hold",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "roomId": "r-1"
+            }
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "step",
+          "step": "confirm",
+          "service": "Bookings",
+          "endpoint": "confirm",
+          "key": "k-1.confirm",
+          "attempt": 1,
+          "args": {
+            "id": "b-1"
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "learn",
+          "step": "confirm",
+          "service": "Bookings",
+          "endpoint": "confirm",
+          "key": "k-1.confirm",
+          "attempt": 2,
+          "args": {
+            "id": "b-1"
+          },
+          "at_ms": 1000
+        },
+        {
+          "phase": "undo",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "release",
+          "key": "k-1.hold.undo",
+          "attempt": 1,
+          "args": {
+            "id": "h-1"
+          },
+          "at_ms": 1000
+        }
+      ],
+      "compensated": [
+        "hold"
+      ]
+    }
+  },
+  {
+    "name": "an unanswered step whose repeated call gets no answer either ends the saga stuck",
+    "endpoint": "Checkout.quick",
+    "id": "k-1",
+    "params": {
+      "body": {
+        "roomId": "r-1",
+        "amount": 100
+      }
+    },
+    "script": {
+      "steps": {
+        "hold": [
+          {
+            "kind": "ok",
+            "value": {
+              "id": "h-1",
+              "bookingId": "b-1"
+            }
+          }
+        ],
+        "confirm": [
+          {
+            "kind": "none"
+          }
+        ]
+      }
+    },
+    "expect": {
+      "status": "stuck",
+      "answer": {
+        "status": 502,
+        "error": "SagaFailed",
+        "body": {
+          "step": "confirm",
+          "compensated": false
+        }
+      },
+      "calls": [
+        {
+          "phase": "step",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "hold",
+          "key": "k-1.hold",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "roomId": "r-1"
+            }
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "step",
+          "step": "confirm",
+          "service": "Bookings",
+          "endpoint": "confirm",
+          "key": "k-1.confirm",
+          "attempt": 1,
+          "args": {
+            "id": "b-1"
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "step",
+          "step": "confirm",
+          "service": "Bookings",
+          "endpoint": "confirm",
+          "key": "k-1.confirm",
+          "attempt": 2,
+          "args": {
+            "id": "b-1"
+          },
+          "at_ms": 200
+        },
+        {
+          "phase": "step",
+          "step": "confirm",
+          "service": "Bookings",
+          "endpoint": "confirm",
+          "key": "k-1.confirm",
+          "attempt": 3,
+          "args": {
+            "id": "b-1"
+          },
+          "at_ms": 600
+        },
+        {
+          "phase": "learn",
+          "step": "confirm",
+          "service": "Bookings",
+          "endpoint": "confirm",
+          "key": "k-1.confirm",
+          "attempt": 4,
+          "args": {
+            "id": "b-1"
+          },
+          "at_ms": 1400
+        },
+        {
+          "phase": "learn",
+          "step": "confirm",
+          "service": "Bookings",
+          "endpoint": "confirm",
+          "key": "k-1.confirm",
+          "attempt": 5,
+          "args": {
+            "id": "b-1"
+          },
+          "at_ms": 1600
+        },
+        {
+          "phase": "learn",
+          "step": "confirm",
+          "service": "Bookings",
+          "endpoint": "confirm",
+          "key": "k-1.confirm",
+          "attempt": 6,
+          "args": {
+            "id": "b-1"
+          },
+          "at_ms": 2000
+        }
+      ],
+      "compensated": [],
+      "stuck_hook": true,
+      "save_statuses": [
+        "running",
+        "running",
+        "compensating",
+        "stuck"
+      ],
+      "step_statuses": {
+        "hold": "done",
+        "confirm": "unknown"
+      }
+    }
+  },
+  {
+    "name": "a compensation that answers an error ends the saga stuck",
+    "endpoint": "Checkout.checkout",
+    "id": "k-1",
+    "params": {
+      "body": {
+        "roomId": "r-1",
+        "amount": 100
+      }
+    },
+    "script": {
+      "steps": {
+        "hold": [
+          {
+            "kind": "ok",
+            "value": {
+              "id": "h-1",
+              "bookingId": "b-1"
+            }
+          }
+        ],
+        "charge": [
+          {
+            "kind": "error",
+            "decl": "PaymentDeclined",
+            "data": {
+              "reason": "funds"
+            }
+          }
+        ]
+      },
+      "undos": {
+        "hold": [
+          {
+            "kind": "error",
+            "decl": "NotFound",
+            "data": {}
+          }
+        ]
+      }
+    },
+    "expect": {
+      "status": "stuck",
+      "answer": {
+        "status": 502,
+        "error": "SagaFailed",
+        "body": {
+          "step": "charge",
+          "compensated": false
+        }
+      },
+      "calls": [
+        {
+          "phase": "step",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "hold",
+          "key": "k-1.hold",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "roomId": "r-1"
+            }
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "step",
+          "step": "charge",
+          "service": "Payments",
+          "endpoint": "charge",
+          "key": "k-1.charge",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "amount": 100
+            }
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "undo",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "release",
+          "key": "k-1.hold.undo",
+          "attempt": 1,
+          "args": {
+            "id": "h-1"
+          },
+          "at_ms": 0
+        }
+      ],
+      "compensated": [],
+      "stuck_hook": true,
+      "save_statuses": [
+        "running",
+        "running",
+        "compensating",
+        "stuck"
+      ],
+      "step_statuses": {
+        "hold": "done",
+        "charge": "failed"
+      }
+    }
+  },
+  {
+    "name": "a compensation that does not answer is made again",
+    "endpoint": "Checkout.checkout",
+    "id": "k-1",
+    "params": {
+      "body": {
+        "roomId": "r-1",
+        "amount": 100
+      }
+    },
+    "script": {
+      "steps": {
+        "hold": [
+          {
+            "kind": "ok",
+            "value": {
+              "id": "h-1",
+              "bookingId": "b-1"
+            }
+          }
+        ],
+        "charge": [
+          {
+            "kind": "error",
+            "decl": "PaymentDeclined",
+            "data": {
+              "reason": "funds"
+            }
+          }
+        ]
+      },
+      "undos": {
+        "hold": [
+          {
+            "kind": "none"
+          },
+          {
+            "kind": "none"
+          },
+          {
+            "kind": "ok"
+          }
+        ]
+      }
+    },
+    "expect": {
+      "status": "compensated",
+      "answer": {
+        "status": 402,
+        "error": "PaymentDeclined",
+        "body": {
+          "reason": "funds"
+        }
+      },
+      "calls": [
+        {
+          "phase": "step",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "hold",
+          "key": "k-1.hold",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "roomId": "r-1"
+            }
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "step",
+          "step": "charge",
+          "service": "Payments",
+          "endpoint": "charge",
+          "key": "k-1.charge",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "amount": 100
+            }
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "undo",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "release",
+          "key": "k-1.hold.undo",
+          "attempt": 1,
+          "args": {
+            "id": "h-1"
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "undo",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "release",
+          "key": "k-1.hold.undo",
+          "attempt": 2,
+          "args": {
+            "id": "h-1"
+          },
+          "at_ms": 200
+        },
+        {
+          "phase": "undo",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "release",
+          "key": "k-1.hold.undo",
+          "attempt": 3,
+          "args": {
+            "id": "h-1"
+          },
+          "at_ms": 600
+        }
+      ],
+      "compensated": [
+        "hold"
+      ],
+      "save_statuses": [
+        "running",
+        "running",
+        "compensating",
+        "compensating",
+        "compensated"
+      ]
+    }
+  },
+  {
+    "name": "a compensation that never answers ends the saga stuck after the timeout again",
+    "endpoint": "Checkout.checkout",
+    "id": "k-1",
+    "params": {
+      "body": {
+        "roomId": "r-1",
+        "amount": 100
+      }
+    },
+    "script": {
+      "steps": {
+        "hold": [
+          {
+            "kind": "ok",
+            "value": {
+              "id": "h-1",
+              "bookingId": "b-1"
+            }
+          }
+        ],
+        "charge": [
+          {
+            "kind": "error",
+            "decl": "PaymentDeclined",
+            "data": {
+              "reason": "funds"
+            }
+          }
+        ]
+      },
+      "undos": {
+        "hold": [
+          {
+            "kind": "none"
+          }
+        ]
+      }
+    },
+    "expect": {
+      "status": "stuck",
+      "answer": {
+        "status": 502,
+        "error": "SagaFailed",
+        "body": {
+          "step": "charge",
+          "compensated": false
+        }
+      },
+      "calls": [
+        {
+          "phase": "step",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "hold",
+          "key": "k-1.hold",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "roomId": "r-1"
+            }
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "step",
+          "step": "charge",
+          "service": "Payments",
+          "endpoint": "charge",
+          "key": "k-1.charge",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "amount": 100
+            }
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "undo",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "release",
+          "key": "k-1.hold.undo",
+          "attempt": 1,
+          "args": {
+            "id": "h-1"
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "undo",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "release",
+          "key": "k-1.hold.undo",
+          "attempt": 2,
+          "args": {
+            "id": "h-1"
+          },
+          "at_ms": 200
+        },
+        {
+          "phase": "undo",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "release",
+          "key": "k-1.hold.undo",
+          "attempt": 3,
+          "args": {
+            "id": "h-1"
+          },
+          "at_ms": 600
+        },
+        {
+          "phase": "undo",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "release",
+          "key": "k-1.hold.undo",
+          "attempt": 4,
+          "args": {
+            "id": "h-1"
+          },
+          "at_ms": 1400
+        },
+        {
+          "phase": "undo",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "release",
+          "key": "k-1.hold.undo",
+          "attempt": 5,
+          "args": {
+            "id": "h-1"
+          },
+          "at_ms": 3000
+        },
+        {
+          "phase": "undo",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "release",
+          "key": "k-1.hold.undo",
+          "attempt": 6,
+          "args": {
+            "id": "h-1"
+          },
+          "at_ms": 6200
+        },
+        {
+          "phase": "undo",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "release",
+          "key": "k-1.hold.undo",
+          "attempt": 7,
+          "args": {
+            "id": "h-1"
+          },
+          "at_ms": 11200
+        },
+        {
+          "phase": "undo",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "release",
+          "key": "k-1.hold.undo",
+          "attempt": 8,
+          "args": {
+            "id": "h-1"
+          },
+          "at_ms": 16200
+        },
+        {
+          "phase": "undo",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "release",
+          "key": "k-1.hold.undo",
+          "attempt": 9,
+          "args": {
+            "id": "h-1"
+          },
+          "at_ms": 21200
+        },
+        {
+          "phase": "undo",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "release",
+          "key": "k-1.hold.undo",
+          "attempt": 10,
+          "args": {
+            "id": "h-1"
+          },
+          "at_ms": 26200
+        }
+      ],
+      "compensated": [],
+      "stuck_hook": true
+    }
+  },
+  {
+    "name": "stopped after save 1 and started again from the saved state",
+    "endpoint": "Checkout.checkout",
+    "id": "k-1",
+    "params": {
+      "body": {
+        "roomId": "r-1",
+        "amount": 100
+      }
+    },
+    "script": {
+      "steps": {
+        "hold": [
+          {
+            "kind": "ok",
+            "value": {
+              "id": "h-1",
+              "bookingId": "b-1"
+            }
+          }
+        ],
+        "charge": [
+          {
+            "kind": "error",
+            "decl": "PaymentDeclined",
+            "data": {
+              "reason": "funds"
+            }
+          }
+        ]
+      },
+      "stops": [
+        {
+          "after_save": 1
+        }
+      ]
+    },
+    "expect": {
+      "status": "compensated",
+      "answer": {
+        "status": 402,
+        "error": "PaymentDeclined",
+        "body": {
+          "reason": "funds"
+        }
+      },
+      "calls": [
+        {
+          "phase": "step",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "hold",
+          "key": "k-1.hold",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "roomId": "r-1"
+            }
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "step",
+          "step": "charge",
+          "service": "Payments",
+          "endpoint": "charge",
+          "key": "k-1.charge",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "amount": 100
+            }
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "undo",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "release",
+          "key": "k-1.hold.undo",
+          "attempt": 1,
+          "args": {
+            "id": "h-1"
+          },
+          "at_ms": 0
+        }
+      ],
+      "compensated": [
+        "hold"
+      ],
+      "restarts": 1,
+      "save_statuses": [
+        "running",
+        "running",
+        "compensating",
+        "compensating",
+        "compensated"
+      ],
+      "step_statuses": {
+        "hold": "undone",
+        "charge": "failed",
+        "confirm": "pending"
+      }
+    }
+  },
+  {
+    "name": "stopped after save 2 and started again from the saved state",
+    "endpoint": "Checkout.checkout",
+    "id": "k-1",
+    "params": {
+      "body": {
+        "roomId": "r-1",
+        "amount": 100
+      }
+    },
+    "script": {
+      "steps": {
+        "hold": [
+          {
+            "kind": "ok",
+            "value": {
+              "id": "h-1",
+              "bookingId": "b-1"
+            }
+          }
+        ],
+        "charge": [
+          {
+            "kind": "error",
+            "decl": "PaymentDeclined",
+            "data": {
+              "reason": "funds"
+            }
+          }
+        ]
+      },
+      "stops": [
+        {
+          "after_save": 2
+        }
+      ]
+    },
+    "expect": {
+      "status": "compensated",
+      "answer": {
+        "status": 402,
+        "error": "PaymentDeclined",
+        "body": {
+          "reason": "funds"
+        }
+      },
+      "calls": [
+        {
+          "phase": "step",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "hold",
+          "key": "k-1.hold",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "roomId": "r-1"
+            }
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "step",
+          "step": "charge",
+          "service": "Payments",
+          "endpoint": "charge",
+          "key": "k-1.charge",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "amount": 100
+            }
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "undo",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "release",
+          "key": "k-1.hold.undo",
+          "attempt": 1,
+          "args": {
+            "id": "h-1"
+          },
+          "at_ms": 0
+        }
+      ],
+      "compensated": [
+        "hold"
+      ],
+      "restarts": 1,
+      "save_statuses": [
+        "running",
+        "running",
+        "compensating",
+        "compensating",
+        "compensated"
+      ],
+      "step_statuses": {
+        "hold": "undone",
+        "charge": "failed",
+        "confirm": "pending"
+      }
+    }
+  },
+  {
+    "name": "stopped after save 3 and started again from the saved state",
+    "endpoint": "Checkout.checkout",
+    "id": "k-1",
+    "params": {
+      "body": {
+        "roomId": "r-1",
+        "amount": 100
+      }
+    },
+    "script": {
+      "steps": {
+        "hold": [
+          {
+            "kind": "ok",
+            "value": {
+              "id": "h-1",
+              "bookingId": "b-1"
+            }
+          }
+        ],
+        "charge": [
+          {
+            "kind": "error",
+            "decl": "PaymentDeclined",
+            "data": {
+              "reason": "funds"
+            }
+          }
+        ]
+      },
+      "stops": [
+        {
+          "after_save": 3
+        }
+      ]
+    },
+    "expect": {
+      "status": "compensated",
+      "answer": {
+        "status": 402,
+        "error": "PaymentDeclined",
+        "body": {
+          "reason": "funds"
+        }
+      },
+      "calls": [
+        {
+          "phase": "step",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "hold",
+          "key": "k-1.hold",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "roomId": "r-1"
+            }
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "step",
+          "step": "charge",
+          "service": "Payments",
+          "endpoint": "charge",
+          "key": "k-1.charge",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "amount": 100
+            }
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "undo",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "release",
+          "key": "k-1.hold.undo",
+          "attempt": 1,
+          "args": {
+            "id": "h-1"
+          },
+          "at_ms": 0
+        }
+      ],
+      "compensated": [
+        "hold"
+      ],
+      "restarts": 1,
+      "save_statuses": [
+        "running",
+        "running",
+        "compensating",
+        "compensating",
+        "compensated"
+      ],
+      "step_statuses": {
+        "hold": "undone",
+        "charge": "failed",
+        "confirm": "pending"
+      }
+    }
+  },
+  {
+    "name": "stopped after save 4 and started again from the saved state",
+    "endpoint": "Checkout.checkout",
+    "id": "k-1",
+    "params": {
+      "body": {
+        "roomId": "r-1",
+        "amount": 100
+      }
+    },
+    "script": {
+      "steps": {
+        "hold": [
+          {
+            "kind": "ok",
+            "value": {
+              "id": "h-1",
+              "bookingId": "b-1"
+            }
+          }
+        ],
+        "charge": [
+          {
+            "kind": "error",
+            "decl": "PaymentDeclined",
+            "data": {
+              "reason": "funds"
+            }
+          }
+        ]
+      },
+      "stops": [
+        {
+          "after_save": 4
+        }
+      ]
+    },
+    "expect": {
+      "status": "compensated",
+      "answer": {
+        "status": 402,
+        "error": "PaymentDeclined",
+        "body": {
+          "reason": "funds"
+        }
+      },
+      "calls": [
+        {
+          "phase": "step",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "hold",
+          "key": "k-1.hold",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "roomId": "r-1"
+            }
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "step",
+          "step": "charge",
+          "service": "Payments",
+          "endpoint": "charge",
+          "key": "k-1.charge",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "amount": 100
+            }
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "undo",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "release",
+          "key": "k-1.hold.undo",
+          "attempt": 1,
+          "args": {
+            "id": "h-1"
+          },
+          "at_ms": 0
+        }
+      ],
+      "compensated": [
+        "hold"
+      ],
+      "restarts": 1,
+      "save_statuses": [
+        "running",
+        "running",
+        "compensating",
+        "compensating",
+        "compensated"
+      ],
+      "step_statuses": {
+        "hold": "undone",
+        "charge": "failed",
+        "confirm": "pending"
+      }
+    }
+  },
+  {
+    "name": "stopped after save 5 and started again from the saved state",
+    "endpoint": "Checkout.checkout",
+    "id": "k-1",
+    "params": {
+      "body": {
+        "roomId": "r-1",
+        "amount": 100
+      }
+    },
+    "script": {
+      "steps": {
+        "hold": [
+          {
+            "kind": "ok",
+            "value": {
+              "id": "h-1",
+              "bookingId": "b-1"
+            }
+          }
+        ],
+        "charge": [
+          {
+            "kind": "error",
+            "decl": "PaymentDeclined",
+            "data": {
+              "reason": "funds"
+            }
+          }
+        ]
+      },
+      "stops": [
+        {
+          "after_save": 5
+        }
+      ]
+    },
+    "expect": {
+      "status": "compensated",
+      "answer": {
+        "status": 402,
+        "error": "PaymentDeclined",
+        "body": {
+          "reason": "funds"
+        }
+      },
+      "calls": [
+        {
+          "phase": "step",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "hold",
+          "key": "k-1.hold",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "roomId": "r-1"
+            }
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "step",
+          "step": "charge",
+          "service": "Payments",
+          "endpoint": "charge",
+          "key": "k-1.charge",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "amount": 100
+            }
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "undo",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "release",
+          "key": "k-1.hold.undo",
+          "attempt": 1,
+          "args": {
+            "id": "h-1"
+          },
+          "at_ms": 0
+        }
+      ],
+      "compensated": [
+        "hold"
+      ],
+      "restarts": 1,
+      "save_statuses": [
+        "running",
+        "running",
+        "compensating",
+        "compensating",
+        "compensated"
+      ],
+      "step_statuses": {
+        "hold": "undone",
+        "charge": "failed",
+        "confirm": "pending"
+      }
+    }
+  },
+  {
+    "name": "stopped after the call that charged: the call is made again with the same key",
+    "endpoint": "Checkout.checkout",
+    "id": "k-1",
+    "params": {
+      "body": {
+        "roomId": "r-1",
+        "amount": 100
+      }
+    },
+    "script": {
+      "steps": {
+        "hold": [
+          {
+            "kind": "ok",
+            "value": {
+              "id": "h-1",
+              "bookingId": "b-1"
+            }
+          }
+        ],
+        "charge": [
+          {
+            "kind": "error",
+            "decl": "PaymentDeclined",
+            "data": {
+              "reason": "funds"
+            }
+          }
+        ]
+      },
+      "stops": [
+        {
+          "after_call": 2
+        }
+      ]
+    },
+    "expect": {
+      "status": "compensated",
+      "answer": {
+        "status": 402,
+        "error": "PaymentDeclined",
+        "body": {
+          "reason": "funds"
+        }
+      },
+      "calls": [
+        {
+          "phase": "step",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "hold",
+          "key": "k-1.hold",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "roomId": "r-1"
+            }
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "step",
+          "step": "charge",
+          "service": "Payments",
+          "endpoint": "charge",
+          "key": "k-1.charge",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "amount": 100
+            }
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "step",
+          "step": "charge",
+          "service": "Payments",
+          "endpoint": "charge",
+          "key": "k-1.charge",
+          "attempt": 2,
+          "args": {
+            "body": {
+              "amount": 100
+            }
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "undo",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "release",
+          "key": "k-1.hold.undo",
+          "attempt": 1,
+          "args": {
+            "id": "h-1"
+          },
+          "at_ms": 0
+        }
+      ],
+      "compensated": [
+        "hold"
+      ],
+      "restarts": 1,
+      "save_statuses": [
+        "running",
+        "running",
+        "compensating",
+        "compensating",
+        "compensated"
+      ]
+    }
+  },
+  {
+    "name": "stopped after the call that undoes: the undo is made again with the same key",
+    "endpoint": "Checkout.checkout",
+    "id": "k-1",
+    "params": {
+      "body": {
+        "roomId": "r-1",
+        "amount": 100
+      }
+    },
+    "script": {
+      "steps": {
+        "hold": [
+          {
+            "kind": "ok",
+            "value": {
+              "id": "h-1",
+              "bookingId": "b-1"
+            }
+          }
+        ],
+        "charge": [
+          {
+            "kind": "error",
+            "decl": "PaymentDeclined",
+            "data": {
+              "reason": "funds"
+            }
+          }
+        ]
+      },
+      "stops": [
+        {
+          "after_call": 3
+        }
+      ]
+    },
+    "expect": {
+      "status": "compensated",
+      "answer": {
+        "status": 402,
+        "error": "PaymentDeclined",
+        "body": {
+          "reason": "funds"
+        }
+      },
+      "calls": [
+        {
+          "phase": "step",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "hold",
+          "key": "k-1.hold",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "roomId": "r-1"
+            }
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "step",
+          "step": "charge",
+          "service": "Payments",
+          "endpoint": "charge",
+          "key": "k-1.charge",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "amount": 100
+            }
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "undo",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "release",
+          "key": "k-1.hold.undo",
+          "attempt": 1,
+          "args": {
+            "id": "h-1"
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "undo",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "release",
+          "key": "k-1.hold.undo",
+          "attempt": 2,
+          "args": {
+            "id": "h-1"
+          },
+          "at_ms": 0
+        }
+      ],
+      "compensated": [
+        "hold"
+      ],
+      "restarts": 1
+    }
+  },
+  {
+    "name": "stopped and started again before the deadline: the step without an answer is made again",
+    "endpoint": "Checkout.quick",
+    "id": "k-1",
+    "params": {
+      "body": {
+        "roomId": "r-1",
+        "amount": 100
+      }
+    },
+    "script": {
+      "steps": {
+        "hold": [
+          {
+            "kind": "ok",
+            "value": {
+              "id": "h-1",
+              "bookingId": "b-1"
+            }
+          }
+        ],
+        "confirm": [
+          {
+            "kind": "ok",
+            "value": {
+              "id": "b-1"
+            }
+          }
+        ]
+      },
+      "stops": [
+        {
+          "after_save": 2,
+          "down_ms": 100
+        }
+      ]
+    },
+    "expect": {
+      "status": "completed",
+      "answer": {
+        "status": 201,
+        "error": null,
+        "body": {
+          "id": "b-1"
+        }
+      },
+      "calls": [
+        {
+          "phase": "step",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "hold",
+          "key": "k-1.hold",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "roomId": "r-1"
+            }
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "step",
+          "step": "confirm",
+          "service": "Bookings",
+          "endpoint": "confirm",
+          "key": "k-1.confirm",
+          "attempt": 1,
+          "args": {
+            "id": "b-1"
+          },
+          "at_ms": 100
+        }
+      ],
+      "compensated": [],
+      "restarts": 1,
+      "save_statuses": [
+        "running",
+        "running",
+        "completed"
+      ]
+    }
+  },
+  {
+    "name": "down past the deadline: the saga fails at the step that was running",
+    "endpoint": "Checkout.quick",
+    "id": "k-1",
+    "params": {
+      "body": {
+        "roomId": "r-1",
+        "amount": 100
+      }
+    },
+    "script": {
+      "steps": {
+        "hold": [
+          {
+            "kind": "ok",
+            "value": {
+              "id": "h-1",
+              "bookingId": "b-1"
+            }
+          }
+        ],
+        "confirm": [
+          {
+            "kind": "ok",
+            "value": {
+              "id": "b-1"
+            }
+          }
+        ]
+      },
+      "stops": [
+        {
+          "after_save": 2,
+          "down_ms": 5000
+        }
+      ]
+    },
+    "expect": {
+      "status": "compensated",
+      "answer": {
+        "status": 502,
+        "error": "SagaFailed",
+        "body": {
+          "step": "confirm",
+          "compensated": true
+        }
+      },
+      "calls": [
+        {
+          "phase": "step",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "hold",
+          "key": "k-1.hold",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "roomId": "r-1"
+            }
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "learn",
+          "step": "confirm",
+          "service": "Bookings",
+          "endpoint": "confirm",
+          "key": "k-1.confirm",
+          "attempt": 1,
+          "args": {
+            "id": "b-1"
+          },
+          "at_ms": 5000
+        },
+        {
+          "phase": "undo",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "release",
+          "key": "k-1.hold.undo",
+          "attempt": 1,
+          "args": {
+            "id": "h-1"
+          },
+          "at_ms": 5000
+        }
+      ],
+      "compensated": [
+        "hold"
+      ],
+      "restarts": 1,
+      "save_statuses": [
+        "running",
+        "running",
+        "compensating",
+        "compensating",
+        "compensating",
+        "compensated"
+      ]
+    }
+  },
+  {
+    "name": "a start clock other than zero moves every instant",
+    "endpoint": "Checkout.checkout",
+    "id": "k-1",
+    "start_ms": 1700000000000,
+    "params": {
+      "body": {
+        "roomId": "r-1",
+        "amount": 100
+      }
+    },
+    "script": {
+      "steps": {
+        "hold": [
+          {
+            "kind": "none"
+          },
+          {
+            "kind": "ok",
+            "value": {
+              "id": "h-1",
+              "bookingId": "b-1"
+            }
+          }
+        ],
+        "charge": [
+          {
+            "kind": "ok",
+            "value": {
+              "id": "c-1"
+            }
+          }
+        ],
+        "confirm": [
+          {
+            "kind": "ok",
+            "value": {
+              "id": "b-1"
+            }
+          }
+        ]
+      }
+    },
+    "expect": {
+      "status": "completed",
+      "answer": {
+        "status": 201,
+        "error": null,
+        "body": {
+          "id": "b-1"
+        }
+      },
+      "calls": [
+        {
+          "phase": "step",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "hold",
+          "key": "k-1.hold",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "roomId": "r-1"
+            }
+          },
+          "at_ms": 0
+        },
+        {
+          "phase": "step",
+          "step": "hold",
+          "service": "Rooms",
+          "endpoint": "hold",
+          "key": "k-1.hold",
+          "attempt": 2,
+          "args": {
+            "body": {
+              "roomId": "r-1"
+            }
+          },
+          "at_ms": 200
+        },
+        {
+          "phase": "step",
+          "step": "charge",
+          "service": "Payments",
+          "endpoint": "charge",
+          "key": "k-1.charge",
+          "attempt": 1,
+          "args": {
+            "body": {
+              "amount": 100
+            }
+          },
+          "at_ms": 200
+        },
+        {
+          "phase": "step",
+          "step": "confirm",
+          "service": "Bookings",
+          "endpoint": "confirm",
+          "key": "k-1.confirm",
+          "attempt": 1,
+          "args": {
+            "id": "b-1"
+          },
+          "at_ms": 200
+        }
+      ],
+      "compensated": []
+    }
+  },
+  {
+    "name": "a request whose key names a saga with another fingerprint is a conflict",
+    "endpoint": "Checkout.checkout",
+    "id": "k-1",
+    "params": {
+      "body": {
+        "roomId": "r-1",
+        "amount": 100
+      }
+    },
+    "script": {
+      "existing": {
+        "fingerprint": "0000000000000000",
+        "status": "completed",
+        "answer": {
+          "status": 201,
+          "error": null,
+          "body": {
+            "id": "b-1"
+          }
+        }
+      }
+    },
+    "expect": {
+      "status": "completed",
+      "replayed": false,
+      "answer": {
+        "status": 409,
+        "error": "Conflict",
+        "body": {
+          "message": "this idempotency key was used with other parameters"
+        }
+      },
+      "calls": [],
+      "compensated": []
+    }
+  },
+  {
+    "name": "a request whose key names a saga that is still running is a conflict",
+    "endpoint": "Checkout.checkout",
+    "id": "k-1",
+    "params": {
+      "body": {
+        "roomId": "r-1",
+        "amount": 100
+      }
+    },
+    "script": {
+      "existing": {
+        "fingerprint": "$same",
+        "status": "compensating"
+      }
+    },
+    "expect": {
+      "status": "compensating",
+      "answer": {
+        "status": 409,
+        "error": "Conflict",
+        "body": {
+          "message": "a request with this idempotency key is still running"
+        }
+      },
+      "calls": [],
+      "compensated": []
+    }
+  },
+  {
+    "name": "a saga that ended stuck is answered again with SagaFailed",
+    "endpoint": "Checkout.checkout",
+    "id": "k-1",
+    "params": {
+      "body": {
+        "roomId": "r-1",
+        "amount": 100
+      }
+    },
+    "script": {
+      "existing": {
+        "fingerprint": "$same",
+        "status": "stuck",
+        "answer": {
+          "status": 502,
+          "error": "SagaFailed",
+          "body": {
+            "step": "charge",
+            "compensated": false
+          }
+        }
+      }
+    },
+    "expect": {
+      "status": "stuck",
+      "replayed": true,
+      "answer": {
+        "status": 502,
+        "error": "SagaFailed",
+        "body": {
+          "step": "charge",
+          "compensated": false
+        }
+      },
+      "calls": [],
+      "compensated": []
+    }
+  }
+]

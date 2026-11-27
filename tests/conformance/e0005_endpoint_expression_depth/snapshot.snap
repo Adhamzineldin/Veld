@@ -1,0 +1,12 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0005]: nesting is too deep (the limit is 32 levels)
+ --> app/app.veld:7:629
+  |
+7 |     require body.guests > 1 && body.guests > 2 && body.guests > 3 && body.guests > 4 && body.guests > 5 && body.guests > 6 && body.guests > 7 && body.guests > 8 && body.guests > 9 && body.guests > 10 && body.guests > 11 && body.guests > 12 && body.guests > 13 && body.guests > 14 && body.guests > 15 && body.guests > 16 && body.guests > 17 && body.guests > 18 && body.guests > 19 && body.guests > 20 && body.guests > 21 && body.guests > 22 && body.guests > 23 && body.guests > 24 && body.guests > 25 && body.guests > 26 && body.guests > 27 && body.guests > 28 && body.guests > 29 && body.guests > 30 && body.guests > 31 && body.guests > 32 && body.guests > 33 && body.guests > 34 && body.guests > 35 && body.guests > 36 && body.guests > 37 && body.guests > 38 && body.guests > 39 && body.guests > 40 && true
+  |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     ^^^^^^
+
+== ir ==
+(no IR: compilation failed)

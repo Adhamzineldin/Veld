@@ -1,0 +1,16 @@
+model Base {
+  low: int
+  high: int
+  rule ordered: low <= high
+}
+
+model Twice {
+  a: int
+  rule same: a > 0
+  rule same: a < 100
+}
+
+model Child extends Base {
+  step: int
+  rule ordered: step > 0
+}

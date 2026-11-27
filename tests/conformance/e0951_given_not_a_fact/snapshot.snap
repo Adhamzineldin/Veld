@@ -1,0 +1,26 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0951]: `rooom` is not a fact of endpoint `create`
+ --> app/app.veld:14:9
+   |
+14 |   given rooom = absent
+   |         ^^^^^
+  = help: did you mean `room`?
+
+error[E0951]: `room` is not a fact of endpoint `list`
+ --> app/app.veld:19:9
+   |
+19 |   given room = absent
+   |         ^^^^
+  = help: endpoint `list` has no facts
+
+error[E0951]: `room` is given twice
+ --> app/app.veld:25:9
+   |
+25 |   given room = absent
+   |         ^^^^
+
+== ir ==
+(no IR: compilation failed)

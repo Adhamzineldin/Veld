@@ -1,0 +1,160 @@
+// Field visibility (spec/platform.md section 2). The examples are the vectors: every server
+// target and the reference evaluator must give exactly the stated outcome. A field with
+// `@visible(when: e)` is dropped from what a caller is sent when `e` is false, when `e` cannot be
+// evaluated and when the request has no caller. It is dropped after the output rules, so an
+// `ensure` sees the whole value. The file waits under a `.pending` suffix until a generator
+// declares `visibility`; the reference evaluator runs it already.
+
+model User {
+  id: uuid
+  roles: string[]
+}
+
+principal User
+
+model Booking {
+  id: uuid
+  guestId: uuid
+  divisor: int = 1
+  opensAt: datetime
+  guestPhone?: string @visible(when: user.id == guestId || "support" in user.roles)
+  ratio?: string @visible(when: 10 / divisor > 1)
+  early?: string @visible(when: now >= opensAt)
+}
+
+error Refused 409 {
+  reason: string
+  who?: string @visible(when: "support" in user.roles)
+}
+
+@auth(bearer)
+service Bookings at "/bookings" {
+  get "/{id}" getBooking(id: uuid) -> Booking
+  get "/" listBookings() -> Booking[]
+  get "/page" pageBookings() -> Page<Booking>
+  get "/checked/{id}" checkedBooking(id: uuid) -> Booking {
+    ensure has(result.guestPhone) message "a booking always has a phone"
+  }
+  post "/{id}/cancel" cancelBooking(id: uuid) -> Booking | Refused {
+    fact booking: Booking = id
+    require booking.divisor > 0 else Refused { reason: "closed", who: "front desk" }
+  }
+}
+
+@auth(none)
+service Notices at "/notices" {
+  get "/{id}" publicBooking(id: uuid) -> Booking
+}
+
+// --- a field hidden for one caller and present for another ---
+
+example "the guest sees their own phone" {
+  as { id: "00000000-0000-4000-8000-0000000000aa", roles: [] }
+  getBooking(id: "00000000-0000-4000-8000-000000000001")
+    returns { guestId: "00000000-0000-4000-8000-0000000000aa", guestPhone: "+201000000001" }
+    -> ok { guestPhone: "+201000000001" }
+}
+
+example "another caller does not see it" {
+  as { id: "00000000-0000-4000-8000-0000000000bb", roles: [] }
+  getBooking(id: "00000000-0000-4000-8000-000000000001")
+    returns { guestId: "00000000-0000-4000-8000-0000000000aa", guestPhone: "+201000000001" }
+    -> ok { guestPhone: absent }
+}
+
+example "support sees it whoever the guest is" {
+  as { id: "00000000-0000-4000-8000-0000000000bb", roles: ["support"] }
+  getBooking(id: "00000000-0000-4000-8000-000000000001")
+    returns { guestId: "00000000-0000-4000-8000-0000000000aa", guestPhone: "+201000000001" }
+    -> ok { guestPhone: "+201000000001" }
+}
+
+// --- inside a list and a page ---
+
+example "each element of a list is judged for the caller" {
+  as { id: "00000000-0000-4000-8000-0000000000aa", roles: [] }
+  listBookings() returns [
+    { guestId: "00000000-0000-4000-8000-0000000000aa", guestPhone: "+1" },
+    { guestId: "00000000-0000-4000-8000-0000000000cc", guestPhone: "+2" }
+  ] -> ok [ { guestPhone: "+1" }, { guestPhone: absent } ]
+}
+
+example "each item of a page is judged for the caller" {
+  as { id: "00000000-0000-4000-8000-0000000000cc", roles: [] }
+  pageBookings() returns { items: [
+    { guestId: "00000000-0000-4000-8000-0000000000aa", guestPhone: "+1" },
+    { guestId: "00000000-0000-4000-8000-0000000000cc", guestPhone: "+2" }
+  ], total: 2, page: 1, size: 2 } -> ok { items: [ { guestPhone: absent }, { guestPhone: "+2" } ], total: 2 }
+}
+
+// --- an expression that cannot be evaluated hides the field, for everyone ---
+
+example "a division by zero hides the field, support included" {
+  as { id: "00000000-0000-4000-8000-0000000000bb", roles: ["support"] }
+  getBooking(id: "00000000-0000-4000-8000-000000000001")
+    returns { divisor: 0, ratio: "r" }
+    -> ok { ratio: absent }
+}
+
+example "an expression that can be evaluated shows the field" {
+  as { id: "00000000-0000-4000-8000-0000000000bb", roles: [] }
+  getBooking(id: "00000000-0000-4000-8000-000000000001")
+    returns { divisor: 2, ratio: "r" }
+    -> ok { ratio: "r" }
+}
+
+// --- the clock ---
+
+example "before the opening time the field is hidden" {
+  as { id: "00000000-0000-4000-8000-0000000000bb", roles: [] }
+  at "2026-06-10T12:00:00Z"
+  getBooking(id: "00000000-0000-4000-8000-000000000001")
+    returns { opensAt: "2026-06-11T12:00:00Z", early: "e" }
+    -> ok { early: absent }
+}
+
+example "from the opening time on it is shown, to the millisecond" {
+  as { id: "00000000-0000-4000-8000-0000000000bb", roles: [] }
+  at "2026-06-11T12:00:00Z"
+  getBooking(id: "00000000-0000-4000-8000-000000000001")
+    returns { opensAt: "2026-06-11T12:00:00Z", early: "e" }
+    -> ok { early: "e" }
+}
+
+// --- visibility comes after the output rules ---
+
+example "an ensure sees the whole value and the caller does not" {
+  as { id: "00000000-0000-4000-8000-0000000000bb", roles: [] }
+  checkedBooking(id: "00000000-0000-4000-8000-000000000001")
+    returns { guestId: "00000000-0000-4000-8000-0000000000aa", guestPhone: "+201000000001" }
+    -> ok { guestPhone: absent }
+}
+
+example "the ensure still fails on the whole value, whoever calls" {
+  as { id: "00000000-0000-4000-8000-0000000000aa", roles: [] }
+  checkedBooking(id: "00000000-0000-4000-8000-000000000001")
+    returns { guestId: "00000000-0000-4000-8000-0000000000aa" }
+    -> Internal
+}
+
+// --- a declared error ---
+
+example "a declared error loses the field the caller may not see" {
+  given booking = { divisor: 0 }
+  as { id: "00000000-0000-4000-8000-0000000000bb", roles: [] }
+  cancelBooking(id: booking.id) -> Refused { reason: "closed", who: absent }
+}
+
+example "support is told who" {
+  given booking = { divisor: 0 }
+  as { id: "00000000-0000-4000-8000-0000000000bb", roles: ["support"] }
+  cancelBooking(id: booking.id) -> Refused { reason: "closed", who: "front desk" }
+}
+
+// --- an endpoint without a caller never sends the field ---
+
+example "without auth there is no caller, so the field is never sent" {
+  publicBooking(id: "00000000-0000-4000-8000-000000000001")
+    returns { guestPhone: "+201000000001" }
+    -> ok { guestPhone: absent }
+}

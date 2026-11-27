@@ -28,12 +28,14 @@ pub enum ConfigError {
         hint: String,
     },
     #[error(
-        "E0703: targets `{first}` and `{second}` have overlapping output directories ({reason})"
+        "E0703: targets `{first}` and `{second}` have overlapping output directories ({reason}: `{dir}`); set `out` on one of them"
     )]
     OutputOverlap {
         first: String,
         second: String,
         reason: &'static str,
+        /// The shared directory, relative to the workspace root.
+        dir: String,
     },
     #[error("E0704: target `{target}`: output directory {reason}")]
     OutputForbidden { target: String, reason: String },
@@ -45,6 +47,16 @@ pub enum ConfigError {
         expected: String,
         actual: String,
     },
+    #[error("E0709: this veld.toml uses the layout of earlier betas (found {found}); {help}")]
+    EarlierLayout { found: String, help: String },
+    #[error("E0710: invalid workspace: {message}")]
+    Workspace { message: String },
+    #[error("E0711: {message}")]
+    NotAllowed { message: String },
+    #[error("E0803: no member named `{name}` (members: {members})")]
+    UnknownMember { name: String, members: String },
+    #[error("E0712: cannot read the changes: {message}")]
+    Affected { message: String },
     #[error("`{}` is a symlink that points outside the package root", path.display())]
     SymlinkEscape { path: PathBuf },
     #[error("`{}` is not valid UTF-8", path.display())]
@@ -61,10 +73,33 @@ impl ConfigError {
             Self::OutputOverlap { .. } => Some("E0703"),
             Self::OutputForbidden { .. } => Some("E0704"),
             Self::PluginHashMismatch { .. } => Some("E0705"),
+            Self::EarlierLayout { .. } => Some("E0709"),
+            Self::Workspace { .. } => Some("E0710"),
+            Self::NotAllowed { .. } => Some("E0711"),
+            Self::Affected { .. } => Some("E0712"),
+            Self::UnknownMember { .. } => Some("E0803"),
             Self::NotFound { .. }
             | Self::Io { .. }
             | Self::SymlinkEscape { .. }
             | Self::NonUtf8Path { .. } => None,
+        }
+    }
+
+    pub(crate) fn workspace(message: impl Into<String>) -> Self {
+        Self::Workspace {
+            message: message.into(),
+        }
+    }
+
+    pub(crate) fn not_allowed(message: impl Into<String>) -> Self {
+        Self::NotAllowed {
+            message: message.into(),
+        }
+    }
+
+    pub fn affected(message: impl Into<String>) -> Self {
+        Self::Affected {
+            message: message.into(),
         }
     }
 

@@ -1,0 +1,62 @@
+// Tenancy (spec/platform.md section 3), the contract of the shared toolchain tests of the Node,
+// Java and Rust servers. Every endpoint says which case it is for.
+
+model User {
+  id: uuid
+  // The caller's tenant. Optional: a caller can have none, and then owns nothing.
+  tenantId?: uuid @tenant
+}
+
+principal User
+
+model Booking {
+  id: uuid
+  tenantId: uuid @tenant
+  title: string
+  open: bool
+}
+
+model Summary {
+  title: string
+}
+
+model Copy {
+  copy: Booking
+}
+
+error Dup 409 {
+  copy: Booking
+}
+
+@auth(bearer)
+service Tenants at "/tenants" {
+  // A fact of another tenant is not found: 404 with the fact's name, never 403.
+  get "/{id}" getBooking(id: uuid) -> Booking {
+    fact booking: Booking = id
+  }
+
+  // An optional fact of another tenant is absent.
+  get "/{id}/seen" seen(id: uuid) -> Summary | NotFound {
+    fact held?: Booking = id
+    require has(held) else NotFound { resource: "held" }
+  }
+
+  // A value of another tenant in a list or a page: 500, nothing sent, one event per value.
+  get "/" listBookings() -> Booking[]
+  get "/page" pageBookings() -> Page<Booking>
+
+  // The principal's own model is tenant-scoped too.
+  get "/me" me() -> User
+
+  // A declared error that holds a value of another tenant is never sent.
+  post "/{id}/copy" copyBooking(id: uuid, body: Copy) -> Booking | Dup {
+    fact booking: Booking = id
+    require booking.open else Dup { copy: body.copy }
+  }
+
+  // A request may lack the tenant member; one that carries it is kept as received.
+  post "/" createBooking(body: Booking) -> Booking
+
+  // A stream item of another tenant is not sent.
+  get "/live" liveBookings() -> stream Booking
+}

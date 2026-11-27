@@ -1,0 +1,7 @@
+---
+source: crates/emitters/java/tests/rules.rs
+expression: "files.join(\"\\n\")"
+---
+gen/r/runtime/RuleError.java
+gen/r/runtime/RuleWalk.java
+gen/r/runtime/Rules.java

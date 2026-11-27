@@ -1,0 +1,26 @@
+// `@rollout` takes the one word `audit` (spec/rules.md section 17.1): another word, a string, a
+// number, a named argument and two arguments are all `E0602`, on a rule, a `require` and an
+// `ensure`.
+
+model M {
+  n: int
+  @rollout(shadow)
+  rule a: n > 0
+  @rollout("audit")
+  rule b: n > 1
+  @rollout(1)
+  rule c: n > 2
+  @rollout(mode: audit)
+  rule d: n > 3
+  @rollout(audit, audit)
+  rule e: n > 4
+}
+
+service S at "/s" {
+  post "/" f(body: M) -> 201 M {
+    @rollout(enforce)
+    require body.n > 0
+    @rollout("audit")
+    ensure result.n > 0
+  }
+}

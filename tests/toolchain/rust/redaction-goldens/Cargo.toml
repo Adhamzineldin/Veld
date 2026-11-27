@@ -1,0 +1,15 @@
+[package]
+name = "redaction-goldens"
+version = "0.0.0"
+edition = "2021"
+publish = false
+default-run = "redaction-goldens"
+
+[[bin]]
+name = "redaction-goldens"
+path = "src/main.rs"
+
+[dependencies]
+guests-server = { path = "../server" }
+guests-client = { path = "../client" }
+serde_json = "1"

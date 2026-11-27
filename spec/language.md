@@ -42,8 +42,8 @@ service Orders at "/orders" {
 ## 2. Projects, packages and modules
 
 - A **package** is a directory tree of `.veld` files with one root. The package kinds are:
-  - a workspace service (`[services.<name>]` in `veld.toml`)
-  - a workspace library (`[libraries.<name>]`)
+  - a workspace service (a `[service]` member of the workspace)
+  - a workspace library (a `[library]` member)
   - a registry package (`@org/name`)
 - A **module** is one `.veld` file. Its module path is the file path relative to the package root, with `/` replaced by `.` and the `.veld` extension removed. For example, `contracts/orders/billing/invoices.veld` inside package `orders` is the module `billing.invoices`.
 - Module path segments MUST be valid identifiers (§3.2). If a segment is not, the error is `E0101`.
@@ -92,6 +92,8 @@ Reserved words, which cannot be used as identifiers:
 
 Contextual words, which are keywords only where the grammar expects them and are ordinary identifiers everywhere else (so a field may be called `get` or `body`):
 `get post put patch delete head options ws`
+
+The words of rules (`spec/rules.md` section 2.2) and of events (`spec/events.md` section 2: `event channel carries key publishes subscribes on called rejected`) are contextual in the same way.
 
 The single source of truth for both lists is `crates/veld-compiler/src/language.rs`. The editor grammars are generated from that file.
 
@@ -162,6 +164,7 @@ Annotations may appear before a field (`@deprecated("…") name: T`) or after it
 - `name?: T` means the field MAY be absent. `null` is not accepted for an optional field. It is accepted only where the type is `json`.
 - A required field MUST be present.
 - A default (`= literal`) is applied when the field is absent. A field with a default is required in the output and optional in the input.
+- `= expr`, where `expr` is not one literal, makes the field **derived**: the server computes it from the other fields, and nobody supplies it. A negative number is a literal (`= -1`). There is no keyword; `spec/rules.md` §17.2 says what a derived field is, where it is computed and what it costs a generator.
 
 ### 5.4 Declarations
 - **model**: a record with named fields.
@@ -194,13 +197,16 @@ error ValidationError 422 { issues: ValidationIssue[] }
 error TooManyRequests 429 { retryAfter?: int }
 error Internal 500        { message?: string }
 model ValidationIssue     { path: string, code: string, message: string }
+error InvalidTransition 409 { field: string, from: string, to: string }
+error PreconditionFailed 412 { expected: long, actual: long }
+error DeadlineExceeded 504 { timeoutMs: long }
 ```
 
 Prelude errors belong to the reserved package `veld`. Their identity at runtime still includes the service and operation that raised them (see `spec/ir.md` §5). A `NotFound` raised by `orders.getOrder` therefore never compares equal to a `NotFound` raised by `payments.getPayment`.
 
 ## 6. Services and endpoints
 
-- `service Name at "/prefix"` groups endpoints. The prefix MUST start with `/` (`E0501`).
+- `service Name at "/prefix"` groups endpoints. The prefix MUST start with `/` (`E0501`). A service with endpoints MUST have an `at` (`E0501`); a service that only publishes or subscribes (`spec/events.md` section 5) has none, and its prefix is the empty string.
 - **Path templates** use `{name}` segments. The full path is the prefix joined with the endpoint path. A trailing `/` is normalised away, except on the root path.
 - **Parameter binding**, in this order:
   1. The name appears in the path template: it is a **path** parameter. It MUST be a scalar or an enum, and MUST NOT be optional (`E0502`).
@@ -220,7 +226,7 @@ Prelude errors belong to the reserved package `veld`. Their identity at runtime 
     - Two errors with the same status are allowed, and they are told apart on the wire by `type` (see `spec/ir.md` §5).
   - **Implicit `ValidationError`:** every endpoint that has a body, query, header or path parameters implicitly declares `| ValidationError` unless it already lists one.
   - **Implicit `Unauthorized` and `Internal`:** every endpoint whose effective auth is not `none` implicitly declares `| Unauthorized` (401), and every endpoint implicitly declares `| Internal` (500), unless already listed. Together with `ValidationError` this means every response the server runtime can produce has a declared signature.
-- **Endpoint names** MUST be unique within a service (`E0509`). The pair (method, full path) MUST be unique across all services of one package (`E0510`). Paths are compared with parameter names erased: `/a/{x}` and `/a/{y}` collide.
+- **Endpoint names** MUST be unique within a service, and so must its event handler names (`E0509`). The pair (method, full path) MUST be unique across all services of one package (`E0510`). Paths are compared with parameter names erased: `/a/{x}` and `/a/{y}` collide.
 - **Streaming** (capability-gated; the wire format is in the target specs: `spec/targets/typescript.md` §4b, `spec/targets/java.md`):
   - On `get`, `-> stream T` is Server-Sent Events.
   - On `ws`, `-> stream T` sends server-to-client messages, and `body: stream T` receives client-to-server messages.
@@ -244,6 +250,14 @@ An unknown annotation is `E0601`. Annotations with the wrong arguments or the wr
 | `@example(literal)` | field, param | Documentation and mock data. |
 | `@discriminator("prop")` | union | Discriminator property. |
 | `@query` / `@header("Name")` | param | Binding (§6). |
+| `@rollout(audit)` | invariant, `require`, `ensure` | The rule is evaluated and reported and never rejects (`spec/rules.md` §17.1). `E0602` anywhere else. |
+| `@version` | one `int` or `long` field of a model | The version of the model: the `ETag` of a response and what `If-Match` is compared with (`spec/rules.md` §11.7). `E0602` on another type, an optional field, a field of an error or an event, or a second one. |
+| `@idempotent` / `@idempotent(header: "Name", required: true)` | endpoint | The endpoint answers a request once per key (`spec/rules.md` §11.8). `E0602` on a stream or `ws` endpoint, or for a header that is not a token, that Veld or HTTP uses (`Authorization`, `Content-Type`, `Content-Length`, `Accept`, `Host`, `If-Match`, `ETag`, `Veld-*`) or that the endpoint's own parameters or `apiKey` already use. |
+| `@retry(max: n, backoff: fixed \| exponential)` | channel | How often a consumer handles a message again after its handler failed: `max` is 0 to 100 and required, `backoff` defaults to `exponential` (`spec/events.md` §10.2). `E0602` anywhere else, written twice, or with another argument. |
+| `@deadLetter` | channel | A rejected message, and a message whose retries are used up, is copied to `<topic>.dlq` (`spec/events.md` §10.2, §10.5). Takes no argument. |
+| `@ordered` | channel | One total order across keys (`spec/events.md` §10.2). Takes no argument. |
+| `@pii` | field of a model, an error or an event | The field holds personal data (`spec/rules.md` §19.3). No argument. Changes nothing on the wire. |
+| `@secret` | field of a model, an error or an event | The value must never be shown: a password, a token, a key (`spec/rules.md` §19.3). No argument. Changes nothing on the wire. |
 
 ### 7.1 Regex subset
 The allowed syntax is literal characters, `.`, classes `[...]`, `\d \w \s`, the quantifiers `* + ? {n,m}`, groups `( )`, alternation `|`, and the anchors `^ $`. Lookaround and backreferences are `E0603`, because every target must enforce the same pattern.

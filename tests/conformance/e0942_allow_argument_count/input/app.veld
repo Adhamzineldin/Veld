@@ -1,0 +1,20 @@
+// `allow` gives the policy too few and too many arguments.
+
+model User { id: uuid }
+principal User
+
+model Booking { id: uuid, owner: uuid }
+
+policy Manage(user: User, booking: Booking) {
+  permit when booking.owner == user.id
+}
+
+@auth(bearer)
+service Bookings at "/bookings" {
+  get "/{id}" get(id: uuid) -> Booking {
+    fact booking: Booking = id
+    allow Manage(user)
+    allow Manage(user, booking, booking)
+    allow Manage()
+  }
+}

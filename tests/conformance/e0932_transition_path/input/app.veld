@@ -1,0 +1,73 @@
+// The path of a `transition` starts at a fact, goes through no optional step and ends in a
+// field whose type is a state machine.
+
+enum Status {
+  pending, paid
+  flow pending -> paid
+  final paid
+}
+
+enum Plain { a, b }
+
+model Inner {
+  status: Status
+  later?: Status
+  plain: Plain
+}
+
+model Booking {
+  id: uuid
+  status: Status
+  note?: Status
+  count: int
+  plain: Plain
+  inner: Inner
+  maybe?: Inner
+}
+
+service Bookings at "/bookings" {
+  post "/{id}/a" notAFact(id: uuid) -> 204 {
+    fact booking: Booking = id
+    transition id.status: pending -> paid
+  }
+
+  post "/{id}/b" notAState(id: uuid) -> 204 {
+    fact booking: Booking = id
+    transition booking.count: pending -> paid
+  }
+
+  post "/{id}/b2" notAMachine(id: uuid) -> 204 {
+    fact booking: Booking = id
+    transition booking.plain: a -> b
+  }
+
+  post "/{id}/c" optionalField(id: uuid) -> 204 {
+    fact booking: Booking = id
+    transition booking.note: pending -> paid
+  }
+
+  post "/{id}/d" optionalStep(id: uuid) -> 204 {
+    fact booking: Booking = id
+    transition booking.maybe.status: pending -> paid
+  }
+
+  post "/{id}/d2" optionalLast(id: uuid) -> 204 {
+    fact booking: Booking = id
+    transition booking.inner.later: pending -> paid
+  }
+
+  post "/{id}/e" optionalFact(id: uuid) -> 204 {
+    fact maybeBooking?: Booking = id
+    transition maybeBooking.status: pending -> paid
+  }
+
+  post "/{id}/f" onlyTheFact(id: uuid) -> 204 {
+    fact booking: Booking = id
+    transition booking: pending -> paid
+  }
+
+  post "/{id}/g" unknownField(id: uuid) -> 204 {
+    fact booking: Booking = id
+    transition booking.stauts: pending -> paid
+  }
+}

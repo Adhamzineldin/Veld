@@ -248,6 +248,7 @@ impl Project {
                 base_url: None,
                 consumes: Vec::new(),
                 prefix: String::new(),
+                messages: None,
             };
             out.push(RegistryPackage {
                 name: p.name,
@@ -417,7 +418,7 @@ mod tests {
         std::fs::create_dir_all(root.join("contracts")).unwrap();
         std::fs::write(
             root.join("veld.toml"),
-            "[project]\nname = \"app\"\n[dependencies]\n\"@acme/billing\" = \"^1\"\n",
+            "[service]\nname = \"app\"\n[dependencies]\n\"@acme/billing\" = \"^1\"\n",
         )
         .unwrap();
         let lock = Lockfile {

@@ -1,0 +1,14 @@
+// Precedence, associativity, `not`, unary minus and the minus token (spec/rules.md 2.1, 3.1).
+
+model Logic {
+  a: bool
+  b: bool
+  c: bool
+  n: int
+  rule chain: a implies b implies c
+  rule mixed: a || b && c
+  rule negated: not a == b
+  rule minus: -n < 0 || n - -1 == 0
+  rule tight: n -1 < 5
+  rule grouped: (a || b) && c || n * 2 + 1 == 7
+}

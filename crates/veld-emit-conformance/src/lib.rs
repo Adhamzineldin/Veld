@@ -13,14 +13,79 @@
 // This crate is test support: it panics on purpose, with a report, when a check fails.
 #![allow(clippy::panic)]
 
+mod derived;
+mod event_rollout;
+mod events;
+mod events_delivery;
+mod events_outbox;
 mod fixtures;
+mod messages;
+mod platform_p1;
+mod platform_p2;
+mod retention;
+mod rollout;
+mod sagas;
+mod version;
 
 use std::collections::BTreeMap;
 
-use veld_codegen::{DynGenerator, FileSet, GenRequest, Role, check_capabilities};
+use veld_codegen::{DynGenerator, FileSet, GenRequest, Role, check_capabilities, checked_features};
 use veld_ir::{Feature, Ir, ServiceId};
 
+pub use derived::{
+    check_derived_is_generated, check_derived_is_refused, compiled_derived_contracts,
+};
+pub use event_rollout::{
+    EventRolloutContract, compiled_event_rollout_contracts, without_the_annotation,
+};
+pub use events::{
+    check_events_are_generated, check_events_are_ignored_by_clients, check_events_are_refused,
+    compiled_events_contract,
+};
+pub use events_delivery::{
+    check_events_delivery_is_generated, check_events_delivery_is_ignored_by_clients,
+    check_events_delivery_is_refused, compiled_events_delivery_contract,
+};
+pub use events_outbox::{
+    check_events_outbox_is_generated, check_events_outbox_is_ignored_by_clients,
+    check_events_outbox_is_refused, compiled_events_outbox_contract,
+};
 pub use fixtures::{FIXTURES, Fixture};
+pub use messages::{
+    CATALOG_FILE, check_messages_are_generated, check_messages_is_refused,
+    compiled_messages_contract,
+};
+pub use platform_p1::{
+    check_audit_is_generated, check_audit_is_refused, check_audited_ws_is_refused,
+    check_limits_are_generated, check_limits_are_refused, check_tenancy_is_generated,
+    check_tenancy_is_refused, check_visibility_is_generated, check_visibility_is_refused,
+    compiled_audit_contracts, compiled_limit_contracts, compiled_tenancy_contracts,
+    compiled_visibility_contracts,
+};
+pub use platform_p2::{
+    check_flags_are_generated, check_flags_are_refused, check_slo_is_generated,
+    check_slo_is_refused, check_timed_is_generated, check_timed_is_refused,
+    check_timeouts_are_generated, check_timeouts_are_refused, compiled_flag_contracts,
+    compiled_slo_contracts, compiled_timed_contracts, compiled_timeout_contracts,
+};
+pub use retention::{
+    check_retention_is_generated, check_retention_is_refused, compiled_retention_contract,
+};
+pub use rollout::{
+    check_rollout_is_generated, check_rollout_is_refused, compiled_rollout_contracts,
+};
+pub use sagas::{check_sagas_are_generated, check_sagas_are_refused, compiled_saga_contracts};
+pub use version::{
+    check_idempotency_is_generated, check_idempotency_is_refused, check_version_is_generated,
+    check_version_is_refused, compiled_idempotency_contracts, compiled_version_contracts,
+};
+
+/// The options every conformance check gives a generator: none, and the name of the target
+/// (`veld_codegen::with_target_name`), which a target with a runtime config requires.
+#[must_use]
+pub fn options() -> serde_json::Value {
+    veld_codegen::with_target_name(&serde_json::Value::Null, "conformance")
+}
 
 /// Compiles one contract as the single service package `app`.
 ///
@@ -46,6 +111,580 @@ pub fn compile(name: &str, source: &str) -> Ir {
         Some(ir) => ir,
         None => panic!("fixture `{name}` does not compile:\n{rendered}"),
     }
+}
+
+/// Where the invariant of [`ir_with_rule`] is declared.
+pub const RULE_ORIGIN_LINE: u32 = 4;
+
+/// The plain fixture with one invariant attached to its first model, built by hand (the language
+/// has no rule syntax in this crate's dependencies yet). `rules_invariants` is the feature it uses.
+///
+/// # Panics
+/// When the plain fixture no longer has a model.
+#[must_use]
+pub fn ir_with_rule() -> Ir {
+    use veld_ir::{DeclKind, Expr, ExprKind, ExprLit, ExprType, Origin, Rule, Scalar, Type};
+    let plain = FIXTURES
+        .iter()
+        .find(|f| f.feature.is_none())
+        .map(|f| compile(f.name, f.source));
+    let Some(mut ir) = plain else {
+        panic!("veld-emit-conformance has no plain fixture");
+    };
+    let rule = Rule {
+        flag: None,
+        name: "alwaysTrue".into(),
+        id: "veld:app/Greeting.alwaysTrue@0".into(),
+        expr: Expr {
+            t: ExprType::Type(Type::Scalar(Scalar::Bool)),
+            e: ExprKind::Lit(ExprLit::Bool(true)),
+        },
+        message: None,
+        reads: vec![],
+        reads_readonly: false,
+        inherited_from: None,
+        docs: None,
+        deprecated: None,
+        rollout: None,
+        origin: Origin {
+            file: "rules.veld".into(),
+            line: RULE_ORIGIN_LINE,
+            col: 3,
+        },
+    };
+    let model = ir.decls.iter_mut().find_map(|d| match &mut d.kind {
+        DeclKind::Model(m) if d.name == "Greeting" => Some(m),
+        DeclKind::Model(_)
+        | DeclKind::Error(_)
+        | DeclKind::Enum(_)
+        | DeclKind::Union(_)
+        | DeclKind::Const(_)
+        | DeclKind::Event(_) => None,
+    });
+    match model {
+        Some(m) => m.rules.push(rule),
+        None => panic!("the plain fixture has no `Greeting` model"),
+    }
+    ir
+}
+
+/// The generator must neither declare a rules feature nor generate a contract with a rule: the
+/// capability gate reports `E0801` at the rule's origin, and `generate` refuses with `E0801`.
+///
+/// # Errors
+/// A description of the first role for which the generator does not refuse.
+pub fn check_rules_are_refused(generator: &dyn DynGenerator) -> Result<(), String> {
+    let ir = ir_with_rule();
+    let services = all_services(&ir);
+    for role in generator.roles() {
+        let caps = generator.capabilities(*role);
+        if let Some(f) = Feature::RULES.into_iter().find(|f| caps.supports(*f)) {
+            return Err(format!("{}: declares `{}`", role.name(), f.name()));
+        }
+        let req = GenRequest {
+            ir: &ir,
+            role: *role,
+            services: services.clone(),
+            consumes: vec![],
+            framework: None,
+        };
+        let gate = check_capabilities(&ir, &req, &caps);
+        let at_rule = |d: &veld_codegen::GenDiagnostic| {
+            d.code == "E0801"
+                && d.message.contains("rules_invariants")
+                && d.origin.as_ref().map(|o| o.line) == Some(RULE_ORIGIN_LINE)
+        };
+        if gate.len() != 1 || !gate.iter().all(at_rule) {
+            return Err(format!("{}: the gate reported {gate:?}", role.name()));
+        }
+        match generator.generate_dyn(&req, &crate::options()) {
+            Err(d) if !d.is_empty() && d.iter().all(|d| d.code == "E0801") => {}
+            other => {
+                return Err(format!(
+                    "{}: generate did not answer E0801: {other:?}",
+                    role.name()
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Where the first statement of [`ir_with_endpoint_rules`] is declared.
+pub const ENDPOINT_RULE_ORIGIN_LINE: u32 = 7;
+
+/// The plain fixture with a block on its first endpoint (one `ensure`), built by hand. The
+/// feature it uses is `rules_endpoint`.
+///
+/// # Panics
+/// When the plain fixture no longer has an endpoint.
+#[must_use]
+pub fn ir_with_endpoint_rules() -> Ir {
+    use veld_ir::{EndpointEnsure, Expr, ExprKind, ExprLit, ExprType, Origin, Scalar, Type};
+    let plain = FIXTURES
+        .iter()
+        .find(|f| f.feature.is_none())
+        .map(|f| compile(f.name, f.source));
+    let Some(mut ir) = plain else {
+        panic!("veld-emit-conformance has no plain fixture");
+    };
+    let ensure = EndpointEnsure {
+        flag: None,
+        name: None,
+        id: "veld:app/Greeter.hello.ensure@0".into(),
+        expr: Expr {
+            t: ExprType::Type(Type::Scalar(Scalar::Bool)),
+            e: ExprKind::Lit(ExprLit::Bool(true)),
+        },
+        message: None,
+        reads: vec![],
+        docs: None,
+        rollout: None,
+        origin: Origin {
+            file: "rules.veld".into(),
+            line: ENDPOINT_RULE_ORIGIN_LINE,
+            col: 5,
+        },
+    };
+    let endpoint = ir.services.iter_mut().find_map(|s| s.endpoints.first_mut());
+    match endpoint {
+        Some(ep) => ep.rules.ensures.push(ensure),
+        None => panic!("the plain fixture has no endpoint"),
+    }
+    ir
+}
+
+/// The generator must not declare `rules_endpoint` and must refuse a contract with endpoint rules:
+/// the capability gate reports exactly one `E0801` at the first statement, and `generate` refuses
+/// with `E0801`. Other rules features (invariants) may be declared.
+///
+/// # Errors
+/// A description of the first role for which the generator does not refuse.
+pub fn check_endpoint_rules_are_refused(generator: &dyn DynGenerator) -> Result<(), String> {
+    refuses_endpoint_rules(
+        generator,
+        &ir_with_endpoint_rules(),
+        Some(ENDPOINT_RULE_ORIGIN_LINE),
+    )
+}
+
+/// The contract `veld_compiler` makes of a block with a fact, a `require` and an `ensure`: what a
+/// real contract with endpoint rules looks like to a generator.
+#[must_use]
+pub fn compiled_endpoint_rules_contract() -> Ir {
+    compile(
+        "compiled_endpoint_rules",
+        "model Booking { id: uuid, guests: int }
+
+service Bookings at \"/bookings\" {
+  post \"/\" create(body: Booking) -> 201 Booking {
+    fact room: Booking = body.id
+    require body.guests > 0
+    ensure result.guests > 0
+  }
+}
+",
+    )
+}
+
+/// Like [`check_endpoint_rules_are_refused`], for a contract that went through the compiler: the
+/// gate and `generate` answer `E0801` for it as well.
+///
+/// # Errors
+/// A description of the first role for which the generator does not refuse.
+pub fn check_compiled_endpoint_rules_are_refused(
+    generator: &dyn DynGenerator,
+) -> Result<(), String> {
+    refuses_endpoint_rules(generator, &compiled_endpoint_rules_contract(), None)
+}
+
+fn refuses_endpoint_rules(
+    generator: &dyn DynGenerator,
+    ir: &Ir,
+    origin_line: Option<u32>,
+) -> Result<(), String> {
+    let services = all_services(ir);
+    for role in generator.roles() {
+        let caps = generator.capabilities(*role);
+        if caps.supports(Feature::RulesEndpoint) {
+            return Err(format!("{}: declares `rules_endpoint`", role.name()));
+        }
+        let req = GenRequest {
+            ir,
+            role: *role,
+            services: services.clone(),
+            consumes: vec![],
+            framework: None,
+        };
+        let gate = check_capabilities(ir, &req, &caps);
+        let at_statement = |d: &veld_codegen::GenDiagnostic| {
+            d.code == "E0801"
+                && d.message.contains("rules_endpoint")
+                && origin_line.is_none_or(|l| d.origin.as_ref().map(|o| o.line) == Some(l))
+        };
+        if gate.len() != 1 || !gate.iter().all(at_statement) {
+            return Err(format!("{}: the gate reported {gate:?}", role.name()));
+        }
+        match generator.generate_dyn(&req, &crate::options()) {
+            Err(d) if !d.is_empty() && d.iter().all(|d| d.code == "E0801") => {}
+            other => {
+                return Err(format!(
+                    "{}: generate did not answer E0801: {other:?}",
+                    role.name()
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+const STATE_MACHINE_SOURCE: &str = "enum Status {
+  pending, paid, cancelled
+  flow pending -> paid
+  flow pending -> cancelled
+  final paid, cancelled
+}
+
+model Booking { id: uuid, status: Status }
+
+service Bookings at \"/bookings\" {
+  get \"/{id}\" get(id: uuid) -> Booking
+}
+";
+
+const TRANSITION_SOURCE: &str = "enum Status {
+  pending, paid, cancelled
+  flow pending -> paid
+  flow pending -> cancelled
+  final paid, cancelled
+}
+
+model Booking { id: uuid, status: Status }
+
+service Bookings at \"/bookings\" {
+  post \"/{id}/pay\" pay(id: uuid) -> Booking {
+    fact booking: Booking = id
+    transition booking.status: pending -> paid
+  }
+}
+";
+
+/// The contract of a state machine (an enum with flows) without any endpoint rule, and the line
+/// where the machine is declared.
+#[must_use]
+pub fn compiled_state_machine_contract() -> (Ir, u32) {
+    let ir = compile("compiled_state_machine", STATE_MACHINE_SOURCE);
+    (ir, line_of(STATE_MACHINE_SOURCE, "enum Status"))
+}
+
+/// The contract of an endpoint with a `transition` (and a machine), and the line of the statement.
+#[must_use]
+pub fn compiled_transition_contract() -> (Ir, u32) {
+    let ir = compile("compiled_transition", TRANSITION_SOURCE);
+    (ir, line_of(TRANSITION_SOURCE, "transition booking"))
+}
+
+fn line_of(source: &str, needle: &str) -> u32 {
+    let at = source.lines().position(|l| l.contains(needle));
+    match at.and_then(|i| u32::try_from(i + 1).ok()) {
+        Some(line) => line,
+        None => panic!("`{needle}` is not in the fixture"),
+    }
+}
+
+/// The generator must not declare `rules_transitions` and must refuse a compiled contract with a
+/// state machine, and one with a `transition`: the gate reports `E0801` for `rules_transitions`
+/// at the first flow or transition, and `generate` answers `E0801` only. (A generator that does
+/// not support endpoint rules reports those too: the contract with a transition has a fact.)
+///
+/// # Errors
+/// A description of the first role and contract for which the generator does not refuse.
+pub fn check_state_machines_are_refused(generator: &dyn DynGenerator) -> Result<(), String> {
+    for (ir, line) in [
+        compiled_state_machine_contract(),
+        compiled_transition_contract(),
+    ] {
+        refuses_state_machines(generator, &ir, line)?;
+    }
+    Ok(())
+}
+
+fn refuses_state_machines(
+    generator: &dyn DynGenerator,
+    ir: &Ir,
+    origin_line: u32,
+) -> Result<(), String> {
+    let services = all_services(ir);
+    for role in generator.roles() {
+        let caps = generator.capabilities(*role);
+        if caps.supports(Feature::RulesTransitions) {
+            return Err(format!("{}: declares `rules_transitions`", role.name()));
+        }
+        let req = GenRequest {
+            ir,
+            role: *role,
+            services: services.clone(),
+            consumes: vec![],
+            framework: None,
+        };
+        let gate = check_capabilities(ir, &req, &caps);
+        let mine: Vec<_> = gate
+            .iter()
+            .filter(|d| d.message.contains("rules_transitions"))
+            .collect();
+        let at_the_machine = mine.len() == 1
+            && mine.iter().all(|d| {
+                d.code == "E0801" && d.origin.as_ref().map(|o| o.line) == Some(origin_line)
+            });
+        if !at_the_machine || gate.iter().any(|d| d.code != "E0801") {
+            return Err(format!("{}: the gate reported {gate:?}", role.name()));
+        }
+        match generator.generate_dyn(&req, &crate::options()) {
+            Err(d) if !d.is_empty() && d.iter().all(|d| d.code == "E0801") => {}
+            other => {
+                return Err(format!(
+                    "{}: generate did not answer E0801: {other:?}",
+                    role.name()
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+const POLICY_SOURCE: &str = "model User { id: uuid }
+principal User
+
+model Booking { id: uuid, owner: uuid }
+
+policy Manage(user: User, booking: Booking) {
+  permit when booking.owner == user.id
+}
+
+@auth(bearer)
+service Bookings at \"/bookings\" {
+  get \"/{id}\" get(id: uuid) -> Booking {
+    fact booking: Booking = id
+    allow Manage(user, booking)
+  }
+}
+";
+
+const UNUSED_POLICY_SOURCE: &str = "model User { id: uuid }
+principal User
+
+policy Anyone(user: User) {
+  permit when true
+}
+
+@auth(bearer)
+service Users at \"/users\" {
+  get \"/\" list() -> User
+}
+";
+
+/// The contract of an endpoint with an `allow` (a principal and a policy), and the line of the
+/// statement.
+#[must_use]
+pub fn compiled_policy_contract() -> (Ir, u32) {
+    let ir = compile("compiled_policy", POLICY_SOURCE);
+    (ir, line_of(POLICY_SOURCE, "allow Manage"))
+}
+
+const PRINCIPAL_READ_SOURCE: &str = "model User { id: uuid, banned: bool }
+principal User
+
+@auth(bearer)
+service Users at \"/users\" {
+  get \"/\" list() -> User {
+    require not user.banned
+  }
+}
+";
+
+/// The contract of an endpoint that reads the principal in a `require` and has no `allow`, and the
+/// line of the statement. A generator must refuse it all the same: the principal is a root only
+/// the policy feature knows.
+#[must_use]
+pub fn compiled_principal_read_contract() -> (Ir, u32) {
+    let ir = compile("compiled_principal_read", PRINCIPAL_READ_SOURCE);
+    (ir, line_of(PRINCIPAL_READ_SOURCE, "require not user"))
+}
+
+/// A contract that declares a principal and a policy and uses neither in an endpoint: it needs
+/// no feature (`spec/rules.md` section 11.4).
+#[must_use]
+pub fn compiled_unused_policy_contract() -> Ir {
+    compile("compiled_unused_policy", UNUSED_POLICY_SOURCE)
+}
+
+/// The generator must not declare `rules_policies` and must refuse a compiled contract with an
+/// `allow`: the gate reports `E0801` for `rules_policies` at the statement, and `generate` answers
+/// `E0801` only. A contract that declares a policy and a principal but no `allow` needs no
+/// feature: the gate lets it through for `rules_policies` and `generate` makes files for it.
+///
+/// # Errors
+/// A description of the first role and contract for which the generator does not behave so.
+pub fn check_policies_are_refused(generator: &dyn DynGenerator) -> Result<(), String> {
+    for (ir, line) in [
+        compiled_policy_contract(),
+        compiled_principal_read_contract(),
+    ] {
+        refuses_policies(generator, &ir, line)?;
+    }
+    accepts_unused_policies(generator)
+}
+
+fn refuses_policies(generator: &dyn DynGenerator, ir: &Ir, line: u32) -> Result<(), String> {
+    let services = all_services(ir);
+    for role in generator.roles() {
+        let caps = generator.capabilities(*role);
+        if caps.supports(Feature::RulesPolicies) {
+            return Err(format!("{}: declares `rules_policies`", role.name()));
+        }
+        let req = GenRequest {
+            ir,
+            role: *role,
+            services: services.clone(),
+            consumes: vec![],
+            framework: None,
+        };
+        let gate = check_capabilities(ir, &req, &caps);
+        let mine: Vec<_> = gate
+            .iter()
+            .filter(|d| d.message.contains("rules_policies"))
+            .collect();
+        let at_the_allow = mine.len() == 1
+            && mine
+                .iter()
+                .all(|d| d.code == "E0801" && d.origin.as_ref().map(|o| o.line) == Some(line));
+        if !at_the_allow || gate.iter().any(|d| d.code != "E0801") {
+            return Err(format!("{}: the gate reported {gate:?}", role.name()));
+        }
+        match generator.generate_dyn(&req, &crate::options()) {
+            Err(d) if !d.is_empty() && d.iter().all(|d| d.code == "E0801") => {}
+            other => {
+                return Err(format!(
+                    "{}: generate did not answer E0801: {other:?}",
+                    role.name()
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn accepts_unused_policies(generator: &dyn DynGenerator) -> Result<(), String> {
+    let ir = compiled_unused_policy_contract();
+    for role in generator.roles() {
+        let caps = generator.capabilities(*role);
+        let req = GenRequest {
+            ir: &ir,
+            role: *role,
+            services: all_services(&ir),
+            consumes: vec![],
+            framework: None,
+        };
+        let gate = check_capabilities(&ir, &req, &caps);
+        if !gate.is_empty() {
+            return Err(format!(
+                "{}: a policy no endpoint uses was refused: {gate:?}",
+                role.name()
+            ));
+        }
+        if let Err(d) = generator.generate_dyn(&req, &crate::options()) {
+            return Err(format!(
+                "{}: generate failed for an unused policy: {d:?}",
+                role.name()
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// A generator that supports invariants and endpoint rules and nothing else of the rules: it
+/// declares `rules_invariants` and `rules_endpoint`, the gate lets both a hand-built block and one
+/// the compiler made through, and `generate` produces files for them (transitions and policies stay
+/// refused).
+///
+/// # Errors
+/// A description of the first role that does not match.
+pub fn check_invariants_and_endpoint_rules_supported(
+    generator: &dyn DynGenerator,
+) -> Result<(), String> {
+    let contracts = [
+        ir_with_rule(),
+        ir_with_endpoint_rules(),
+        compiled_endpoint_rules_contract(),
+    ];
+    for role in generator.roles() {
+        let caps = generator.capabilities(*role);
+        for f in Feature::RULES {
+            let want = matches!(f, Feature::RulesInvariants | Feature::RulesEndpoint);
+            if caps.supports(f) != want {
+                return Err(format!(
+                    "{}: `{}` should be supported: {want}",
+                    role.name(),
+                    f.name()
+                ));
+            }
+        }
+        for ir in &contracts {
+            let req = GenRequest {
+                ir,
+                role: *role,
+                services: all_services(ir),
+                consumes: vec![],
+                framework: None,
+            };
+            let gate = check_capabilities(ir, &req, &caps);
+            if !gate.is_empty() {
+                return Err(format!("{}: the gate reported {gate:?}", role.name()));
+            }
+            if let Err(d) = generator.generate_dyn(&req, &crate::options()) {
+                return Err(format!("{}: generate failed: {d:?}", role.name()));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// A generator that supports invariants and nothing else of the rules: it declares `rules_invariants`
+/// only, and generates a contract with a rule (the other rules features stay refused).
+///
+/// # Errors
+/// A description of the first role that does not match.
+pub fn check_only_invariants_supported(generator: &dyn DynGenerator) -> Result<(), String> {
+    let ir = ir_with_rule();
+    let services = all_services(&ir);
+    for role in generator.roles() {
+        let caps = generator.capabilities(*role);
+        for f in Feature::RULES {
+            let want = f == Feature::RulesInvariants;
+            if caps.supports(f) != want {
+                return Err(format!(
+                    "{}: `{}` should be supported: {want}",
+                    role.name(),
+                    f.name()
+                ));
+            }
+        }
+        let req = GenRequest {
+            ir: &ir,
+            role: *role,
+            services: services.clone(),
+            consumes: vec![],
+            framework: None,
+        };
+        let gate = check_capabilities(&ir, &req, &caps);
+        if !gate.is_empty() {
+            return Err(format!("{}: the gate reported {gate:?}", role.name()));
+        }
+        if let Err(d) = generator.generate_dyn(&req, &crate::options()) {
+            return Err(format!("{}: generate failed: {d:?}", role.name()));
+        }
+    }
+    Ok(())
 }
 
 /// Every declaration signature and operation signature of `services` and what they reach.
@@ -176,8 +815,7 @@ fn check_fixture(
     };
     let caps = generator.capabilities(role);
     let gate = check_capabilities(&ir, &req, &caps);
-    let unsupported: Vec<Feature> = ir
-        .features_used(&services)
+    let unsupported: Vec<Feature> = checked_features(&ir, &req)
         .into_iter()
         .filter(|f| !caps.supports(*f))
         .collect();
@@ -210,7 +848,7 @@ fn services_use_rejected(ir: &Ir, services: &[ServiceId], setup: Setup<'_>) -> b
 
 /// The generator must refuse the request, with `E0801` only, and write nothing.
 fn check_rejected(generator: &dyn DynGenerator, req: &GenRequest<'_>) -> Result<(), String> {
-    match generator.generate_dyn(req, &serde_json::Value::Null) {
+    match generator.generate_dyn(req, &crate::options()) {
         Err(d) if !d.is_empty() && d.iter().all(|d| d.code == "E0801") => Ok(()),
         Err(d) => Err(format!(
             "expected only E0801 for a rejected feature, got {d:?}"
@@ -224,18 +862,16 @@ fn all_services(ir: &Ir) -> Vec<ServiceId> {
 }
 
 fn generate(generator: &dyn DynGenerator, req: &GenRequest<'_>) -> Result<FileSet, String> {
-    generator
-        .generate_dyn(req, &serde_json::Value::Null)
-        .map_err(|d| {
-            let lines: Vec<String> = d
-                .iter()
-                .map(|d| format!("{}: {}", d.code, d.message))
-                .collect();
-            format!(
-                "generation failed although every used feature is declared:\n    {}",
-                lines.join("\n    ")
-            )
-        })
+    generator.generate_dyn(req, &crate::options()).map_err(|d| {
+        let lines: Vec<String> = d
+            .iter()
+            .map(|d| format!("{}: {}", d.code, d.message))
+            .collect();
+        format!(
+            "generation failed although every used feature is declared:\n    {}",
+            lines.join("\n    ")
+        )
+    })
 }
 
 #[cfg(test)]
@@ -293,13 +929,190 @@ mod tests {
         }
         let covered: Vec<Feature> = FIXTURES.iter().filter_map(|f| f.feature).collect();
         // `consts` is never reported by `features_used` (see fixtures.rs), so it has no fixture.
-        for feature in Feature::ALL.into_iter().filter(|f| *f != Feature::Consts) {
+        // The rules features have no fixture until the language has rule syntax; `ir_with_rule`
+        // covers `rules_invariants` by hand. The opt-in features have contracts of their own:
+        // `compiled_rollout_contracts`, `compiled_version_contracts`, `compiled_idempotency_contracts`.
+        for feature in Feature::ALL.into_iter().filter(|f| {
+            *f != Feature::Consts && !Feature::OPT_IN.contains(f) && !Feature::RULES.contains(f)
+        }) {
             assert!(
                 covered.contains(&feature),
                 "no fixture for `{}`",
                 feature.name()
             );
         }
+    }
+
+    #[test]
+    fn the_hand_built_rule_uses_the_invariants_feature() {
+        let ir = ir_with_rule();
+        let used = ir.features_used(&all_services(&ir));
+        assert!(used.contains(&Feature::RulesInvariants), "{used:?}");
+    }
+
+    #[test]
+    fn the_hand_built_endpoint_rules_use_the_endpoint_feature() {
+        let ir = ir_with_endpoint_rules();
+        let used = ir.features_used(&all_services(&ir));
+        assert!(used.contains(&Feature::RulesEndpoint), "{used:?}");
+        assert!(!used.contains(&Feature::RulesInvariants), "{used:?}");
+    }
+
+    #[test]
+    fn a_compiled_block_uses_the_endpoint_feature() {
+        let ir = compiled_endpoint_rules_contract();
+        let used = ir.features_used(&all_services(&ir));
+        assert!(used.contains(&Feature::RulesEndpoint), "{used:?}");
+        let ep = &ir.services[0].endpoints[0];
+        assert_eq!(ep.rules.facts.len(), 1);
+        assert_eq!((ep.rules.requires.len(), ep.rules.ensures.len()), (1, 1));
+    }
+
+    #[test]
+    fn a_generator_that_claims_a_compiled_block_is_caught() {
+        let claims = Minimal {
+            embed: true,
+            caps: Capabilities::all_except(&[]),
+        };
+        assert!(check_compiled_endpoint_rules_are_refused(&claims).is_err());
+    }
+
+    #[test]
+    fn the_state_machine_contracts_use_the_transitions_feature() {
+        for (ir, line) in [
+            compiled_state_machine_contract(),
+            compiled_transition_contract(),
+        ] {
+            let used = ir.features_used(&all_services(&ir));
+            assert!(used.contains(&Feature::RulesTransitions), "{used:?}");
+            assert!(line >= 1);
+        }
+        let (ir, _) = compiled_state_machine_contract();
+        let used = ir.features_used(&all_services(&ir));
+        assert!(!used.contains(&Feature::RulesEndpoint), "{used:?}");
+        let (ir, _) = compiled_transition_contract();
+        assert!(ir.services[0].endpoints[0].rules.transition.is_some());
+    }
+
+    #[test]
+    fn a_generator_that_claims_state_machines_is_caught() {
+        let claims = Minimal {
+            embed: true,
+            caps: Capabilities::all_except(&[]),
+        };
+        assert!(check_state_machines_are_refused(&claims).is_err());
+    }
+
+    #[test]
+    fn the_rollout_contracts_use_the_rollout_feature_at_a_known_line() {
+        let contracts = compiled_rollout_contracts();
+        assert_eq!(contracts.len(), 3);
+        for (ir, line) in contracts {
+            let used = ir.features_used(&all_services(&ir));
+            assert!(used.contains(&Feature::RulesRollout), "{used:?}");
+            assert!(line > 1);
+        }
+    }
+
+    #[test]
+    fn a_generator_that_claims_rollout_is_caught() {
+        let claims = Minimal {
+            embed: true,
+            caps: Capabilities::all_except(&[]).with(Feature::RulesRollout),
+        };
+        let err = check_rollout_is_refused(&claims).unwrap_err();
+        assert!(err.contains("declares `rules_rollout`"), "{err}");
+    }
+
+    #[test]
+    fn a_generator_that_refuses_rollout_is_caught_by_the_generating_check() {
+        let refuses = Minimal {
+            embed: true,
+            caps: Capabilities::all_except(&[]),
+        };
+        let err = check_rollout_is_generated(&refuses).unwrap_err();
+        assert!(err.contains("does not declare `rules_rollout`"), "{err}");
+        let opted_in = Minimal {
+            embed: true,
+            caps: Capabilities::all_except(&[]).with(Feature::RulesRollout),
+        };
+        check_rollout_is_generated(&opted_in).unwrap();
+    }
+
+    #[test]
+    fn a_generator_that_does_not_gate_rollout_is_caught() {
+        let ungated = Minimal {
+            embed: true,
+            caps: Capabilities::default(),
+        };
+        let err = check_rollout_is_refused(&ungated).unwrap_err();
+        assert!(err.contains("did not answer E0801"), "{err}");
+    }
+
+    #[test]
+    fn the_policy_contracts_use_the_policies_feature_only_with_an_allow() {
+        let (ir, line) = compiled_policy_contract();
+        let used = ir.features_used(&all_services(&ir));
+        assert!(used.contains(&Feature::RulesPolicies), "{used:?}");
+        assert!(line >= 1);
+        assert_eq!(ir.services[0].endpoints[0].rules.allows.len(), 1);
+        let (read, line) = compiled_principal_read_contract();
+        let used = read.features_used(&all_services(&read));
+        assert!(used.contains(&Feature::RulesPolicies), "{used:?}");
+        assert!(read.services[0].endpoints[0].rules.allows.is_empty());
+        assert!(line >= 1);
+        let unused = compiled_unused_policy_contract();
+        assert_eq!(unused.policies.len(), 1);
+        let used = unused.features_used(&all_services(&unused));
+        assert!(!used.contains(&Feature::RulesPolicies), "{used:?}");
+    }
+
+    #[test]
+    fn a_generator_that_claims_policies_is_caught() {
+        let claims = Minimal {
+            embed: true,
+            caps: Capabilities::all_except(&[]),
+        };
+        assert!(check_policies_are_refused(&claims).is_err());
+    }
+
+    #[test]
+    fn a_generator_that_does_not_gate_policies_is_caught() {
+        let ungated = Minimal {
+            embed: true,
+            caps: Capabilities::default(),
+        };
+        let err = check_policies_are_refused(&ungated).unwrap_err();
+        assert!(err.contains("did not answer E0801"), "{err}");
+    }
+
+    #[test]
+    fn a_generator_that_does_not_gate_state_machines_is_caught() {
+        // It declares nothing, so the gate fires, but `generate` happily produces files.
+        let ungated = Minimal {
+            embed: true,
+            caps: Capabilities::default(),
+        };
+        let err = check_state_machines_are_refused(&ungated).unwrap_err();
+        assert!(err.contains("did not answer E0801"), "{err}");
+    }
+
+    #[test]
+    fn a_generator_that_claims_endpoint_rules_is_caught() {
+        let claims = Minimal {
+            embed: true,
+            caps: Capabilities::all_except(&[]),
+        };
+        assert!(check_endpoint_rules_are_refused(&claims).is_err());
+    }
+
+    #[test]
+    fn a_generator_that_claims_rules_is_caught() {
+        let claims = Minimal {
+            embed: true,
+            caps: Capabilities::all_except(&[]),
+        };
+        assert!(check_rules_are_refused(&claims).is_err());
     }
 
     #[test]

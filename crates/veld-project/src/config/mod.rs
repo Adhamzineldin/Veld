@@ -1,9 +1,14 @@
-//! `veld.toml` loading: parse, validate, resolve to absolute paths.
+//! `veld.toml` loading: parse, validate, resolve to absolute paths. The layout is a workspace
+//! root plus one file per member (`spec/workspace.md`).
 
+mod discover;
 mod error;
+mod legacy;
+mod members;
 mod paths;
 mod raw;
 mod resolve;
+mod select;
 mod sources;
 mod suggest;
 
@@ -14,13 +19,56 @@ use std::path::{Path, PathBuf};
 use sha2::{Digest, Sha256};
 use veld_ir::PackageKind;
 
+pub use discover::{load, load_virtual, load_with};
 pub use error::{ConfigError, Warning};
+pub use members::{any_matches, expand, expand_members};
 pub use paths::{CONFIG_FILE, find_config};
-pub use raw::{
-    Config, HooksSection, LibrarySection, OneOrMany, PluginSection, ProjectSection,
-    RegistrySection, Role, ServiceSection, TargetSection,
-};
-pub use sources::collect_sources;
+pub use raw::{FileConfig, OneOrMany, Role};
+pub use resolve::resolve;
+pub use select::{Affected, SelectBy, Selection, affected, dependents, select, selection_of};
+pub use sources::{CatalogSet, collect_catalogs, collect_sources};
+
+/// What a member is (section 5 of `spec/workspace.md`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MemberKind {
+    Service,
+    App,
+    Library,
+}
+
+impl MemberKind {
+    /// `service`, `app` or `library`.
+    #[must_use]
+    pub fn word(self) -> &'static str {
+        match self {
+            Self::Service => "service",
+            Self::App => "app",
+            Self::Library => "library",
+        }
+    }
+}
+
+/// A resolved member: a service, an app or a library, with its own `veld.toml`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MemberSpec {
+    pub name: String,
+    pub kind: MemberKind,
+    /// Absolute directory of the member (the workspace root for a member in the root file).
+    pub dir: PathBuf,
+    /// Absolute path of the member's `veld.toml`.
+    pub file: PathBuf,
+    /// Absolute contracts directory (services and libraries).
+    pub contracts: Option<PathBuf>,
+    pub owners: Vec<String>,
+    /// The services an app uses, or a service consumes (resolved).
+    pub depends_on: Vec<String>,
+    /// `package`, `version` and `description` for `veld publish`.
+    pub package: Option<String>,
+    pub version: Option<String>,
+    pub description: Option<String>,
+    /// Names of the member's targets, in order.
+    pub targets: Vec<String>,
+}
 
 /// A resolved contracts package (a service or a library).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,9 +80,24 @@ pub struct PackageSpec {
     pub base_url: Option<String>,
     /// Names of consumed services (self-references removed, duplicates dropped).
     pub consumes: Vec<String>,
-    /// Route prefix prepended to every service prefix of this package (`[project].prefix`
-    /// then `[services.x].prefix`); empty when none.
+    /// Route prefix prepended to every service prefix of this package (`[workspace].prefix`
+    /// then `[service].prefix`); empty when none.
     pub prefix: String,
+    /// The message catalogs of a service member (`spec/platform.md` section 22); `None` for a
+    /// library or a registry package, which have none.
+    pub messages: Option<MessagesSpec>,
+}
+
+/// Where a member's message catalogs are: `[service] messages`, default `messages`, next to the
+/// member's `veld.toml` (relative to the member, as `contracts` is).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MessagesSpec {
+    /// The absolute directory. It need not exist unless `explicit`.
+    pub dir: PathBuf,
+    /// The name as the contracts and the IR write it: relative to the member, `/` separators.
+    pub name: String,
+    /// True when `[service] messages` was written: a directory that is not there is an error.
+    pub explicit: bool,
 }
 
 /// Who an emitter id refers to.
@@ -44,10 +107,23 @@ pub enum EmitterRef {
     Plugin(String),
 }
 
-/// A resolved `[[targets]]` entry.
+/// A resolved `[workspace.defaults.<role>.<emitter>]` table. It is checked by the generator of
+/// the emitter when the workspace is loaded, whether or not a member uses it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DefaultSpec {
+    pub role: Role,
+    pub emitter: EmitterRef,
+    pub framework: Option<String>,
+    /// The option keys (`framework` is held apart).
+    pub options: toml::Table,
+}
+
+/// A resolved `[server]` or `[client]` table.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TargetSpec {
     pub name: String,
+    /// The member whose `veld.toml` holds the target.
+    pub member: String,
     pub role: Role,
     pub emitter: EmitterRef,
     pub framework: Option<String>,
@@ -126,13 +202,22 @@ pub struct Hooks {
 /// A fully resolved project.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Project {
-    /// Absolute directory containing `veld.toml`.
+    /// Absolute directory of the workspace root.
     pub root: PathBuf,
+    /// Absolute path of the root `veld.toml`.
+    pub file: PathBuf,
     pub name: String,
-    /// `[project].description`, written by `veld init`.
+    /// `[workspace].description`, written by `veld init`.
     pub description: Option<String>,
+    /// The members, ordered by path (the root directory first).
+    pub members: Vec<MemberSpec>,
+    /// The member whose directory the run started in, when the run started inside one
+    /// (set by [`load`]; section 3.1 of `spec/workspace.md`).
+    pub current: Option<String>,
     pub packages: Vec<PackageSpec>,
     pub targets: Vec<TargetSpec>,
+    /// The workspace defaults, by role then emitter.
+    pub defaults: Vec<DefaultSpec>,
     pub plugins: Vec<PluginSpec>,
     pub registry: Option<String>,
     pub dependencies: BTreeMap<String, String>,
@@ -146,6 +231,11 @@ pub struct Project {
 impl Project {
     pub fn package(&self, name: &str) -> Option<&PackageSpec> {
         self.packages.iter().find(|p| p.name == name)
+    }
+
+    /// The member called `name`.
+    pub fn member(&self, name: &str) -> Option<&MemberSpec> {
+        self.members.iter().find(|m| m.name == name)
     }
 
     pub fn services(&self) -> impl Iterator<Item = &PackageSpec> {
@@ -166,23 +256,10 @@ impl Project {
     }
 }
 
-/// Reads and resolves the `veld.toml` at `path`.
-pub fn load(path: &Path) -> Result<Project, ConfigError> {
-    let path = paths::absolutize(path)?;
-    let text = fs::read_to_string(&path).map_err(|source| ConfigError::Io {
-        path: path.clone(),
-        source,
-    })?;
-    let root = path
-        .parent()
-        .map(Path::to_path_buf)
-        .ok_or_else(|| ConfigError::invalid("config path has no parent directory"))?;
-    resolve::resolve(&root, Config::parse(&text)?)
-}
-
-/// Parses and resolves config text as if it lived in `root`. Useful for tests and tools.
+/// Parses and resolves a single file workspace (one `veld.toml`, no members below it) as if it
+/// lived in `root`. Useful for tests and tools.
 pub fn load_str(root: &Path, text: &str) -> Result<Project, ConfigError> {
-    resolve::resolve(&paths::absolutize(root)?, Config::parse(text)?)
+    resolve::resolve(&paths::absolutize(root)?, text, &[])
 }
 
 #[cfg(test)]
@@ -231,19 +308,19 @@ mod tests {
     fn hooks_accept_a_string_or_a_list_and_default_to_warning() {
         let one = load_str(
             Path::new("/p"),
-            "[project]\nname = \"s\"\n[hooks]\npost-generate = \"prettier --write gen\"\n",
+            "[service]\nname = \"s\"\n[hooks]\npost-generate = \"prettier --write gen\"\n",
         )
         .unwrap();
         assert_eq!(one.hooks.post_generate, ["prettier --write gen"]);
         assert!(!one.hooks.fail);
         let many = load_str(
             Path::new("/p"),
-            "[project]\nname = \"s\"\n[hooks]\npost-generate = [\"a\", \"b\"]\nfail = true\n",
+            "[service]\nname = \"s\"\n[hooks]\npost-generate = [\"a\", \"b\"]\nfail = true\n",
         )
         .unwrap();
         assert_eq!(many.hooks.post_generate, ["a", "b"]);
         assert!(many.hooks.fail);
-        let none = load_str(Path::new("/p"), "[project]\nname = \"s\"\n").unwrap();
+        let none = load_str(Path::new("/p"), "[service]\nname = \"s\"\n").unwrap();
         assert_eq!(none.hooks, Hooks::default());
     }
 
@@ -251,7 +328,7 @@ mod tests {
     fn an_unknown_hooks_key_suggests_the_right_one() {
         let err = load_str(
             Path::new("/p"),
-            "[project]\nname = \"s\"\n[hooks]\npost-generat = \"x\"\n",
+            "[service]\nname = \"s\"\n[hooks]\npost-generat = \"x\"\n",
         )
         .unwrap_err();
         assert_eq!(err.code(), Some("E0701"));
@@ -261,10 +338,10 @@ mod tests {
         );
     }
     #[test]
-    fn load_reads_a_file() {
+    fn load_str_reads_a_file_text() {
         let tmp = tempfile::tempdir().unwrap();
         let file = tmp.path().join(CONFIG_FILE);
-        fs::write(&file, "[project]\nname = \"shop\"\n").unwrap();
+        fs::write(&file, "[service]\nname = \"shop\"\n").unwrap();
         let project = load(&file).unwrap();
         assert_eq!(project.name, "shop");
         assert!(project.root.is_absolute());

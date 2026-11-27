@@ -1,0 +1,181 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+warning[W0940]: policy `OnlyForbids` has no `permit` clause and permits nobody
+ --> app/app.veld:5:8
+  |
+5 | policy OnlyForbids(user: User) {
+  |        ^^^^^^^^^^^
+  = help: add a `permit when ...` clause
+
+warning[W0940]: policy `Empty` has no `permit` clause and permits nobody
+ --> app/app.veld:9:8
+  |
+9 | policy Empty(user: User) {}
+  |        ^^^^^
+  = help: add a `permit when ...` clause
+
+== ir ==
+{
+  "ir_version": "1.1",
+  "packages": [
+    {
+      "id": 0,
+      "name": "app",
+      "kind": "service"
+    }
+  ],
+  "decls": [
+    {
+      "id": 0,
+      "package": 0,
+      "module": "app",
+      "name": "User",
+      "qualified": "app:app.User",
+      "sig": "veld:app/User@15500194cd603544",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 3,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "id",
+          "wire": "id",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 3,
+            "col": 14
+          }
+        },
+        {
+          "name": "banned",
+          "wire": "banned",
+          "type": {
+            "scalar": "bool"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 3,
+            "col": 24
+          }
+        }
+      ]
+    }
+  ],
+  "services": [],
+  "consumes": {},
+  "policies": [
+    {
+      "name": "Empty",
+      "package": 0,
+      "module": "app",
+      "qualified": "app:app.Empty",
+      "id": "veld:app/Empty@28b290e9d90e34a3",
+      "params": [
+        {
+          "name": "user",
+          "type": {
+            "decl": 0
+          }
+        }
+      ],
+      "clauses": [],
+      "docs": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 9,
+        "col": 8
+      }
+    },
+    {
+      "name": "OnlyForbids",
+      "package": 0,
+      "module": "app",
+      "qualified": "app:app.OnlyForbids",
+      "id": "veld:app/OnlyForbids@3860710d015b10a4",
+      "params": [
+        {
+          "name": "user",
+          "type": {
+            "decl": 0
+          }
+        }
+      ],
+      "clauses": [
+        {
+          "effect": "forbid",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "path": {
+                "root": {
+                  "param": "user"
+                },
+                "steps": [
+                  {
+                    "name": "banned",
+                    "wire": "banned",
+                    "optional": false
+                  }
+                ]
+              }
+            }
+          },
+          "message": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 6,
+            "col": 3
+          }
+        }
+      ],
+      "docs": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 5,
+        "col": 8
+      }
+    }
+  ]
+}

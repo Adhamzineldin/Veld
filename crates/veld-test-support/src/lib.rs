@@ -9,10 +9,13 @@
 //! their own pipes.
 #![allow(clippy::missing_panics_doc)]
 
+use std::fmt;
 use std::fs::File;
-use std::io;
+use std::io::{self, Read};
 use std::path::Path;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Command, ExitStatus, Output, Stdio};
+use std::thread::{self, JoinHandle};
+use std::time::{Duration, Instant};
 
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
@@ -109,6 +112,91 @@ fn kill_tree_of(pid: u32) {
         .stdin(Stdio::null())
         .stderr(Stdio::null())
         .output();
+}
+
+/// The limit for an install or a build (`npm ci`, `tsc`, `cargo build`, `javac`, `mvn`).
+pub const BUILD_LIMIT: Duration = Duration::from_secs(10 * 60);
+
+/// The limit for running something that is already built (`node`, a compiled binary).
+pub const RUN_LIMIT: Duration = Duration::from_secs(2 * 60);
+
+/// Why [`run_limited`] gave no output.
+#[derive(Debug)]
+pub enum RunError {
+    /// The command could not be started.
+    Spawn { command: String, source: io::Error },
+    /// The command did not finish in time; it and its children were killed.
+    TimedOut { command: String, limit: Duration },
+    /// Waiting for the command failed.
+    Wait { command: String, source: io::Error },
+}
+
+impl fmt::Display for RunError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            RunError::Spawn { command, source } => write!(f, "cannot start {command}: {source}"),
+            RunError::TimedOut { command, limit } => write!(
+                f,
+                "{command} did not finish within {limit:?}; it was killed together with its child processes"
+            ),
+            RunError::Wait { command, source } => write!(f, "cannot wait for {command}: {source}"),
+        }
+    }
+}
+
+impl std::error::Error for RunError {}
+
+fn drain<R: Read + Send + 'static>(pipe: Option<R>) -> JoinHandle<Vec<u8>> {
+    thread::spawn(move || {
+        let mut bytes = Vec::new();
+        if let Some(mut p) = pipe {
+            let _ = p.read_to_end(&mut bytes);
+        }
+        bytes
+    })
+}
+
+fn collect(status: ExitStatus, out: JoinHandle<Vec<u8>>, err: JoinHandle<Vec<u8>>) -> Output {
+    Output {
+        status,
+        stdout: out.join().unwrap_or_default(),
+        stderr: err.join().unwrap_or_default(),
+    }
+}
+
+/// Runs `cmd` to the end like `Command::output`, but at most `limit`. When the time is up the
+/// process and its children are killed (the whole process group on Unix, `taskkill /T` on
+/// Windows) and the error names the command line and the time. Stdin is null.
+///
+/// # Errors
+/// [`RunError`] when the command cannot start, cannot be waited for, or runs out of time.
+pub fn run_limited(cmd: &mut Command, limit: Duration) -> Result<Output, RunError> {
+    let command = format!("{cmd:?}");
+    isolate(cmd);
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = cmd.spawn().map_err(|source| RunError::Spawn {
+        command: command.clone(),
+        source,
+    })?;
+    let (out, err) = (drain(child.stdout.take()), drain(child.stderr.take()));
+    let mut tree = ProcessTree::adopt(child);
+    let start = Instant::now();
+    loop {
+        match tree.child_mut().try_wait() {
+            Ok(Some(status)) => return Ok(collect(status, out, err)),
+            Ok(None) if start.elapsed() >= limit => {
+                tree.kill_tree();
+                return Err(RunError::TimedOut { command, limit });
+            }
+            Ok(None) => thread::sleep(Duration::from_millis(25)),
+            Err(source) => {
+                tree.kill_tree();
+                return Err(RunError::Wait { command, source });
+            }
+        }
+    }
 }
 
 /// Whether a process with this id is alive. A zombie (dead, not yet reaped) is not alive: after
@@ -219,6 +307,49 @@ setInterval(() => {}, 1000);
         wait_for("the whole tree to be gone", || {
             !pid_alive(parent) && !pid_alive(grandchild)
         });
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_command_that_finishes_gives_its_output() {
+        let out = run_limited(
+            Command::new("sh").args(["-c", "echo hi; echo oops >&2"]),
+            RUN_LIMIT,
+        )
+        .unwrap();
+        assert!(out.status.success());
+        assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "hi");
+        assert_eq!(String::from_utf8_lossy(&out.stderr).trim(), "oops");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_command_that_runs_too_long_is_killed_with_its_children() {
+        let dir = std::env::temp_dir().join(format!("veld-limit-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let pidfile = dir.join("kid.pid");
+        let script = format!("sleep 600 & echo $! > {}; wait", pidfile.display());
+        let started = Instant::now();
+        let err = run_limited(
+            Command::new("sh").args(["-c", &script]),
+            Duration::from_millis(500),
+        )
+        .unwrap_err();
+        assert!(started.elapsed() < Duration::from_secs(20));
+        let text = err.to_string();
+        assert!(
+            matches!(err, RunError::TimedOut { .. })
+                && text.contains("sleep 600")
+                && text.contains("500ms"),
+            "{text}"
+        );
+        let kid: u32 = std::fs::read_to_string(&pidfile)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        wait_for("the child of the command to be gone", || !pid_alive(kid));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

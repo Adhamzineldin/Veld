@@ -4,9 +4,29 @@
 //! RFC 8785 canonical JSON; they contain only strings, bools, arrays and
 //! objects, so no number formatting is needed.
 
+mod endpoint;
+mod event;
+mod policy;
+mod rules;
+
+/// Message keys (`spec/platform.md` section 22): computed from the rule ids, written down once in
+/// `veld_ir::message_keys` so that a generator, which never depends on the compiler, reads the
+/// same function.
+pub use veld_ir::message_keys;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
+pub use endpoint::{
+    EndpointRef, StatementKind, TimedRef, TransitionRef, endpoint_rule_bytes, endpoint_rule_id,
+    fill_rules_digests, rules_digest, transition_rule_bytes, transition_rule_id,
+    version_rule_bytes, version_rule_id,
+};
+pub use event::{event_rules_digest, fill_event_digests};
+pub use policy::{policy_bytes, policy_id};
+pub use rules::{
+    derived_bytes, derived_id, derived_ids, rule_id, rule_ids, tenant_bytes, tenant_id, tenant_ids,
+};
 use sha2::{Digest, Sha256};
 use veld_ir::{Decl, DeclKind, Method, Package, PathSegment, Type};
 
@@ -120,7 +140,7 @@ fn tshape(t: &Type, decls: &[Decl]) -> Json {
 
 fn local_shape(d: &Decl, decls: &[Decl]) -> Json {
     match &d.kind {
-        DeclKind::Model(_) | DeclKind::Error(_) => {
+        DeclKind::Model(_) | DeclKind::Error(_) | DeclKind::Event(_) => {
             let mut fields: Vec<&veld_ir::Field> = d.fields().iter().collect();
             fields.sort_by(|a, b| cmp_utf16(&a.wire, &b.wire));
             let f = fields
@@ -133,7 +153,14 @@ fn local_shape(d: &Decl, decls: &[Decl]) -> Json {
                     ])
                 })
                 .collect();
-            let k = if d.is_error() { "error" } else { "model" };
+            let k = match &d.kind {
+                DeclKind::Error(_) => "error",
+                DeclKind::Event(_) => "event",
+                DeclKind::Model(_)
+                | DeclKind::Enum(_)
+                | DeclKind::Union(_)
+                | DeclKind::Const(_) => "model",
+            };
             obj(vec![("k", text(k)), ("f", Json::Arr(f))])
         }
         DeclKind::Enum(e) => {
@@ -164,7 +191,7 @@ fn local_shape(d: &Decl, decls: &[Decl]) -> Json {
 fn shape_refs(d: &Decl) -> Vec<usize> {
     let mut ids = Vec::new();
     match &d.kind {
-        DeclKind::Model(_) | DeclKind::Error(_) => {
+        DeclKind::Model(_) | DeclKind::Error(_) | DeclKind::Event(_) => {
             d.fields().iter().for_each(|f| f.ty.collect_decls(&mut ids))
         }
         DeclKind::Union(u) => ids.extend(u.arms.iter().map(|a| a.decl)),

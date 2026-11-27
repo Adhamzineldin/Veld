@@ -1,0 +1,25 @@
+// A second package with a principal that has a name of its own: `principal Staff as caller`.
+
+model Staff {
+  id: uuid
+  level: int
+}
+
+principal Staff as caller
+
+model Audit {
+  id: uuid
+  level: int
+}
+
+policy SeniorEnough(caller: Staff, audit: Audit) {
+  permit when caller.level >= audit.level
+}
+
+@auth(basic)
+service Audits at "/audits" {
+  get "/{id}" getAudit(id: uuid) -> Audit {
+    fact audit: Audit = id
+    allow SeniorEnough(caller, audit)
+  }
+}

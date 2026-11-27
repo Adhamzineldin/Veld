@@ -76,36 +76,32 @@ fn copy_contracts(from: &Path, to: &Path) {
     }
 }
 
-/// An example project exactly as `veld.toml` declares it.
-fn example_case(name: &str, root: &Path) -> Case {
-    let project = config::load(&root.join("veld.toml")).unwrap();
-    let dir = tempfile::tempdir().unwrap();
-    fs::copy(root.join("veld.toml"), dir.path().join("veld.toml")).unwrap();
-    let mut files = Vec::new();
-    let mut packages = Vec::new();
-    for pkg in &project.packages {
-        let rel = pkg.root.strip_prefix(&project.root).unwrap();
-        fs::create_dir_all(dir.path().join(rel)).unwrap();
-        copy_contracts(&pkg.root, &dir.path().join(rel));
-        for (path, text) in config::collect_sources(pkg).unwrap() {
-            files.push(SourceIn {
-                path: format!("{}/{path}", pkg.name),
-                text,
-            });
+/// Every `veld.toml` under `dir`, as `(path relative to `root` with /, text)`, sorted.
+fn toml_files(root: &Path, dir: &Path, out: &mut Vec<(String, String)>) {
+    let mut entries: Vec<_> = fs::read_dir(dir).unwrap().flatten().collect();
+    entries.sort_by_key(|e| e.file_name());
+    for e in entries {
+        let p = e.path();
+        let name = e.file_name().to_string_lossy().into_owned();
+        if p.is_dir() {
+            if !matches!(name.as_str(), "node_modules" | "target" | "dist" | ".veld") {
+                toml_files(root, &p, out);
+            }
+        } else if name == "veld.toml" {
+            let rel = p
+                .strip_prefix(root)
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/");
+            out.push((rel, fs::read_to_string(&p).unwrap()));
         }
-        packages.push(PackageIn {
-            name: pkg.name.clone(),
-            kind: if pkg.kind == veld_ir::PackageKind::Library {
-                "library".into()
-            } else {
-                "service".into()
-            },
-            base_url: pkg.base_url.clone(),
-            prefix: pkg.prefix.clone(),
-            consumes: pkg.consumes.clone(),
-        });
     }
-    let targets = project
+}
+
+/// The targets of a project as the CLI resolved them, in the form the wasm API takes, with each
+/// `out` relative to the workspace root.
+fn cli_targets(project: &config::Project) -> Vec<(TargetIn, String)> {
+    project
         .targets
         .iter()
         .map(|t| {
@@ -135,12 +131,78 @@ fn example_case(name: &str, root: &Path) -> Case {
             let out = t.out.strip_prefix(&project.root).unwrap();
             (target, out.to_string_lossy().replace('\\', "/"))
         })
+        .collect()
+}
+
+/// An example project exactly as its `veld.toml` files declare it. The CLI resolves the workspace
+/// from the disk; the wasm API resolves the same files as virtual files. They must agree, and
+/// the case runs the wasm side's answer against the CLI's output.
+fn example_case(name: &str, root: &Path) -> Case {
+    let project = config::load(&root.join("veld.toml")).unwrap();
+    let mut tomls = Vec::new();
+    toml_files(root, root, &mut tomls);
+    let dir = tempfile::tempdir().unwrap();
+    for (rel, text) in &tomls {
+        let path = dir.path().join(rel);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, text).unwrap();
+    }
+    let mut files = Vec::new();
+    for pkg in &project.packages {
+        let rel = pkg.root.strip_prefix(&project.root).unwrap();
+        fs::create_dir_all(dir.path().join(rel)).unwrap();
+        copy_contracts(&pkg.root, &dir.path().join(rel));
+        for (path, text) in config::collect_sources(pkg).unwrap() {
+            files.push(SourceIn {
+                path: format!("{}/{path}", pkg.name),
+                text,
+            });
+        }
+    }
+    let sources: Vec<SourceIn> = tomls
+        .iter()
+        .map(|(path, text)| SourceIn {
+            path: path.clone(),
+            text: text.clone(),
+        })
         .collect();
+    let resolved = api::workspace(&sources);
+    assert!(resolved.ok, "{name}: {:?}", resolved.diagnostics);
+    let wasm_targets: Vec<(TargetIn, String)> =
+        resolved.targets.into_iter().zip(resolved.outs).collect();
+    assert_eq!(
+        serde_json::to_value(&wasm_targets).unwrap(),
+        serde_json::to_value(cli_targets(&project)).unwrap(),
+        "{name}: the CLI and the wasm API resolve different targets"
+    );
+    let packages: Vec<PackageIn> = project
+        .packages
+        .iter()
+        .map(|pkg| PackageIn {
+            name: pkg.name.clone(),
+            kind: if pkg.kind == veld_ir::PackageKind::Library {
+                "library".into()
+            } else {
+                "service".into()
+            },
+            base_url: pkg.base_url.clone(),
+            prefix: pkg.prefix.clone(),
+            consumes: pkg.consumes.clone(),
+        })
+        .collect();
+    assert_eq!(
+        serde_json::to_value(&resolved.project).unwrap(),
+        serde_json::to_value(ProjectIn {
+            packages: packages.clone()
+        })
+        .unwrap(),
+        "{name}: the CLI and the wasm API resolve different packages"
+    );
     Case {
         name: name.into(),
         files,
-        project: ProjectIn { packages },
-        targets,
+        project: resolved.project,
+        targets: wasm_targets,
         dir,
     }
 }
@@ -187,18 +249,52 @@ fn matrix(project: &ProjectIn) -> Vec<TargetIn> {
     out
 }
 
-fn toml_for(project: &ProjectIn, targets: &[(TargetIn, String)]) -> String {
-    let mut t = String::from("[project]\nname = \"playground\"\n\n");
+/// The target tables of one member, as `veld.toml` text; `out` is written relative to the member.
+fn target_tables(targets: &[&(TargetIn, String)]) -> String {
+    let mut t = String::new();
+    for (target, out) in targets {
+        let table = &target.role;
+        t.push_str(&format!("[[{table}]]\n"));
+        t.push_str(&format!("name = \"{}\"\n", target.name.as_ref().unwrap()));
+        t.push_str(&format!("emitter = \"{}\"\n", target.emitter));
+        if let Some(f) = &target.framework {
+            t.push_str(&format!("framework = \"{f}\"\n"));
+        }
+        t.push_str(&format!("out = \"../{out}\"\n"));
+        if !target.options.is_empty() {
+            t.push_str(&format!("[{table}.options]\n"));
+            for (k, v) in &target.options {
+                t.push_str(&format!("{k} = {v}\n"));
+            }
+        }
+        t.push('\n');
+    }
+    t
+}
+
+/// The `veld.toml` files of a preset as a workspace: a root, a member per package (its contracts
+/// are the member directory) and an app `clients` holding every client target.
+fn toml_for(project: &ProjectIn, targets: &[(TargetIn, String)]) -> Vec<(String, String)> {
+    let mut members: Vec<String> = project
+        .packages
+        .iter()
+        .map(|p| format!("\"{}\"", p.name))
+        .collect();
+    members.push("\"clients\"".into());
+    let mut files = vec![(
+        "veld.toml".to_string(),
+        format!(
+            "[workspace]\nname = \"playground\"\nmembers = [{}]\n",
+            members.join(", ")
+        ),
+    )];
     for p in &project.packages {
         let table = if p.kind == "library" {
-            "libraries"
+            "library"
         } else {
-            "services"
+            "service"
         };
-        t.push_str(&format!(
-            "[{table}.{}]\ncontracts = \"{}\"\n",
-            p.name, p.name
-        ));
+        let mut t = format!("[{table}]\ncontracts = \".\"\n");
         if let Some(u) = &p.base_url {
             t.push_str(&format!("base-url = \"{u}\"\n"));
         }
@@ -207,30 +303,30 @@ fn toml_for(project: &ProjectIn, targets: &[(TargetIn, String)]) -> String {
             t.push_str(&format!("consumes = [{}]\n", list.join(", ")));
         }
         t.push('\n');
+        // A server target with no `service` (a preset's default) serves the only service.
+        let services: Vec<&str> = project
+            .packages
+            .iter()
+            .filter(|q| q.kind != "library")
+            .map(|q| q.name.as_str())
+            .collect();
+        let only = (services.len() == 1).then(|| services[0]);
+        let mine: Vec<&(TargetIn, String)> = targets
+            .iter()
+            .filter(|(t, _)| {
+                t.role == "server" && t.service.as_deref().or(only) == Some(p.name.as_str())
+            })
+            .collect();
+        t.push_str(&target_tables(&mine));
+        files.push((format!("{}/veld.toml", p.name), t));
     }
-    for (target, out) in targets {
-        t.push_str("[[targets]]\n");
-        t.push_str(&format!("name = \"{}\"\n", target.name.as_ref().unwrap()));
-        t.push_str(&format!(
-            "role = \"{}\"\nemitter = \"{}\"\n",
-            target.role, target.emitter
-        ));
-        if let Some(f) = &target.framework {
-            t.push_str(&format!("framework = \"{f}\"\n"));
-        }
-        if let Some(s) = &target.service {
-            t.push_str(&format!("service = \"{s}\"\n"));
-        }
-        t.push_str(&format!("out = \"{out}\"\n"));
-        if !target.options.is_empty() {
-            t.push_str("[targets.options]\n");
-            for (k, v) in &target.options {
-                t.push_str(&format!("{k} = {v}\n"));
-            }
-        }
-        t.push('\n');
-    }
-    t
+    let clients: Vec<&(TargetIn, String)> =
+        targets.iter().filter(|(t, _)| t.role == "client").collect();
+    files.push((
+        "clients/veld.toml".to_string(),
+        format!("[app]\n\n{}", target_tables(&clients)),
+    ));
+    files
 }
 
 /// A playground preset: contracts on disk plus `preset.json`, run against the whole matrix.
@@ -257,7 +353,11 @@ fn preset_case(id: &str, root: &Path) -> Case {
     let mut default: TargetIn = serde_json::from_value(meta["target"].clone()).unwrap();
     default.name = Some(format!("{}-{}", default.role, default.emitter));
     targets.push((default, "out/default".into()));
-    fs::write(dir.path().join("veld.toml"), toml_for(&project, &targets)).unwrap();
+    for (rel, text) in toml_for(&project, &targets) {
+        let path = dir.path().join(rel);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, text).unwrap();
+    }
     Case {
         name: format!("preset:{id}"),
         files,

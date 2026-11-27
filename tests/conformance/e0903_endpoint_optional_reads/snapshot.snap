@@ -1,0 +1,34 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0903]: `room` is optional and may be absent where it is read here
+ --> app/app.veld:10:25
+   |
+10 |     fact byRoom: Room = room
+   |                         ^^^^
+  = help: guard it: `has(room) && ...`, `has(room) implies ...` or `!has(room) || ...`
+
+error[E0903]: `page` is optional and may be absent where it is read here
+ --> app/app.veld:12:13
+   |
+12 |     require page > 0
+   |             ^^^^
+  = help: guard it: `has(page) && ...`, `has(page) implies ...` or `!has(page) || ...`
+
+error[E0903]: `body.text` is optional and may be absent where it is read here
+ --> app/app.veld:13:18
+   |
+13 |     require body.text == "x"
+   |                  ^^^^
+  = help: guard it: `has(body.text) && ...`, `has(body.text) implies ...` or `!has(body.text) || ...`
+
+error[E0903]: `lenient` is optional and may be absent where it is read here
+ --> app/app.veld:16:13
+   |
+16 |     require lenient.capacity > 0
+   |             ^^^^^^^
+  = help: guard it: `has(lenient) && ...`, `has(lenient) implies ...` or `!has(lenient) || ...`
+
+== ir ==
+(no IR: compilation failed)

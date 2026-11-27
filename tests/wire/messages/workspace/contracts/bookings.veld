@@ -1,0 +1,57 @@
+// The contract of the message goldens (`spec/platform.md` section 22).
+
+enum Status {
+  pending, paid, cancelled
+  flow pending -> paid
+  flow pending -> cancelled
+  final paid, cancelled
+}
+
+model User {
+  id: uuid
+  suspended: bool
+  banned: bool
+}
+
+principal User
+
+model Booking {
+  id: uuid
+  status: Status = .pending
+  @version
+  revision: long
+  start: datetime
+  end: datetime
+  total: decimal
+  rule endAfterStart: end > start
+    message "A booking must end after it starts"
+  rule totalKnown: total >= 0
+}
+
+model Payment {
+  amount: decimal
+}
+
+policy Manage(user: User, booking: Booking) {
+  permit when true
+  forbid when user.suspended
+    message "A suspended account cannot manage bookings"
+  forbid when user.banned
+  forbid when booking.status == .cancelled
+    message "A cancelled booking cannot be managed"
+}
+
+@auth(bearer)
+service Bookings at "/bookings" {
+  post "/{id}/pay" pay(id: uuid, body: Payment) -> Booking {
+    fact booking: Booking = id
+    allow Manage(user, booking)
+    transition booking.status: pending -> paid
+    require notZero: body.amount > 0
+      message "The amount must be positive"
+    require body.amount < 1000000
+      message "The amount is too large"
+    ensure result.revision >= 0
+      message "The revision never goes down"
+  }
+}

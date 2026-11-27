@@ -41,6 +41,60 @@ public final class HandlerHooks {
     void onError(Throwable error, RequestContext ctx);
   }
 
+  // #if slo
+  /**
+   * Observes every request that matched an endpoint of the server (spec/platform.md section 13): called
+   * once, when the answer is ready to be written, with the duration and the attributes of the OpenTelemetry
+   * HTTP conventions. A failing hook is ignored.
+   */
+  @FunctionalInterface
+  public interface MetricsHook {
+    /** Called with the measurement of one request. */
+    void metrics(Metric metric);
+  }
+
+  // #endif
+  // #if audit
+  /**
+   * Records the audit event of every request that matched an audited endpoint (spec/platform.md
+   * section 4): called once, when the answer is ready and before it is written. A hook that throws
+   * does not change the answer: {@code onError} hears an {@link AuditFailure}.
+   */
+  @FunctionalInterface
+  public interface AuditHook {
+    /** Records one event. */
+    void audit(AuditEvent event) throws Exception;
+  }
+
+  // #endif
+  // #if limits_server
+  /** Tells the address of the client of a request, as text, for the limits {@code by: ip}. */
+  @FunctionalInterface
+  public interface AddressHook {
+    /** Returns the address text; only the application knows which proxy header to trust. */
+    String address(RequestContext ctx) throws Exception;
+  }
+
+  /** Tells who the caller is, as text, for the limits {@code by: user}. */
+  @FunctionalInterface
+  public interface CallerHook {
+    /** Returns the caller text; the same caller must always give the same text. */
+    String caller(Object principal, RequestContext ctx) throws Exception;
+  }
+
+  // #endif
+  // #if conditional
+  /**
+   * The caller of a request, as text, for the scope of an idempotency key. The scope of a key
+   * includes the caller only for an endpoint with authentication.
+   */
+  @FunctionalInterface
+  public interface IdempotencyCaller {
+    /** Returns the caller text; the same caller must always give the same text. */
+    String caller(Object principal, RequestContext ctx) throws Exception;
+  }
+
+  // #endif
   private final BearerAuth bearer;
   private final BasicAuth basic;
   private final ApiKeyAuth apiKey;
@@ -48,6 +102,45 @@ public final class HandlerHooks {
   private final ErrorHook onError;
   private final boolean validateResponses;
   private final boolean validateRequests;
+  // #if rules
+  private final RuleWalk.OutputMode rulesOutput;
+  private final RuleWalk.Hook ruleHook;
+  // #endif
+  // #if conditional
+  private final IdempotencyStore idempotencyStore;
+  private final IdempotencyCaller idempotencyCaller;
+  // #endif
+  // #if slo
+  private final MetricsHook metrics;
+  // #endif
+  // #if timeouts
+  private final Map<String, Long> timeouts;
+  // #endif
+  // #if flags
+  private volatile Flags.Source flagSource;
+  private final Map<String, java.util.List<String>> flagNames;
+  // #endif
+  // #if platform
+  private volatile java.util.function.ToLongFunction<RequestContext> clock;
+  private final Platform.Principal principal;
+  // #endif
+  // #if audit
+  private final AuditHook auditHook;
+  private final Map<String, Platform.Audited> audited;
+  // #endif
+  // #if capture
+  private final boolean captureViolations;
+  private final Map<String, Platform.Captured> captured;
+  // #endif
+  // #if messages_server
+  private final Catalogs.Support messages;
+  // #endif
+  // #if limits_server
+  private final Limiter limiter;
+  private final AddressHook address;
+  private final CallerHook limitCaller;
+  private final Map<String, Platform.Limit> limits;
+  // #endif
 
   private HandlerHooks(Builder b) {
     this.bearer = b.bearer;
@@ -57,6 +150,46 @@ public final class HandlerHooks {
     this.onError = b.onError;
     this.validateResponses = b.validateResponses;
     this.validateRequests = b.validateRequests;
+    // #if rules
+    this.rulesOutput = b.rulesOutput;
+    this.ruleHook = b.ruleHook;
+    // #endif
+    // #if conditional
+    this.idempotencyStore = b.idempotencyStore;
+    this.idempotencyCaller = b.idempotencyCaller;
+    // #endif
+    // #if slo
+    this.metrics = b.metrics;
+    // #endif
+    // #if timeouts
+    this.timeouts = Map.copyOf(b.timeouts);
+    // #endif
+    // #if flags
+    this.flagSource = b.flagSource;
+    this.flagNames = Map.copyOf(b.flagNames);
+    // #endif
+    // #if platform
+    this.clock = b.clock;
+    this.principal = b.principal;
+    // #endif
+    // #if audit
+    this.auditHook = b.auditHook;
+    this.audited = Map.copyOf(b.audited);
+    // #endif
+    // #if capture
+    this.captureViolations = b.captureViolations;
+    this.captured = Map.copyOf(b.captured);
+    // #endif
+    // #if messages_server
+    this.messages = b.messages;
+    // #endif
+    // #if limits_server
+    this.limits = Map.copyOf(b.limits);
+    // The limiter of a server that has a limit and was given none is the memory limiter, with a notice.
+    this.limiter = b.limiter == null && !b.limits.isEmpty() ? Platform.memoryLimiter() : b.limiter;
+    this.address = b.address;
+    this.limitCaller = b.limitCaller;
+    // #endif
   }
 
   /** Starts a builder. */
@@ -91,6 +224,160 @@ public final class HandlerHooks {
   boolean validateRequests() {
     return validateRequests;
   }
+  // #if slo
+
+  MetricsHook metrics() {
+    return metrics;
+  }
+  // #endif
+  // #if timeouts
+
+  /** The deadline of the endpoint with this operation signature in milliseconds, or 0 for none. */
+  long timeoutMs(String sig) {
+    return timeouts.getOrDefault(sig, 0L);
+  }
+  // #endif
+  // #if flags
+
+  Flags.Source flagSource() {
+    return flagSource;
+  }
+
+  /** The test handler asks the request's header instead of the application's provider. */
+  void setFlagSource(Flags.Source source) {
+    this.flagSource = source;
+  }
+
+  /** The flags the endpoint with this operation signature can reach, sorted. */
+  java.util.List<String> flagsOf(String sig) {
+    return flagNames.getOrDefault(sig, java.util.List.of());
+  }
+  // #endif
+  // #if platform
+
+  /** The clock of the request in epoch milliseconds, or {@code null} for the system clock. */
+  java.util.function.ToLongFunction<RequestContext> clock() {
+    return clock;
+  }
+
+  /** The principal's model of the service, or {@code null}. */
+  Platform.Principal principal() {
+    return principal;
+  }
+  // #endif
+  // #if audit
+
+  /** The audit hook, or {@code null}. */
+  AuditHook auditHook() {
+    return auditHook;
+  }
+
+  /** What the service says about the audited endpoint with this operation signature, or {@code null}. */
+  Platform.Audited audited(String sig) {
+    return audited.get(sig);
+  }
+  // #endif
+  // #if capture
+
+  /** What the service says about the endpoint for its captures, or {@code null}. */
+  Platform.Captured captured(String sig) {
+    return captureViolations && ruleHook != null ? captured.get(sig) : null;
+  }
+
+  /** Whether the violations of the endpoint carry a capture: a hook to hear them, and the option not turned off. */
+  boolean capturing(String sig) {
+    return captured(sig) != null;
+  }
+  // #endif
+  // #if messages_server
+
+  /** The message catalogs of the service and the key of each rule, or {@code null} for a service without them. */
+  Catalogs.Support messages() {
+    return messages;
+  }
+  // #endif
+  // #if limits_server
+
+  Limiter limiter() {
+    return limiter;
+  }
+
+  AddressHook address() {
+    return address;
+  }
+
+  CallerHook limitCaller() {
+    return limitCaller;
+  }
+
+  /** The limit of the endpoint with this operation signature, or {@code null}. */
+  Platform.Limit limit(String sig) {
+    return limits.get(sig);
+  }
+  // #endif
+  // #if platform
+
+  /** The test handler reads the clock of the request from {@code Veld-Test-Now}; the due-moves runner gives its own. */
+  public void setClock(java.util.function.ToLongFunction<RequestContext> value) {
+    this.clock = value;
+  }
+  // #endif
+  // #if rules
+
+  RuleWalk.OutputMode rulesOutput() {
+    return rulesOutput;
+  }
+
+  RuleWalk.Hook ruleHook() {
+    return ruleHook;
+  }
+  // #endif
+  // #if conditional
+
+  IdempotencyStore idempotencyStore() {
+    return idempotencyStore;
+  }
+
+  IdempotencyCaller idempotencyCaller() {
+    return idempotencyCaller;
+  }
+
+  /** These hooks with another idempotency store and caller (the test handler brings its own). */
+  public HandlerHooks withIdempotency(IdempotencyStore store, IdempotencyCaller caller) {
+    return builder().copyOf(this).idempotencyStore(store).idempotencyCaller(caller).build();
+  }
+  // #endif
+  // #if testing_rules
+
+  /** These hooks with another output mode of the rules (the test handler takes it as an argument). */
+  public HandlerHooks withRulesOutput(RuleWalk.OutputMode mode) {
+    Builder b = builder();
+    b.bearer = bearer;
+    b.basic = basic;
+    b.apiKey = apiKey;
+    b.middleware.putAll(middleware);
+    b.onError = onError;
+    b.validateResponses = validateResponses;
+    b.validateRequests = validateRequests;
+    b.ruleHook = ruleHook;
+    b.rulesOutput = mode == null ? RuleWalk.OutputMode.STRICT : mode;
+    // #endif
+    // #if testing_rules_flags
+    b.flagSource = flagSource;
+    b.flagNames.putAll(flagNames);
+    // #endif
+    // #if testing_rules_conditional
+    b.idempotencyStore = idempotencyStore;
+    b.idempotencyCaller = idempotencyCaller;
+    // #endif
+    // #if testing_platform
+    b.clock = clock;
+    b.principal = principal;
+    // #endif
+    // #if testing_rules
+    return b.build();
+  }
+  // #endif
 
   /** Builds {@link HandlerHooks}. */
   public static final class Builder {
@@ -101,6 +388,45 @@ public final class HandlerHooks {
     private ErrorHook onError;
     private boolean validateResponses;
     private boolean validateRequests = true;
+    // #if rules
+    private RuleWalk.OutputMode rulesOutput = RuleWalk.OutputMode.STRICT;
+    private RuleWalk.Hook ruleHook;
+    // #endif
+    // #if conditional
+    private IdempotencyStore idempotencyStore;
+    private IdempotencyCaller idempotencyCaller;
+    // #endif
+    // #if slo
+    private MetricsHook metrics;
+    // #endif
+    // #if timeouts
+    private final Map<String, Long> timeouts = new LinkedHashMap<>();
+    // #endif
+    // #if flags
+    private Flags.Source flagSource;
+    private final Map<String, java.util.List<String>> flagNames = new LinkedHashMap<>();
+    // #endif
+    // #if platform
+    private java.util.function.ToLongFunction<RequestContext> clock;
+    private Platform.Principal principal;
+    // #endif
+    // #if audit
+    private AuditHook auditHook;
+    private final Map<String, Platform.Audited> audited = new LinkedHashMap<>();
+    // #endif
+    // #if capture
+    private boolean captureViolations = true;
+    private final Map<String, Platform.Captured> captured = new LinkedHashMap<>();
+    // #endif
+    // #if messages_server
+    private Catalogs.Support messages;
+    // #endif
+    // #if limits_server
+    private Limiter limiter;
+    private AddressHook address;
+    private CallerHook limitCaller;
+    private final Map<String, Platform.Limit> limits = new LinkedHashMap<>();
+    // #endif
 
     private Builder() {}
 
@@ -146,6 +472,177 @@ public final class HandlerHooks {
       return this;
     }
 
+    // #if rules
+    /**
+     * What happens when a rule is violated by the server's own output: {@code STRICT} (default)
+     * answers {@code 500 Internal}, {@code AUDIT} sends the response and reports, {@code OFF}
+     * does not evaluate output rules.
+     */
+    public Builder rulesOutput(RuleWalk.OutputMode value) {
+      this.rulesOutput = value == null ? RuleWalk.OutputMode.STRICT : value;
+      return this;
+    }
+
+    /** Observes every violated rule; a failing hook never changes the response. */
+    public Builder onRuleViolation(RuleWalk.Hook hook) {
+      this.ruleHook = hook;
+      return this;
+    }
+
+    // #endif
+    // #if conditional
+    /** The store of the {@code @idempotent} endpoints. */
+    public Builder idempotencyStore(IdempotencyStore store) {
+      this.idempotencyStore = store;
+      return this;
+    }
+
+    /** Tells who the caller is, for the scope of an idempotency key. */
+    public Builder idempotencyCaller(IdempotencyCaller hook) {
+      this.idempotencyCaller = hook;
+      return this;
+    }
+
+    /** Starts from the hooks of {@code other}. */
+    Builder copyOf(HandlerHooks other) {
+      this.bearer = other.bearer;
+      this.basic = other.basic;
+      this.apiKey = other.apiKey;
+      this.middleware.putAll(other.middleware);
+      this.onError = other.onError;
+      this.validateResponses = other.validateResponses;
+      this.validateRequests = other.validateRequests;
+      // #endif
+      // #if flags_conditional
+      this.flagSource = other.flagSource;
+      this.flagNames.putAll(other.flagNames);
+      // #endif
+      // #if platform_conditional
+      this.clock = other.clock;
+      this.principal = other.principal;
+      // #endif
+      // #if conditional_rules
+      this.rulesOutput = other.rulesOutput;
+      this.ruleHook = other.ruleHook;
+      // #endif
+      // #if conditional
+      return this;
+    }
+
+    // #endif
+    // #if slo
+    /** Observes the duration of every request that matched an endpoint of the server. */
+    public Builder metrics(MetricsHook hook) {
+      this.metrics = hook;
+      return this;
+    }
+
+    // #endif
+    // #if timeouts
+    /** The deadlines of the endpoints, in milliseconds by operation signature (spec/platform.md section 12). */
+    public Builder timeouts(Map<String, Long> byOperation) {
+      this.timeouts.putAll(byOperation);
+      return this;
+    }
+
+    // #endif
+    // #if flags
+    /**
+     * The provider of the flags and the flags each endpoint can reach, by operation signature
+     * (spec/platform.md section 11). The server asks for them once per request, after authentication.
+     */
+    public Builder flags(Flags.Provider provider, Map<String, java.util.List<String>> byOperation) {
+      this.flagSource = provider == null ? null : (name, request, context) -> provider.isOn(name, context);
+      this.flagNames.putAll(byOperation);
+      return this;
+    }
+
+    // #endif
+    // #if platform
+    /** The clock of a request, read once when the request is matched (default: the system clock). */
+    public Builder clock(java.util.function.ToLongFunction<RequestContext> value) {
+      this.clock = value;
+      return this;
+    }
+
+    /** The principal's model of the service: what visibility, tenancy and the audit event read of the caller. */
+    public Builder principal(Platform.Principal value) {
+      this.principal = value;
+      return this;
+    }
+
+    // #endif
+    // #if audit
+    /** Where the audit event of every audited request goes. */
+    public Builder audit(AuditHook hook) {
+      this.auditHook = hook;
+      return this;
+    }
+
+    /** The audited endpoints and what an event needs to know of each, by operation signature. */
+    public Builder audited(Map<String, Platform.Audited> byOperation) {
+      this.audited.putAll(byOperation);
+      return this;
+    }
+
+    // #endif
+    // #if capture
+    /**
+     * Whether the event of {@code onRuleViolation} carries a capture of the request (spec/rules.md
+     * section 17.3). The server was generated with {@code capture-violations}, so the default is
+     * {@code true}; {@code false} turns it off. A capture contains whatever the caller sent, except
+     * the values of {@code @pii} and {@code @secret} fields.
+     */
+    public Builder captureViolations(boolean value) {
+      this.captureViolations = value;
+      return this;
+    }
+
+    /** The endpoints that capture and what a capture needs to know of each, by operation signature. */
+    public Builder captured(Map<String, Platform.Captured> byOperation) {
+      this.captured.putAll(byOperation);
+      return this;
+    }
+
+    // #endif
+    // #if messages_server
+    /**
+     * The message catalogs of the service and the key of every rule (spec/platform.md section 22):
+     * the answers are written in the language of {@code Accept-Language} and every violation has its
+     * {@code messageKey}.
+     */
+    public Builder messages(Catalogs.Support value) {
+      this.messages = value;
+      return this;
+    }
+
+    // #endif
+    // #if limits_server
+    /** The limiter of the limits; without one the server counts in memory, per process. */
+    public Builder limiter(Limiter value) {
+      this.limiter = value;
+      return this;
+    }
+
+    /** Tells the address of the client, for the limits {@code by: ip}. */
+    public Builder address(AddressHook hook) {
+      this.address = hook;
+      return this;
+    }
+
+    /** Tells who the caller is, for the limits {@code by: user}. */
+    public Builder limitCaller(CallerHook hook) {
+      this.limitCaller = hook;
+      return this;
+    }
+
+    /** The limits of the endpoints, by operation signature. */
+    public Builder limits(Map<String, Platform.Limit> byOperation) {
+      this.limits.putAll(byOperation);
+      return this;
+    }
+
+    // #endif
     /** The finished hooks. */
     public HandlerHooks build() {
       return new HandlerHooks(this);

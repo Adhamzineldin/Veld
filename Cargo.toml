@@ -2,6 +2,8 @@
 resolver = "3"
 members = [
   "crates/veld-ir",
+  "crates/veld-rules",
+  "crates/veld-prove",
   "crates/veld-project",
   "crates/veld-compiler",
   "crates/veld-tools",
@@ -11,6 +13,7 @@ members = [
   "crates/veld-plugin-host",
   "crates/veld-emit-conformance",
   "crates/veld-test-support",
+  "crates/veld-testing",
   "crates/emitters/typescript",
   "crates/emitters/node",
   "crates/emitters/java",
@@ -29,6 +32,8 @@ rust-version = "1.90"
 
 [workspace.dependencies]
 veld-ir = { path = "crates/veld-ir" }
+veld-rules = { path = "crates/veld-rules" }
+veld-prove = { path = "crates/veld-prove" }
 veld-compiler = { path = "crates/veld-compiler" }
 veld-codegen = { path = "crates/veld-codegen" }
 veld-project = { path = "crates/veld-project" }
@@ -37,6 +42,7 @@ veld-plugin-host = { path = "crates/veld-plugin-host" }
 veld-registry-client = { path = "crates/veld-registry-client" }
 veld-emit-conformance = { path = "crates/veld-emit-conformance" }
 veld-test-support = { path = "crates/veld-test-support" }
+veld-testing = { path = "crates/veld-testing" }
 veld-emit-node = { path = "crates/emitters/node" }
 veld-emit-typescript = { path = "crates/emitters/typescript" }
 veld-emit-java = { path = "crates/emitters/java" }

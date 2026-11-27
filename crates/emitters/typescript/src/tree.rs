@@ -24,6 +24,31 @@ pub struct Tree<'a> {
     /// False when the target option `validate = false` is set: the generated clients and handlers
     /// default to skipping runtime request validation. The types are unchanged.
     pub validate: bool,
+    rules: bool,
+    endpoint_rules: bool,
+    transitions: bool,
+    policies: bool,
+    rollout: bool,
+    version: bool,
+    idempotency: bool,
+    derived: bool,
+    timed: bool,
+    outbox: bool,
+    timeouts: bool,
+    slo: bool,
+    flags: bool,
+    visibility: bool,
+    tenancy: bool,
+    tenant_fields: bool,
+    tenant_events: bool,
+    audit: bool,
+    capture: bool,
+    messages: bool,
+    messages_server: bool,
+    limits: bool,
+    limits_server: bool,
+    events: bool,
+    runtime_config: bool,
     decls: Vec<DeclId>,
 }
 
@@ -41,10 +66,46 @@ impl<'a> Tree<'a> {
         let mut set: BTreeSet<DeclId> = ir.reachable_decls(&services).into_iter().collect();
         let own: BTreeSet<PackageId> = services.iter().map(|s| ir.service(*s).package).collect();
         for d in &ir.decls {
-            if ir.package(d.package).kind == PackageKind::Prelude || own.contains(&d.package) {
+            let in_scope =
+                ir.package(d.package).kind == PackageKind::Prelude || own.contains(&d.package);
+            // An event is never emitted: a client generates nothing for events (`spec/events.md` 14).
+            if in_scope && !d.is_event() {
                 set.insert(d.id);
             }
         }
+        let endpoint_rules = services.iter().any(|s| {
+            ir.service(*s)
+                .endpoints
+                .iter()
+                .any(|ep| !ep.rules.is_empty())
+        });
+        let endpoints = || {
+            services
+                .iter()
+                .flat_map(|s| ir.service(*s).endpoints.iter())
+        };
+        let transitions = endpoints().any(|ep| ep.rules.transition.is_some());
+        let policies = endpoints().any(|ep| ep.rules.first_policy_origin().is_some());
+        let derived = set.iter().any(|id| ir.decl(*id).has_derived())
+            || ir
+                .fact_decls(&services)
+                .into_iter()
+                .any(|id| ir.decl(id).has_derived());
+        let rules =
+            endpoint_rules || derived || set.iter().any(|id| !ir.decl(*id).rules().is_empty());
+        let rollout = set
+            .iter()
+            .any(|id| ir.decl(*id).rules().iter().any(veld_ir::Rule::is_audited))
+            || endpoints().any(|ep| ep.rules.first_audited_origin().is_some());
+        let version =
+            endpoints().any(|ep| ep.rules.version.is_some() || ir.etag_field(ep).is_some());
+        let idempotency = endpoints().any(|ep| ep.idempotency.is_some());
+        let timeouts = endpoints().any(|ep| ep.timeout_ms.is_some());
+        let flags = uses_flags(ir, &set, &services);
+        let limits = endpoints().any(|ep| ep.limit.is_some());
+        let messages = services
+            .iter()
+            .any(|s| !ir.package(ir.service(*s).package).messages.is_empty());
         Self {
             ir,
             root: root.to_string(),
@@ -52,8 +113,361 @@ impl<'a> Tree<'a> {
             runtime: runtime.to_string(),
             services,
             validate: true,
+            rules,
+            endpoint_rules,
+            transitions,
+            policies,
+            rollout,
+            version,
+            idempotency,
+            derived,
+            timed: false,
+            outbox: false,
+            timeouts,
+            slo: false,
+            flags,
+            visibility: false,
+            tenancy: false,
+            tenant_fields: set.iter().any(|id| ir.decl(*id).tenant_field().is_some()),
+            tenant_events: false,
+            audit: false,
+            capture: false,
+            messages,
+            messages_server: false,
+            limits,
+            limits_server: false,
+            events: false,
+            runtime_config: false,
             decls: set.into_iter().collect(),
         }
+    }
+
+    /// Also emits the events of the tree's services and the declarations only they reach: the
+    /// server target does it for a service that publishes or subscribes (`spec/events.md` section
+    /// 14), and a client never does. The rule flags are worked out again, because an invariant of
+    /// an event is an invariant of the generated package.
+    #[must_use]
+    pub fn with_events(mut self) -> Self {
+        let ir = self.ir;
+        let mut set: BTreeSet<DeclId> = self.decls.iter().copied().collect();
+        set.extend(ir.events_of(&self.services));
+        set.extend(ir.event_reachable_decls(&self.services));
+        self.events = self.services.iter().any(|s| ir.service(*s).uses_events());
+        self.slo = self
+            .services
+            .iter()
+            .any(|s| ir.service(*s).endpoints.iter().any(|ep| ep.slo.is_some()));
+        // The due check and the due-moves runner are server code: a client has no use for them.
+        self.timed = self.services.iter().any(|s| {
+            ir.service(*s)
+                .endpoints
+                .iter()
+                .any(|ep| ep.rules.transition.as_ref().is_some_and(|t| t.is_timed()))
+        });
+        // The outbox is server code: the handler of a move that emits writes to it.
+        self.outbox = self.services.iter().any(|s| {
+            ir.service(*s).endpoints.iter().any(|ep| {
+                ep.rules
+                    .transition
+                    .as_ref()
+                    .is_some_and(|t| !t.emits.is_empty())
+            })
+        });
+        self.platform_p1();
+        self.messages_server = self.messages;
+        self.tenant_fields = set.iter().any(|id| ir.decl(*id).tenant_field().is_some());
+        self.tenant_events = ir
+            .events_of(&self.services)
+            .into_iter()
+            .any(|id| ir.decl(id).tenant_field().is_some());
+        self.derived = self.derived || set.iter().any(|id| ir.decl(*id).has_derived());
+        self.rules =
+            self.rules || self.derived || set.iter().any(|id| !ir.decl(*id).rules().is_empty());
+        self.rollout = self.rollout
+            || set
+                .iter()
+                .any(|id| ir.decl(*id).rules().iter().any(veld_ir::Rule::is_audited));
+        self.flags = self.flags || uses_flags(ir, &set, &self.services);
+        self.decls = set.into_iter().collect();
+        self
+    }
+
+    /// The server-only gates of platform phase P1 (`spec/platform.md` sections 2 to 5): what the
+    /// answers of the endpoints reach, and which endpoints are audited or limited.
+    fn platform_p1(&mut self) {
+        let ir = self.ir;
+        let eps: Vec<&veld_ir::Endpoint> = self
+            .services
+            .iter()
+            .flat_map(|s| ir.service(*s).endpoints.iter())
+            .collect();
+        let answers = |ep: &veld_ir::Endpoint| -> Vec<veld_ir::Type> {
+            ep.success
+                .ty
+                .iter()
+                .cloned()
+                .chain(ep.errors.iter().map(|e| veld_ir::Type::Decl(e.decl)))
+                .collect()
+        };
+        self.visibility = eps
+            .iter()
+            .any(|ep| answers(ep).iter().any(|t| ir.type_reaches_visible(t)));
+        self.tenancy = eps
+            .iter()
+            .any(|ep| answers(ep).iter().any(|t| ir.type_reaches_tenant(t)))
+            || ir
+                .fact_type_decls(&self.services)
+                .into_iter()
+                .any(|id| ir.decl(id).tenant_field().is_some());
+        self.audit = eps.iter().any(|ep| ep.audited && !ep.success.stream);
+        self.limits_server = eps.iter().any(|ep| ep.limit.is_some());
+    }
+
+    /// Whether a response of a server tree can hold a `@visible` field (`spec/platform.md`
+    /// section 2): the `visibility` regions, the `show` functions of the models and the
+    /// `visible` member of the endpoint descriptions.
+    #[must_use]
+    pub fn uses_visibility(&self) -> bool {
+        self.visibility
+    }
+
+    /// Whether a response or a fact of a server tree can hold a tenant-scoped value
+    /// (`spec/platform.md` section 3): the `tenancy` regions.
+    #[must_use]
+    pub fn uses_tenancy(&self) -> bool {
+        self.tenancy
+    }
+
+    /// Whether a declaration of the tree has a `@tenant` field (`spec/platform.md` section 3): a
+    /// request may lack it and keeps it as received (`FieldSchema.st`), in a client and a server.
+    #[must_use]
+    pub fn uses_tenant_fields(&self) -> bool {
+        self.tenant_fields
+    }
+
+    /// Whether an event the server publishes or subscribes to has a `@tenant` field
+    /// (`spec/platform.md` section 3): its envelope carries `veldtenant`.
+    #[must_use]
+    pub fn uses_tenant_events(&self) -> bool {
+        self.tenant_events
+    }
+
+    /// Whether a server tree has an audited endpoint (`spec/platform.md` section 4): the `audit`
+    /// regions.
+    #[must_use]
+    pub fn uses_audit(&self) -> bool {
+        self.audit
+    }
+
+    /// Switches the captures of rule violations on (`spec/rules.md` section 17.3; the target option
+    /// `capture-violations`). They only exist where an event of `onRuleViolation` does: a tree with
+    /// rules or tenancy. Call it after [`Tree::with_events`], which works those out.
+    #[must_use]
+    pub fn with_capture(mut self, on: bool) -> Self {
+        self.capture = on && (self.rules || self.tenancy);
+        self
+    }
+
+    /// Whether the events of `onRuleViolation` of this server tree can carry a capture of the
+    /// request: the `capture` regions, `pii` marks in the schemas and `FactStep.schema` for every
+    /// fact.
+    #[must_use]
+    pub fn uses_capture(&self) -> bool {
+        self.capture
+    }
+
+    /// Whether a member the tree's services belong to has message catalogs (`spec/platform.md`
+    /// section 22): its catalogs are emitted as data (`messages.ts`). The regions of the runtime
+    /// that use them (`Gates::messages`) need rules too, because only a violation has a message key.
+    #[must_use]
+    pub fn uses_messages(&self) -> bool {
+        self.messages
+    }
+
+    /// Whether a server tree has message catalogs: the language of each request is chosen and its
+    /// messages are written in it (`Gates::messages_server`).
+    #[must_use]
+    pub fn uses_messages_server(&self) -> bool {
+        self.messages_server
+    }
+
+    /// Whether an endpoint of the tree has a `@limit` (`spec/platform.md` section 5): the client
+    /// waits and sends again on `429`.
+    #[must_use]
+    pub fn uses_limits(&self) -> bool {
+        self.limits
+    }
+
+    /// Whether an endpoint of a server tree has a `@limit`: the limiter and its hooks.
+    #[must_use]
+    pub fn uses_limits_server(&self) -> bool {
+        self.limits_server
+    }
+
+    /// Whether any of the four features of platform phase P1 is enforced by this server tree.
+    #[must_use]
+    pub fn uses_platform(&self) -> bool {
+        self.visibility || self.tenancy || self.audit || self.limits_server || self.capture
+    }
+
+    /// Whether a declaration or an endpoint of the tree has a flagged statement (`spec/platform.md`
+    /// section 11): the `flags` regions of the runtime and `runtime/flags.ts`.
+    #[must_use]
+    pub fn uses_flags(&self) -> bool {
+        self.flags
+    }
+
+    /// Whether the tree emits events: some service of it publishes or subscribes. It adds
+    /// `runtime/events.ts` and `server/<service>-events.ts`.
+    #[must_use]
+    pub fn uses_events(&self) -> bool {
+        self.events
+    }
+
+    /// Whether an emitted declaration has an invariant. This one predicate decides whether the
+    /// generated package has `runtime/rules.ts`, whether `runtime/veld.ts` keeps its `rules`
+    /// regions, and whether models, clients and servers get the rule code and members.
+    #[must_use]
+    pub fn uses_rules(&self) -> bool {
+        self.rules
+    }
+
+    /// Whether an endpoint of the tree's services has endpoint rules (`spec/rules.md` section 9).
+    /// It switches `uses_rules` on too, and it adds the `endpoint_rules` regions of the runtime,
+    /// the fact loaders and the test handler. A contract with invariants only never sees any of it
+    /// (the rules digest is not one of them: every service that reaches an invariant has it).
+    #[must_use]
+    pub fn uses_endpoint_rules(&self) -> bool {
+        self.endpoint_rules
+    }
+
+    /// Whether an endpoint of the tree's services has a `transition` (`spec/rules.md` section 10).
+    /// It adds the `transitions` regions of the runtime, the guard and the `transition` the
+    /// handler receives.
+    #[must_use]
+    pub fn uses_transitions(&self) -> bool {
+        self.transitions
+    }
+
+    /// Whether an endpoint of the tree's services has an `allow` or reads the principal
+    /// (`spec/rules.md` section 11): the `policies` regions of the runtime, the policy functions,
+    /// `can<Endpoint>` and the typed auth hook of a service with a principal.
+    #[must_use]
+    pub fn uses_policies(&self) -> bool {
+        self.policies
+    }
+
+    /// Whether a declaration or an endpoint of the tree has an audited rule (`@rollout(audit)`,
+    /// `spec/rules.md` section 17.1): the `rollout` regions of the runtime and `runtime/rollout.ts`.
+    #[must_use]
+    pub fn uses_rollout(&self) -> bool {
+        self.rollout
+    }
+
+    /// The regions of `runtime/veld.ts` this tree needs.
+    #[must_use]
+    pub fn gates(&self) -> crate::runtime::Gates {
+        crate::runtime::Gates {
+            rules: self.rules,
+            endpoint_rules: self.endpoint_rules,
+            transitions: self.transitions,
+            policies: self.policies,
+            rollout: self.rollout,
+            version: self.version,
+            idempotency: self.idempotency,
+            derived: self.derived,
+            timed: self.timed,
+            outbox: self.outbox,
+            timeouts: self.timeouts,
+            slo: self.slo,
+            flags: self.flags,
+            visibility: self.visibility,
+            tenancy: self.tenancy,
+            tenant_fields: self.tenant_fields,
+            tenant_events: self.tenant_events,
+            audit: self.audit,
+            capture: self.capture,
+            messages: self.messages && self.rules,
+            messages_server: self.messages_server && self.rules,
+            limits: self.limits,
+            limits_server: self.limits_server,
+            runtime_config: self.runtime_config,
+        }
+    }
+
+    /// Marks the tree as one of a target with a typed runtime config: its clients get the
+    /// address from `baseUrl` alone (`spec/runtime-config.md` section 5).
+    #[must_use]
+    pub fn with_runtime_config(mut self, on: bool) -> Self {
+        self.runtime_config = on;
+        self
+    }
+
+    /// Whether the tree's clients take their address from `baseUrl` alone.
+    #[must_use]
+    pub fn uses_runtime_config(&self) -> bool {
+        self.runtime_config
+    }
+
+    /// Whether an endpoint of the tree's services has an `If-Match` guard or answers with a model
+    /// that has a `@version` field (`spec/rules.md` section 11.7): the `version` regions.
+    #[must_use]
+    pub fn uses_version(&self) -> bool {
+        self.version
+    }
+
+    /// Whether an endpoint of the tree's services is `@idempotent` (`spec/rules.md` section 11.8):
+    /// the `idempotency` regions, the store and the `idempotency` hook.
+    #[must_use]
+    pub fn uses_idempotency(&self) -> bool {
+        self.idempotency
+    }
+
+    /// Whether an endpoint of a server tree has a timed `transition` (`spec/platform.md` section
+    /// 10): the `timed` regions, the due check and the due-moves runner.
+    #[must_use]
+    pub fn uses_timed(&self) -> bool {
+        self.timed
+    }
+
+    /// Whether an endpoint of the tree's services has a `@timeout` (`spec/platform.md` section 12):
+    /// the `timeouts` regions and `timeoutMs` in the endpoint descriptions.
+    #[must_use]
+    pub fn uses_timeouts(&self) -> bool {
+        self.timeouts
+    }
+
+    /// Whether an endpoint of a server tree has an `@slo` (`spec/platform.md` section 13): the
+    /// `slo` regions, `service` in the endpoint descriptions and the `metrics` hook.
+    #[must_use]
+    pub fn uses_slo(&self) -> bool {
+        self.slo
+    }
+
+    /// Whether an emitted declaration has a derived field (`spec/rules.md` section 17.2): the
+    /// `derived` regions of the runtime, the compute functions and the output types. It switches
+    /// `uses_rules` on too.
+    #[must_use]
+    pub fn uses_derived(&self) -> bool {
+        self.derived
+    }
+
+    /// Module path of the audit sink: next to the runtime module, without extension.
+    #[must_use]
+    pub fn rollout_module(&self) -> String {
+        sibling(&self.runtime, "rollout")
+    }
+
+    /// Module path of the event runtime (`runtime/events.ts`): next to the runtime module.
+    #[must_use]
+    pub fn events_module(&self) -> String {
+        sibling(&self.runtime, "events")
+    }
+
+    /// Module path of the rule helpers: next to the runtime module, without extension.
+    #[must_use]
+    pub fn rules_module(&self) -> String {
+        sibling_rules(&self.runtime)
     }
 
     /// Sets whether the generated code validates requests at run time by default.
@@ -102,10 +516,13 @@ impl<'a> Tree<'a> {
         if self.ir.package(d.package).kind == PackageKind::Prelude {
             return format!("{}prelude", self.root);
         }
-        let kind = if matches!(d.kind, DeclKind::Error(_)) {
-            "errors"
-        } else {
-            "models"
+        let kind = match d.kind {
+            DeclKind::Error(_) => "errors",
+            // Events have a tree of their own: `models/` is the same in both roles.
+            DeclKind::Event(_) => "events",
+            DeclKind::Model(_) | DeclKind::Enum(_) | DeclKind::Union(_) | DeclKind::Const(_) => {
+                "models"
+            }
         };
         let module = if d.module.is_empty() {
             "root".to_string()
@@ -115,11 +532,52 @@ impl<'a> Tree<'a> {
         format!("{}{kind}/{module}", self.pkg_prefix(d.package))
     }
 
+    /// Module path (root-relative, no extension) holding the functions of `policy`.
+    #[must_use]
+    pub fn policy_module(&self, policy: &veld_ir::Policy) -> String {
+        let module = if policy.module.is_empty() {
+            "root".to_string()
+        } else {
+            policy.module.replace('.', "/")
+        };
+        format!("{}policies/{module}", self.pkg_prefix(policy.package))
+    }
+
     /// Module path of a package's `client.ts`.
     #[must_use]
     pub fn client_module(&self, pkg: PackageId) -> String {
         format!("{}client", self.pkg_prefix(pkg))
     }
+}
+
+/// The module path of the rule helpers: next to the runtime module.
+fn sibling_rules(runtime_module: &str) -> String {
+    sibling(runtime_module, "rules")
+}
+
+/// The module path of a helper file `name` next to the runtime module.
+fn sibling(runtime_module: &str, name: &str) -> String {
+    match runtime_module.rsplit_once('/') {
+        Some((dir, _)) => format!("{dir}/{name}"),
+        None => name.to_string(),
+    }
+}
+
+/// Whether a declaration of `decls`, or an endpoint of `services` (its `require`, its `ensure`, or
+/// a policy it names), has a flagged statement.
+fn uses_flags(ir: &Ir, decls: &BTreeSet<DeclId>, services: &[ServiceId]) -> bool {
+    let declared = decls.iter().any(|id| {
+        let d = ir.decl(*id);
+        d.rules().iter().any(|r| r.flag.is_some())
+            || matches!(&d.kind, veld_ir::DeclKind::Enum(e) if e.flows.iter().any(|f| f.flag.is_some()))
+    });
+    declared
+        || services.iter().any(|s| {
+            ir.service(*s)
+                .endpoints
+                .iter()
+                .any(|ep| ir.endpoint_uses_flags(ep))
+        })
 }
 
 /// Imports of one generated file.
@@ -128,6 +586,10 @@ pub struct Imports {
     /// module -> name -> is a value import
     named: BTreeMap<String, BTreeMap<String, bool>>,
     runtime: bool,
+    rules: bool,
+    rollout: bool,
+    flags: bool,
+    events: bool,
 }
 
 impl Imports {
@@ -148,6 +610,34 @@ impl Imports {
         if self.runtime {
             let spec = util::rel_import(from_file, runtime_module);
             lines.push((spec.clone(), format!("import * as veld from '{spec}';")));
+        }
+        if self.rules {
+            let spec = util::rel_import(from_file, &sibling_rules(runtime_module));
+            lines.push((
+                spec.clone(),
+                format!("import * as veldRules from '{spec}';"),
+            ));
+        }
+        if self.rollout {
+            let spec = util::rel_import(from_file, &sibling(runtime_module, "rollout"));
+            lines.push((
+                spec.clone(),
+                format!("import * as veldRollout from '{spec}';"),
+            ));
+        }
+        if self.flags {
+            let spec = util::rel_import(from_file, &sibling(runtime_module, "flags"));
+            lines.push((
+                spec.clone(),
+                format!("import * as veldFlags from '{spec}';"),
+            ));
+        }
+        if self.events {
+            let spec = util::rel_import(from_file, &sibling(runtime_module, "events"));
+            lines.push((
+                spec.clone(),
+                format!("import * as veldEvents from '{spec}';"),
+            ));
         }
         for (module, names) in &self.named {
             let spec = util::rel_import(from_file, module);
@@ -202,6 +692,30 @@ impl<'t, 'a> FileCtx<'t, 'a> {
     pub fn rt(&mut self, name: &str) -> String {
         self.imports.runtime = true;
         format!("veld.{name}")
+    }
+
+    /// The namespace of `runtime/rules.ts` (`veldRules`), recording the import.
+    pub fn rules_ns(&mut self) -> String {
+        self.imports.rules = true;
+        "veldRules".to_string()
+    }
+
+    /// The namespace of `runtime/flags.ts` (`veldFlags`), recording the import.
+    pub fn flags_ns(&mut self) -> String {
+        self.imports.flags = true;
+        "veldFlags".to_string()
+    }
+
+    /// The namespace of `runtime/rollout.ts` (`veldRollout`), recording the import.
+    pub fn rollout_ns(&mut self) -> String {
+        self.imports.rollout = true;
+        "veldRollout".to_string()
+    }
+
+    /// The namespace of `runtime/events.ts` (`veldEvents`), recording the import.
+    pub fn events_ns(&mut self) -> String {
+        self.imports.events = true;
+        "veldEvents".to_string()
     }
 
     /// Name of `id` used as a type; records a type-only import when it lives elsewhere.

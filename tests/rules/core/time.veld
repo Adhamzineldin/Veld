@@ -1,0 +1,35 @@
+// Temporal semantics: instants at millisecond precision, dates, times, durations (spec/rules.md 3.4).
+
+model Stay {
+  start: datetime
+  end: datetime
+  rule endAfterStart: end > start
+  rule maxStay: end - start <= days(30)
+}
+
+model Instants {
+  a: datetime
+  b: datetime
+  rule same: a == b
+  rule shifted: a + hours(2) == b
+  rule back: b - minutes(120) == a
+}
+
+model Dates {
+  first: date
+  last: date
+  rule ordered: first <= last
+  rule week: last - first == days(7)
+}
+
+model Clock {
+  opens: time
+  closes: time
+  rule ordered: opens < closes
+}
+
+model Dur {
+  n: long
+  rule fits: days(n) > hours(1)
+  rule sums: seconds(n) + ms(500) - ms(500) == seconds(n)
+}

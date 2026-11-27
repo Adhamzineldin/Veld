@@ -1,6 +1,9 @@
 //! Shared helpers: compile the realistic contract and run the Java generator.
 #![allow(dead_code)]
 
+pub mod live;
+pub mod p4;
+
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
@@ -59,6 +62,34 @@ pub fn compile_contract(orders_pkg: &str, patch: &dyn Fn(&str) -> String) -> Ir 
     out.ir.unwrap_or_else(|| unreachable!())
 }
 
+/// Compiles one `.veld` file of the repository (a path relative to the repository root, for
+/// example `tests/rules/endpoints/transitions.veld`) as the single package `package`.
+pub fn compile_path(rel: &str, package: &str) -> Ir {
+    let text =
+        std::fs::read_to_string(repo_root().join(rel)).unwrap_or_else(|e| panic!("{rel}: {e}"));
+    compile_source(text, package, rel)
+}
+
+/// Compiles `text` as the single package `package`; `what` names it in a failure.
+pub fn compile_source(text: String, package: &str, what: &str) -> Ir {
+    let rel = what;
+    let out = compile(&CompileInput {
+        packages: vec![PackageInput {
+            name: package.into(),
+            kind: PackageKind::Service,
+            files: vec![SourceFile {
+                path: format!("{package}.veld"),
+                text,
+            }],
+            base_url: None,
+        }],
+        consumes: BTreeMap::new(),
+    });
+    let rendered = out.render();
+    out.ir
+        .unwrap_or_else(|| panic!("{rel} does not compile:\n{rendered}"))
+}
+
 pub fn standard_ir() -> Ir {
     compile_contract("orders", &|s| s.to_string())
 }
@@ -111,10 +142,17 @@ pub fn releases() -> Vec<&'static str> {
 
 /// Target options with the base package and, when given, the Java release.
 pub fn options(package: &str, release: Option<&str>) -> serde_json::Value {
-    match release {
+    let value = match release {
         Some(r) => serde_json::json!({ "package": package, "java": r }),
         None => serde_json::json!({ "package": package }),
-    }
+    };
+    veld_codegen::with_target_name(&value, &target_name(package))
+}
+
+/// The name of the target a test generates for: its package with `-` for `.` (`gen.a` is `gen-a`,
+/// so the runtime config is `GenARuntime`).
+pub fn target_name(package: &str) -> String {
+    package.replace('.', "-")
 }
 
 /// Client files for every service of the IR, in the Java package `package`.
@@ -250,7 +288,7 @@ fn streaming_source() -> String {
 
 /// The streaming contract without its `ws` endpoints (and the doc comments of those): what the
 /// `jdk` framework can serve.
-fn without_ws(source: &str) -> String {
+pub fn without_ws(source: &str) -> String {
     let mut out: Vec<&str> = Vec::new();
     let mut docs: Vec<&str> = Vec::new();
     for line in source.lines() {
@@ -342,4 +380,67 @@ pub fn gen_unvalidated(ir: &Ir, role: Role, package: &str, release: Option<&str>
         None,
         options_no_validate(package, release),
     )
+}
+
+/// Whether a Maven log shows a download that failed, and not a build that failed.
+fn is_download_failure(log: &str) -> bool {
+    [
+        "Failed to fetch",
+        "Could not transfer artifact",
+        "Connection reset",
+        "Connection timed out",
+        "Read timed out",
+        "Temporary failure in name resolution",
+        "502 Bad Gateway",
+        "503 Service",
+        // Maven Central limits how often one address may ask; the wrapper on Windows reports it
+        // through PowerShell (`Exception calling "DownloadFile" ... (429) Too Many Requests`).
+        "Too Many Requests",
+        "(429)",
+        "status code: 429",
+        "Exception calling \"DownloadFile\"",
+    ]
+    .iter()
+    .any(|sign| log.contains(sign))
+}
+
+/// Runs `mvnw -q -B package -DskipTests -Djava.version=<release>` in `work`, where the Maven
+/// wrapper of `tests/toolchain/java/spring` has been copied, logging to `work/mvnw.log`. It panics
+/// with the log when the build fails.
+///
+/// The wrapper downloads Maven, and Maven downloads Spring, from Maven Central. A download that
+/// fails for a moment is not a finding about generated code (it failed a CI run once:
+/// `wget: Failed to fetch .../apache-maven-3.9.9-bin.zip`), so a run whose log shows a failed
+/// download is tried again, three times in all. Any other failure fails at once.
+pub fn mvnw_package(work: &std::path::Path, release: &str) {
+    const ATTEMPTS: u64 = 3;
+    let log = work.join("mvnw.log");
+    for attempt in 1..=ATTEMPTS {
+        let mut mvn = if cfg!(windows) {
+            let mut c = std::process::Command::new("cmd");
+            c.args(["/c", r".\mvnw.cmd"]);
+            c
+        } else {
+            let mut c = std::process::Command::new("sh");
+            c.arg("./mvnw");
+            c
+        };
+        mvn.args(["-q", "-B", "package", "-DskipTests"])
+            .arg(format!("-Djava.version={release}"))
+            .current_dir(work);
+        let mut build = veld_test_support::ProcessTree::spawn_logged(&mut mvn, &log)
+            .unwrap_or_else(|e| panic!("mvnw package: cannot start: {e}"));
+        let status = build.child_mut().wait().unwrap();
+        if status.success() {
+            return;
+        }
+        let output = std::fs::read_to_string(&log).unwrap_or_default();
+        assert!(
+            is_download_failure(&output) && attempt < ATTEMPTS,
+            "mvnw package failed ({status}):\n{output}"
+        );
+        eprintln!("mvnw package: a download failed, trying again ({attempt} of {ATTEMPTS})");
+        // A limit on requests needs more than a moment: 20 seconds, then 40.
+        std::thread::sleep(std::time::Duration::from_secs(20 * attempt));
+    }
 }

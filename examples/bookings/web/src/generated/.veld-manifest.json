@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "generator": "veld 2.0",
+  "files": {
+    "README.md": "9b15f67d59c3217cb71e04e0e04327cf88e23accc3e639317cd04c473224dc65",
+    "bookings/client.ts": "ae48a3487038dd7e2f24614c9307260177bc21babad7cbecf016e9358d26109e",
+    "bookings/errors/bookings.ts": "4f1e57d076b0a62697de512f0218a1de75310f43b7f395f27eae736d3878004c",
+    "bookings/models/bookings.ts": "706243a03c962d3c40193a905f437aace3db1a5de6e2e21fe8a2185f1bd1b6bb",
+    "bookings/policies/bookings.ts": "a623441a4b6d8ff4b237009e5da81d6d25592296f7f929fa4a202cd1d7dad009",
+    "bookings/react.ts": "538ff81e4d5e213682073841ee8439740e28ac56cbd6495c1e2faf94574ea60b",
+    "index.ts": "b7a3ad23e3811d5af33cc625287319ac4147bd00e3c325ab4259b6b7c46417b6",
+    "package.json": "0bf1e401087ae0c84db2a4b8d72141c13e199f210200825c83f07d09cae98d35",
+    "prelude.ts": "1e3b7e765c806947a31ffc99f43e910b1469b90f80bf2623e6f5ca44c91383ba",
+    "runtime.ts": "349c0476a96298aacc1fff8b0a9441ddc5dec0a2101ef927847e95e33d823952",
+    "runtime/react.ts": "661cf67e02411549d69ee4d0396843316f3fb68951e125ee5c30f0c885db35b1",
+    "runtime/rules.ts": "42ae586a142b152221886d0b158565d8bbad2f8ebd6045115a240adb99b6bcb5",
+    "runtime/veld.ts": "8fb9e6237e141fdb05be42cab228124c738e6043c5f70484b5686acf5c0dae08"
+  }
+}

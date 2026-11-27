@@ -1,0 +1,19 @@
+// `@rollout` needs its argument (spec/rules.md section 17.1): `@rollout` and `@rollout()` are
+// `E0602`, on a rule, a `require` and an `ensure`.
+
+model M {
+  n: int
+  @rollout
+  rule a: n > 0
+  @rollout()
+  rule b: n > 1
+}
+
+service S at "/s" {
+  post "/" f(body: M) -> 201 M {
+    @rollout
+    require body.n > 0
+    @rollout()
+    ensure result.n > 0
+  }
+}

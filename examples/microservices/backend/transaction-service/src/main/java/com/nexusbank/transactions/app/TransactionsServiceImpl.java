@@ -5,9 +5,10 @@ import com.nexusbank.transactions.accounts.accounts.AccountStatus;
 import com.nexusbank.transactions.accounts.accounts.AccountType;
 import com.nexusbank.transactions.clients.accounts.accounts.client.AccountsClient;
 import com.nexusbank.transactions.clients.accounts.accounts.client.GetAccountRequest;
-import com.nexusbank.transactions.clients.iam.iam.client.IamClient;
 import com.nexusbank.transactions.clients.iam.iam.users.User;
 import com.nexusbank.transactions.prelude.NotFound;
+import com.nexusbank.transactions.runtimeconfig.TransactionsApiClients;
+import com.nexusbank.transactions.runtimeconfig.TransactionsApiRuntime;
 import com.nexusbank.transactions.runtime.ClientOptions;
 import com.nexusbank.transactions.runtime.Page;
 import com.nexusbank.transactions.runtime.RequestContext;
@@ -44,11 +45,19 @@ public final class TransactionsServiceImpl implements TransactionsService {
   record Principal(User user, String token) {}
 
   private final Map<UUID, List<Transaction>> ledger = new ConcurrentHashMap<>();
+  private final TransactionsApiRuntime runtime;
+
+  /** Creates the service; the runtime config gives the URL of each service it calls. */
+  public TransactionsServiceImpl(TransactionsApiRuntime runtime) {
+    this.runtime = runtime;
+  }
 
   /** The bearer hook: asks iam who the token belongs to. Null means unauthorized. */
-  static Object authenticate(String token, RequestContext ctx) {
+  Object authenticate(String token, RequestContext ctx) {
     try {
-      User user = new IamClient(ClientOptions.builder().bearer(() -> token).build()).getProfile();
+      User user = TransactionsApiClients.create(runtime, ClientOptions.builder().bearer(() -> token).build())
+              .iam()
+              .getProfile();
       return new Principal(user, token);
     } catch (com.nexusbank.transactions.clients.iam.prelude.Unauthorized e) {
       return null;
@@ -60,9 +69,11 @@ public final class TransactionsServiceImpl implements TransactionsService {
   }
 
   /** The account, fetched from the accounts service with the caller's token. */
-  private static com.nexusbank.transactions.clients.accounts.accounts.accounts.Account account(
+  private com.nexusbank.transactions.clients.accounts.accounts.accounts.Account account(
       Principal p, UUID id) {
-    AccountsClient accounts = new AccountsClient(ClientOptions.builder().bearer(p::token).build());
+    AccountsClient accounts =
+        TransactionsApiClients.create(runtime, ClientOptions.builder().bearer(p::token).build())
+            .accounts();
     try {
       return accounts.getAccount(new GetAccountRequest(id));
     } catch (com.nexusbank.transactions.clients.accounts.prelude.NotFound e) {

@@ -1,0 +1,5 @@
+# Brazilian Portuguese. It has the three texts of the runtime and one rule.
+"bookings/Booking.endAfterStart" = "A reserva deve terminar depois de começar"
+"veld/transition" = "Esta transição não é permitida"
+"veld/version" = "A versão mudou"
+"veld/not-permitted" = "Não permitido"

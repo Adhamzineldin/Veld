@@ -42,6 +42,18 @@ export function highlightVeld(code: string): React.ReactNode[] {
     while ((m = veldKeywords.exec(rest)) !== null) {
       ranges.push({ start: m.index, end: m.index + m[0].length, color: '#d2a8ff' });
     }
+    // The words of business rules. Most are contextual, so only the ones that start a line (and are
+    // not a field name, as in `message: string`) and `else` / `when` are coloured.
+    const ruleStart = /^(\s*)(rule|require|ensure|fact|allow|transition|flow|final|principal|policy|permit|forbid|example|given|returns|message)\b(?!\s*[:?])/;
+    const ruleWords = /\b(else|when)\b/g;
+    const lead = ruleStart.exec(rest);
+    if (lead) {
+      const start = lead[1].length;
+      ranges.push({ start, end: start + lead[2].length, color: '#d2a8ff' });
+    }
+    while ((m = ruleWords.exec(rest)) !== null) {
+      ranges.push({ start: m.index, end: m.index + m[0].length, color: '#d2a8ff' });
+    }
     while ((m = veldBuiltinTypes.exec(rest)) !== null) {
       ranges.push({ start: m.index, end: m.index + m[0].length, color: '#58a6ff' });
     }

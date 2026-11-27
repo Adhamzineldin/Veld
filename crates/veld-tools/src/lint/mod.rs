@@ -9,8 +9,18 @@
 //! packages are not the author's to fix. `unused-model` skips libraries, whose declarations are
 //! there to be imported.
 
+#[cfg(test)]
+mod auth_tests;
 mod config;
+#[cfg(test)]
+mod event_tests;
+mod moves;
+#[cfg(test)]
+mod moves_tests;
 mod naming;
+mod pii;
+#[cfg(test)]
+mod pii_tests;
 mod rules;
 #[cfg(test)]
 mod tests;
@@ -87,4 +97,9 @@ pub fn rule_names() -> Vec<(&'static str, &'static str)> {
 /// Whether the package's declarations are the project's own (lint applies).
 pub(crate) fn is_linted(kind: PackageKind) -> bool {
     matches!(kind, PackageKind::Service | PackageKind::Library)
+}
+
+/// [`is_linted`] for the tools that report on the project's own packages only.
+pub(crate) fn is_linted_package(kind: PackageKind) -> bool {
+    is_linted(kind)
 }

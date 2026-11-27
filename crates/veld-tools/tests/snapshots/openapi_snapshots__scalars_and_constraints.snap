@@ -152,5 +152,5 @@ expression: "export(\"ok_scalars_and_constraints\")"
       }
     }
   },
-  "x-veld-ir-version": "1.0"
+  "x-veld-ir-version": "1.1"
 }

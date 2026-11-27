@@ -1,0 +1,29 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+assertion_line: 195
+---
+== diagnostics ==
+error[E1008]: channel `A` does not carry `Other`
+ --> app/app.veld:9:28
+  |
+9 |   subscribes A as "g" { on Other -> handle }
+  |                            ^^^^^
+
+error[E1008]: a subscription needs at least one `on` line
+ --> app/app.veld:13:3
+   |
+13 |   subscribes B as "g" { }
+   |   ^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E1008]: `Paid` has two `on` lines in this subscription
+ --> app/app.veld:19:8
+   |
+19 |     on Paid -> second
+   |        ^^^^
+ --> app/app.veld:18:5
+   |
+18 |     on Paid -> first
+   |     ---------------- first `on` line here
+
+== ir ==
+(no IR: compilation failed)

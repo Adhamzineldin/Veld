@@ -68,6 +68,8 @@ fn query_object_params(ir: &Ir, p: &Param) -> Vec<Value> {
     ir.decl(*id)
         .fields()
         .iter()
+        // A derived field is computed by the server: a caller never sends it.
+        .filter(|f| f.derived.is_none())
         .map(|f| {
             let required = !f.optional && f.default.is_none();
             let mut o = Map::new();
@@ -170,8 +172,11 @@ fn error_responses(ir: &Ir, ep: &Endpoint) -> BTreeMap<u16, Value> {
 
 fn responses(ir: &Ir, ep: &Endpoint) -> Value {
     let mut m = Map::new();
-    m.insert(ep.success.status.to_string(), success_response(ir, ep));
-    for (status, r) in error_responses(ir, ep) {
+    let mut success = success_response(ir, ep);
+    super::conditional::success_headers(ir, ep, &mut success);
+    m.insert(ep.success.status.to_string(), success);
+    for (status, mut r) in error_responses(ir, ep) {
+        super::conditional::error_headers(ep, status, &mut r);
         m.insert(status.to_string(), r);
     }
     Value::Object(m)
@@ -193,7 +198,8 @@ pub(super) fn operation(ir: &Ir, svc: &Service, ep: &Endpoint) -> Value {
     if ep.deprecated.is_some() {
         o.insert("deprecated".into(), Value::Bool(true));
     }
-    let params = parameters(ir, ep);
+    let mut params = parameters(ir, ep);
+    params.extend(super::conditional::headers(ep));
     if !params.is_empty() {
         o.insert("parameters".into(), Value::Array(params));
     }
@@ -207,6 +213,7 @@ pub(super) fn operation(ir: &Ir, svc: &Service, ep: &Endpoint) -> Value {
     if !ep.middleware.is_empty() {
         o.insert("x-veld-middleware".into(), json!(ep.middleware));
     }
+    super::rules::decorate_operation(ir, ep, &mut o);
     o.insert("x-veld-op-sig".into(), Value::from(ep.sig.clone()));
     Value::Object(o)
 }

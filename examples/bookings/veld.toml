@@ -1,0 +1,20 @@
+[service]
+name = "bookings"
+
+# The server. `testing = true` also writes a test handler for `veld test --live`.
+# It must never be mounted in production (see server/src/test-server.ts).
+[server]
+name = "api"
+emitter = "node"
+framework = "express"
+out = "server/src/generated"
+
+[server.options]
+testing = true
+
+# The client with React hooks and the form helper `useFormRules`.
+[client]
+name = "web"
+emitter = "typescript"
+framework = "react"
+out = "web/src/generated"

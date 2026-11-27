@@ -1,0 +1,120 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+warning[W1001]: channel `PaidChannel` is published and nobody in the workspace subscribes to it
+ --> app/app.veld:2:9
+  |
+2 | channel PaidChannel { carries Paid }
+  |         ^^^^^^^^^^^
+
+== ir ==
+{
+  "ir_version": "1.1",
+  "packages": [
+    {
+      "id": 0,
+      "name": "app",
+      "kind": "service"
+    }
+  ],
+  "decls": [
+    {
+      "id": 0,
+      "package": 0,
+      "module": "app",
+      "name": "Paid",
+      "qualified": "app:app.Paid",
+      "sig": "veld:app/Paid@37528998c157b125",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 1,
+        "col": 7
+      },
+      "kind": "event",
+      "fields": [
+        {
+          "name": "id",
+          "wire": "id",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 1,
+            "col": 14
+          }
+        }
+      ]
+    }
+  ],
+  "services": [
+    {
+      "id": 0,
+      "package": 0,
+      "name": "Publisher",
+      "prefix": "",
+      "base_url": null,
+      "docs": null,
+      "auth": {
+        "kind": "none",
+        "header": null
+      },
+      "middleware": [],
+      "endpoints": [],
+      "publishes": [
+        {
+          "channel": 0,
+          "origin": {
+            "file": "app.veld",
+            "line": 4,
+            "col": 31
+          }
+        }
+      ],
+      "origin": {
+        "file": "app.veld",
+        "line": 4,
+        "col": 9
+      }
+    }
+  ],
+  "consumes": {},
+  "channels": [
+    {
+      "name": "PaidChannel",
+      "package": 0,
+      "module": "app",
+      "qualified": "app:app.PaidChannel",
+      "topic": "app.PaidChannel",
+      "events": [
+        0
+      ],
+      "key": null,
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 2,
+        "col": 9
+      }
+    }
+  ]
+}

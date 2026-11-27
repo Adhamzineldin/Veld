@@ -1,16 +1,1099 @@
 //! The embedded runtime. One real `.ts` file, byte-identical in every role.
+//!
+//! `runtime/veld.ts` has regions between `// #if <name>` and `// #endif` marker lines
+//! (`veld_codegen::gate_regions`). A contract without rules gets the file without them, exactly
+//! as it was before rules existed; a contract with invariants also gets the `rules` regions and
+//! `runtime/rules.ts` (`spec/targets/typescript.md` section 5b). A contract with endpoint rules
+//! gets the `endpoint_rules` regions as well (section 5c); a contract with invariants only never
+//! sees them. A contract with a `transition` or an `allow` (or a read of the principal) also gets
+//! the `transitions` and `policies` regions (sections 5d and 5e); the rest never sees them.
 
-use veld_codegen::{FileSet, GenDiagnostic};
+use std::sync::LazyLock;
+
+use veld_codegen::{FileSet, GateError, GenDiagnostic, gate_regions};
 
 use crate::util::add_file;
 
-/// Source of `runtime/veld.ts`.
-pub const SOURCE: &str = include_str!("../runtime/veld.ts");
+/// The embedded `runtime/veld.ts`, markers and all.
+const RAW: &str = include_str!("../runtime/veld.ts");
+
+/// The embedded `runtime/rules.ts`: the rule helpers, emitted only for a contract with rules.
+pub const RULES_SOURCE: &str = include_str!("../runtime/rules.ts");
+
+/// The embedded `runtime/rollout.ts`: the sink audited rules report to, emitted only for a
+/// contract with an audited rule (`@rollout(audit)`, `spec/rules.md` section 17.1).
+pub const ROLLOUT_SOURCE: &str = include_str!("../runtime/rollout.ts");
+
+/// The embedded `runtime/flags.ts`: the readings of the flags a request has, emitted only for a
+/// contract with a flagged statement (`spec/platform.md` section 11).
+pub const FLAGS_SOURCE: &str = include_str!("../runtime/flags.ts");
+
+/// Source of `runtime/veld.ts` for a contract without rules.
+pub static SOURCE: LazyLock<String> = LazyLock::new(|| source(false).unwrap_or_default());
 
 /// Root-relative module path of the runtime, without extension.
 pub const MODULE: &str = "runtime/veld";
 
-/// Adds `runtime/veld.ts` to `files`.
-pub fn emit(files: &mut FileSet) -> Result<(), Vec<GenDiagnostic>> {
-    add_file(files, "runtime/veld.ts", SOURCE.to_string())
+/// Root-relative module path of the rule helpers, without extension.
+pub const RULES_MODULE: &str = "runtime/rules";
+
+/// `runtime/veld.ts` with the `rules` regions kept (`rules`) or dropped.
+///
+/// # Errors
+/// The embedded file has markers that do not pair up.
+pub fn source(rules: bool) -> Result<String, GateError> {
+    source_with(rules, false)
+}
+
+/// Which regions of `runtime/veld.ts` a contract needs.
+///
+/// A state machine or a policy is an endpoint rule, and an endpoint rule needs the invariant
+/// machinery, so [`Gates::normalised`] switches on what each flag builds on.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Gates {
+    /// Invariants: the `rules` regions and `runtime/rules.ts`.
+    pub rules: bool,
+    /// Facts, `require` and `ensure`: the `endpoint_rules` regions.
+    pub endpoint_rules: bool,
+    /// A `transition`: the `transitions` regions.
+    pub transitions: bool,
+    /// An `allow` or a read of the principal: the `policies` regions.
+    pub policies: bool,
+    /// An audited rule: the `rollout` regions and `runtime/rollout.ts`.
+    pub rollout: bool,
+    /// A `@version` guard or a response that carries an `ETag`: the `version` regions
+    /// (`spec/rules.md` section 11.7).
+    pub version: bool,
+    /// An `@idempotent` endpoint: the `idempotency` regions (`spec/rules.md` section 11.8).
+    pub idempotency: bool,
+    /// A derived field (`spec/rules.md` section 17.2): the `derived` regions. They need the
+    /// invariant machinery (`rules`), because the expressions call the helpers of
+    /// `runtime/rules.ts` and a derived value is read by invariants.
+    pub derived: bool,
+    /// A timed `transition` (`spec/platform.md` section 10): the `timed` regions. They need the
+    /// transition guard (`transitions`).
+    pub timed: bool,
+    /// An endpoint whose move emits an event (`spec/events.md` section 11): the `outbox` regions.
+    /// They need the transition guard (`transitions`).
+    pub outbox: bool,
+    /// An endpoint with a `@timeout` (`spec/platform.md` section 12): the `timeouts` regions (the
+    /// server's deadline, the client's default timeout).
+    pub timeouts: bool,
+    /// An endpoint with an `@slo` in a server tree (`spec/platform.md` section 13): the `slo`
+    /// regions and the `metrics` hook.
+    pub slo: bool,
+    /// A flagged statement (`spec/platform.md` section 11): the `flags` regions and
+    /// `runtime/flags.ts`.
+    pub flags: bool,
+    /// A `@visible` field that a response of a server can reach (`spec/platform.md` section 2):
+    /// the `visibility` regions. They need the invariant helpers (`rules`), which the generated
+    /// `show` functions call.
+    pub visibility: bool,
+    /// A tenant-scoped value that a server loads or sends (`spec/platform.md` section 3): the
+    /// `tenancy` regions. The refusal is reported like an output violation, so they need `rules`.
+    pub tenancy: bool,
+    /// A declaration with a `@tenant` field, in a client or a server: the schema mark that says a
+    /// request may lack it.
+    pub tenant_fields: bool,
+    /// An event with a `@tenant` field (`spec/platform.md` section 3): `veldtenant` in the
+    /// envelope of `runtime/events.ts`.
+    pub tenant_events: bool,
+    /// An audited endpoint of a server (`spec/platform.md` section 4): the `audit` regions.
+    pub audit: bool,
+    /// A server generated with `capture-violations` (`spec/rules.md` section 17.3): the `capture`
+    /// regions, and the redaction the audit log shares (`redact`). It needs the per-request state
+    /// of the platform (`platform`), because the capture's `now` is the clock `prepare` reads.
+    pub capture: bool,
+    /// A member with message catalogs and rules (`spec/platform.md` section 22): `messageKey` on a
+    /// violation, the language helpers and the client's keys.
+    pub messages: bool,
+    /// The same in a server: the language of each request, the translated messages and
+    /// `Content-Language`.
+    pub messages_server: bool,
+    /// An endpoint with a `@limit` (`spec/platform.md` section 5): the client's wait on `429`.
+    pub limits: bool,
+    /// An endpoint of a server with a `@limit`: the limiter and its hooks.
+    pub limits_server: bool,
+    /// The target has a typed runtime config (`spec/runtime-config.md`): a client takes its
+    /// `baseUrl` from the options alone (no environment variable, no compiled-in address).
+    pub runtime_config: bool,
+}
+
+impl Gates {
+    /// A server enforces at least one of the four features of platform phase P1: the `platform`
+    /// regions (the per-request state, the caller, the clock read once).
+    #[must_use]
+    pub fn platform(self) -> bool {
+        self.visibility || self.tenancy || self.audit || self.limits_server || self.capture
+    }
+
+    /// The same gates with everything they build on switched on.
+    #[must_use]
+    pub fn normalised(self) -> Self {
+        let transitions = self.transitions || self.timed || self.outbox;
+        let endpoint_rules = self.endpoint_rules || transitions || self.policies;
+        Self {
+            rules: self.rules
+                || endpoint_rules
+                || self.rollout
+                || self.derived
+                || self.visibility
+                || self.tenancy
+                || self.capture
+                || self.messages,
+            endpoint_rules,
+            transitions,
+            ..self
+        }
+    }
+
+    /// The gates two trees need together (the server's own tree and its consumed clients).
+    #[must_use]
+    pub fn union(self, other: Self) -> Self {
+        Self {
+            rules: self.rules || other.rules,
+            endpoint_rules: self.endpoint_rules || other.endpoint_rules,
+            transitions: self.transitions || other.transitions,
+            timed: self.timed || other.timed,
+            outbox: self.outbox || other.outbox,
+            timeouts: self.timeouts || other.timeouts,
+            slo: self.slo || other.slo,
+            flags: self.flags || other.flags,
+            visibility: self.visibility || other.visibility,
+            tenancy: self.tenancy || other.tenancy,
+            tenant_fields: self.tenant_fields || other.tenant_fields,
+            tenant_events: self.tenant_events || other.tenant_events,
+            audit: self.audit || other.audit,
+            capture: self.capture || other.capture,
+            messages: self.messages || other.messages,
+            messages_server: self.messages_server || other.messages_server,
+            limits: self.limits || other.limits,
+            limits_server: self.limits_server || other.limits_server,
+            policies: self.policies || other.policies,
+            rollout: self.rollout || other.rollout,
+            version: self.version || other.version,
+            idempotency: self.idempotency || other.idempotency,
+            derived: self.derived || other.derived,
+            runtime_config: self.runtime_config || other.runtime_config,
+        }
+    }
+}
+
+/// `runtime/veld.ts` with the `rules` and `endpoint_rules` regions kept or dropped. Endpoint rules
+/// need the invariant machinery, so `endpoint_rules` keeps the `rules` regions too.
+///
+/// # Errors
+/// The embedded file has markers that do not pair up.
+pub fn source_with(rules: bool, endpoint_rules: bool) -> Result<String, GateError> {
+    source_gated(Gates {
+        rules,
+        endpoint_rules,
+        ..Gates::default()
+    })
+}
+
+/// `runtime/veld.ts` with the regions `gates` asks for.
+///
+/// # Errors
+/// The embedded file has markers that do not pair up.
+pub fn source_gated(gates: Gates) -> Result<String, GateError> {
+    let g = gates.normalised();
+    gate_regions(RAW, &|name| match name {
+        "rules" => g.rules,
+        "rollout" => g.rollout,
+        // Audited `require` and `ensure` need both.
+        "rollout_endpoint" => g.rollout && g.endpoint_rules,
+        "endpoint_rules" => g.endpoint_rules,
+        "transitions" => g.transitions,
+        // Timed moves (`spec/platform.md` section 10) and what a build without them has.
+        "timed" => g.timed,
+        "not_timed" => !g.timed,
+        // Deadlines (`spec/platform.md` section 12), service levels (section 13) and the code that
+        // wraps a request for either.
+        "timeouts" => g.timeouts,
+        "not_timeouts" => !g.timeouts,
+        "timeouts_idempotency" => g.timeouts && g.idempotency,
+        "timeouts_rules" => g.timeouts && g.rules,
+        "not_timeouts_rules" => g.timeouts && !g.rules,
+        "slo" => g.slo,
+        "bounded" => g.timeouts || g.slo,
+        "not_bounded" => !(g.timeouts || g.slo),
+        "timeouts_only" => g.timeouts && !g.slo,
+        "slo_only" => g.slo && !g.timeouts,
+        "timeouts_slo" => g.timeouts && g.slo,
+        // Flags (`spec/platform.md` section 11), alone and inside the regions they work in.
+        "flags" => g.flags,
+        "not_flags" => !g.flags,
+        "flags_rules" => g.flags && g.rules,
+        "not_flags_rules" => g.rules && !g.flags,
+        "flags_policies" => g.flags && g.policies,
+        "not_flags_policies" => g.policies && !g.flags,
+        "flags_transitions" => g.flags && g.transitions,
+        "not_flags_transitions" => g.transitions && !g.flags,
+        "flags_endpoint_rules" => g.flags && g.endpoint_rules,
+        "not_flags_endpoint_rules" => !g.flags && g.endpoint_rules,
+        // Platform phase P1 (`spec/platform.md` sections 2 to 5): each feature, the per-request state
+        // they share, and the places of the pipeline where a feature or two of them change a
+        // line that a build without them keeps.
+        "visibility" => g.visibility,
+        "not_visibility" => !g.visibility,
+        "endpoint_visibility" => g.endpoint_rules && g.visibility,
+        "endpoint_not_visibility" => g.endpoint_rules && !g.visibility,
+        "tenancy" => g.tenancy,
+        "tenant_fields" => g.tenant_fields,
+        "not_tenant_fields" => !g.tenant_fields,
+        "idempotency_tenant" => g.idempotency && g.tenant_fields,
+        "tenancy_facts" => g.endpoint_rules && g.tenancy,
+        "audit_facts" => g.endpoint_rules && g.audit,
+        "audit" => g.audit,
+        // Captures of a rule violation (`spec/rules.md` section 17.3), the redaction they share with
+        // the audit log, and the line of the event a build without them keeps.
+        "capture" => g.capture,
+        "redact" => g.audit || g.capture,
+        "rules_not_capture" => g.rules && !g.capture,
+        "capture_facts" => g.endpoint_rules && g.capture,
+        // Message catalogs (`spec/platform.md` section 22) and the lines a build without them keeps.
+        "messages" => g.messages,
+        "messages_server" => g.messages_server,
+        "rules_not_messages" => g.rules && !g.messages_server,
+        "derived_messages" => g.derived && g.messages_server,
+        "derived_not_messages" => g.derived && !g.messages_server,
+        "endpoint_messages" => g.endpoint_rules && g.messages_server,
+        "endpoint_not_messages" => g.endpoint_rules && !g.messages_server,
+        "policies_messages" => g.policies && g.messages_server,
+        "policies_not_messages" => g.policies && !g.messages_server,
+        "timed_messages" => g.timed && g.messages_server,
+        "timed_not_messages" => g.timed && !g.messages_server,
+        "limits" => g.limits,
+        "limits_server" => g.limits_server,
+        "not_limits" => !g.limits,
+        "limits_rules" => g.limits && g.rules,
+        "tenant_types" => g.tenancy || g.limits_server,
+        // The caller hook of a limit: the one of the idempotency store when there is one, else its own.
+        "limits_idempotency" => g.limits_server && g.idempotency,
+        "limits_plain_hooks" => g.limits_server && !g.idempotency,
+        // The step of the pipeline, between authentication and the middleware, in both layouts of `guard`.
+        "limits_plain" => g.limits_server && !g.timed,
+        "limits_timed" => g.limits_server && g.timed,
+        "platform" => g.platform(),
+        "not_platform" => !g.platform(),
+        // The clock of the hooks: endpoint rules read it, and so does every platform feature.
+        "clocked" => g.endpoint_rules || g.platform(),
+        "endpoint_platform" => g.endpoint_rules && g.platform(),
+        "endpoint_plain" => g.endpoint_rules && !g.platform(),
+        // `FactStep.schema`: the schema of a fact, for the derived fields, the tenant and the audit event.
+        "fact_schema" => g.endpoint_rules && (g.derived || g.tenancy || g.audit || g.capture),
+        "facts_platform" => g.endpoint_rules && (g.tenancy || g.audit || g.capture),
+        // What wraps `run` in the handler: a deadline, a metric, an audit event.
+        "run_fn" => g.timeouts || g.slo || g.audit,
+        "execs" => g.timeouts || g.slo || g.audit,
+        "not_execs" => !(g.timeouts || g.slo || g.audit),
+        "bounded_plain" => (g.timeouts || g.slo) && !g.audit,
+        "audit_unbounded" => g.audit && !(g.timeouts || g.slo),
+        "audit_bounded" => g.audit && (g.timeouts || g.slo),
+        "timed_plain" => g.timed && !(g.timeouts || g.slo),
+        "timed_bounded" => g.timed && (g.timeouts || g.slo),
+        "policies" => g.policies,
+        "outbox" => g.outbox,
+        // The code the transition guard and `allow` share.
+        "guards" => g.transitions || g.policies || (g.version && g.endpoint_rules),
+        "version" => g.version,
+        // The server's guard needs the endpoint machinery (a guard has a fact).
+        "version_guard" => g.version && g.endpoint_rules,
+        "idempotency" => g.idempotency,
+        // `EarlyResponse` for a contract with `@idempotent` and no endpoint rules: the test handler needs it.
+        "idempotency_only" => (g.idempotency || g.platform()) && !g.endpoint_rules,
+        // The two header checks of step 5.
+        "headers" => g.version || g.idempotency,
+        // The part of `headerRefusal` that merges the issues of a rule.
+        "headers_rules" => (g.version || g.idempotency) && g.rules,
+        // What a build without them has in the same place.
+        "not_version" => !g.version,
+        "not_idempotency" => !g.idempotency,
+        // Derived fields (`spec/rules.md` section 17.2) and what a build without them has.
+        "derived" => g.derived,
+        "not_derived" => !g.derived,
+        // `EarlyResponse` exists when there are endpoint rules or an `@idempotent` endpoint.
+        "derived_early" => g.derived && (g.endpoint_rules || g.idempotency || g.platform()),
+        "derived_plain" => g.derived && !(g.endpoint_rules || g.idempotency || g.platform()),
+        // The same, inside a region of the invariants or of endpoint rules.
+        "rules_not_derived" => g.rules && !g.derived,
+        "endpoint_rules_derived" => g.endpoint_rules && g.derived,
+        "endpoint_rules_plain" => g.endpoint_rules && !g.derived,
+        // The text of the rule values: endpoint rules print them, and so do derived fields.
+        "text_forms" => g.endpoint_rules || g.derived,
+        // The client's address: the option alone, or the option, the environment and the contract.
+        "runtime_config" => g.runtime_config,
+        "not_runtime_config" => !g.runtime_config,
+        _ => false,
+    })
+}
+
+/// Adds `runtime/veld.ts` to `files`, and `runtime/rules.ts` when the contract has rules.
+pub fn emit(files: &mut FileSet, rules: bool) -> Result<(), Vec<GenDiagnostic>> {
+    emit_with(files, rules, false)
+}
+
+/// Like [`emit`], with the regions of endpoint rules when `endpoint_rules` is set.
+pub fn emit_with(
+    files: &mut FileSet,
+    rules: bool,
+    endpoint_rules: bool,
+) -> Result<(), Vec<GenDiagnostic>> {
+    emit_gated(
+        files,
+        Gates {
+            rules,
+            endpoint_rules,
+            ..Gates::default()
+        },
+    )
+}
+
+/// Like [`emit`], with the regions `gates` asks for.
+pub fn emit_gated(files: &mut FileSet, gates: Gates) -> Result<(), Vec<GenDiagnostic>> {
+    let gates = gates.normalised();
+    let text = source_gated(gates)
+        .map_err(|e| vec![GenDiagnostic::new("E0805", format!("runtime/veld.ts: {e}"))])?;
+    add_file(files, "runtime/veld.ts", text)?;
+    if gates.rules {
+        add_file(files, "runtime/rules.ts", RULES_SOURCE.to_string())?;
+    }
+    if gates.rollout {
+        add_file(files, "runtime/rollout.ts", ROLLOUT_SOURCE.to_string())?;
+    }
+    if gates.flags {
+        add_file(files, "runtime/flags.ts", FLAGS_SOURCE.to_string())?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_embedded_markers_pair_up_in_every_mode() {
+        assert!(source(false).is_ok());
+        assert!(source(true).is_ok());
+        assert!(source_with(true, true).is_ok());
+        for transitions in [false, true] {
+            for policies in [false, true] {
+                let gates = Gates {
+                    rules: true,
+                    endpoint_rules: true,
+                    transitions,
+                    policies,
+                    ..Gates::default()
+                };
+                assert!(source_gated(gates).is_ok(), "{gates:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_contract_without_rules_gets_a_file_with_no_markers() {
+        assert!(!SOURCE.is_empty());
+        assert!(!SOURCE.contains("// #if"));
+        assert!(!SOURCE.contains("// #endif"));
+    }
+
+    #[test]
+    fn rules_are_a_second_file_and_extra_lines_only_when_used() {
+        let mut off = FileSet::new();
+        emit(&mut off, false).unwrap();
+        assert_eq!(off.len(), 1);
+        let mut on = FileSet::new();
+        emit(&mut on, true).unwrap();
+        assert_eq!(on.len(), 2);
+        assert!(on.get("runtime/rules.ts").is_some());
+    }
+
+    #[test]
+    fn endpoint_rules_add_regions_and_invariants_only_never_see_them() {
+        let invariants = source(true).unwrap();
+        let endpoint = source_with(true, true).unwrap();
+        assert!(!invariants.contains("EndpointRuleSet"));
+        // The digest belongs to the invariants: a service that reaches one has it (section 9.7).
+        assert!(invariants.contains("onContractMismatch"));
+        assert!(!source(false).unwrap().contains("onContractMismatch"));
+        assert!(endpoint.contains("EndpointRuleSet"));
+        assert!(endpoint.contains("onContractMismatch"));
+        // Endpoint rules alone switch the invariant machinery on.
+        assert_eq!(source_with(false, true).unwrap(), endpoint);
+        let mut files = FileSet::new();
+        emit_with(&mut files, false, true).unwrap();
+        assert!(files.get("runtime/rules.ts").is_some());
+    }
+
+    #[test]
+    fn version_and_idempotency_add_their_regions_and_nothing_else_sees_them() {
+        let plain = source_with(true, true).unwrap();
+        for word in [
+            "parseIfMatch",
+            "withEtag",
+            "checkVersion",
+            "IdempotencyStore",
+            "MemoryIdempotencyStore",
+            "sha256Hex",
+            "headerIssues",
+            "runCore",
+        ] {
+            assert!(!plain.contains(word), "`{word}` leaked into the runtime");
+        }
+        let version = source_gated(Gates {
+            version: true,
+            endpoint_rules: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        for word in [
+            "parseIfMatch",
+            "withEtag",
+            "checkVersion",
+            "headerIssues",
+            "refusal",
+        ] {
+            assert!(version.contains(word), "`{word}` is missing");
+        }
+        assert!(!version.contains("IdempotencyStore") && !version.contains("runCore"));
+        let idempotency = source_gated(Gates {
+            idempotency: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        for word in [
+            "IdempotencyStore",
+            "MemoryIdempotencyStore",
+            "sha256Hex",
+            "runCore",
+            "headerIssues",
+        ] {
+            assert!(idempotency.contains(word), "`{word}` is missing");
+        }
+        assert!(!idempotency.contains("parseIfMatch") && !idempotency.contains("checkVersion"));
+    }
+
+    #[test]
+    fn the_new_regions_pair_up_in_every_combination() {
+        for bits in 0..256u32 {
+            let gates = Gates {
+                rules: bits & 1 != 0,
+                endpoint_rules: bits & 2 != 0,
+                transitions: bits & 4 != 0,
+                policies: bits & 8 != 0,
+                version: bits & 16 != 0,
+                idempotency: bits & 32 != 0,
+                derived: bits & 64 != 0,
+                rollout: bits & 128 != 0,
+                ..Gates::default()
+            };
+            assert!(source_gated(gates).is_ok(), "{gates:?}");
+        }
+    }
+
+    #[test]
+    fn derived_fields_add_their_regions_and_nothing_else_sees_them() {
+        let words = [
+            "deriveNode",
+            "deriveValue",
+            "deriveSent",
+            "deriveInput",
+            "toWireSend",
+            "DeriveFn",
+            "withDerived",
+            "principalSchema",
+        ];
+        let plain = source_with(true, true).unwrap();
+        for word in words {
+            assert!(!plain.contains(word), "`{word}` leaked into the runtime");
+        }
+        let derived = source_gated(Gates {
+            derived: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        for word in words {
+            assert!(derived.contains(word), "`{word}` is missing");
+        }
+        // A derived field needs the invariant machinery, and nothing of endpoint rules.
+        assert!(derived.contains("checkValue") && !derived.contains("EndpointRuleSet"));
+        // The same functions keep working for a server with endpoint rules.
+        let all = source_gated(Gates {
+            derived: true,
+            endpoint_rules: true,
+            policies: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        // The principal is completed in `guard` (every endpoint), so even a server with no endpoint
+        // rule has the schema member and the failure answer.
+        assert!(all.contains("loadedFailed") && all.contains("principalSchema"));
+        assert!(derived.contains("loadedFailed") && derived.contains("principalSchema"));
+        assert!(!plain.contains("loadedFailed"));
+    }
+
+    #[test]
+    fn every_combination_with_derived_fields_pairs_up_and_keeps_no_marker() {
+        for bits in 0..16384u32 {
+            let gates = Gates {
+                rules: bits & 1 != 0,
+                endpoint_rules: bits & 2 != 0,
+                transitions: bits & 4 != 0,
+                policies: bits & 8 != 0,
+                version: bits & 16 != 0,
+                idempotency: bits & 32 != 0,
+                rollout: bits & 64 != 0,
+                runtime_config: bits & 128 != 0,
+                derived: bits & 256 != 0,
+                timed: bits & 512 != 0,
+                timeouts: bits & 1024 != 0,
+                slo: bits & 2048 != 0,
+                flags: bits & 4096 != 0,
+                outbox: bits & 8192 != 0,
+                ..Gates::default()
+            };
+            let text = source_gated(gates).unwrap();
+            assert!(!text.contains("// #"), "{gates:?}");
+        }
+    }
+
+    #[test]
+    fn a_version_only_contract_has_the_etag_and_no_guard() {
+        let etag = source_gated(Gates {
+            version: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        assert!(etag.contains("withEtag") && etag.contains("ifMatchText"));
+        // The guard needs the endpoint machinery; an `ETag` alone does not.
+        assert!(!etag.contains("checkVersion") && !etag.contains("EndpointRuleSet"));
+    }
+
+    #[test]
+    fn timed_moves_add_their_regions_and_nothing_else_sees_them() {
+        let words = [
+            "runDueMoves",
+            "checkDue",
+            "timerCalls",
+            "DueStep",
+            "TimerHooks",
+        ];
+        let plain = source_gated(Gates {
+            transitions: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        for word in words {
+            assert!(!plain.contains(word), "`{word}` leaked into the runtime");
+        }
+        let timed = source_gated(Gates {
+            timed: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        for word in words {
+            assert!(timed.contains(word), "`{word}` is missing");
+        }
+        // A timed move needs the transition guard.
+        assert!(timed.contains("checkTransition"));
+    }
+
+    #[test]
+    fn the_outbox_adds_its_regions_and_nothing_else_sees_them() {
+        let words = [
+            "EmitSession",
+            "emitByRequest",
+            "checkWritten",
+            "beginEmit",
+            "checkEmitted",
+            "skipEmitted",
+            "emittedOf",
+        ];
+        let plain = source_gated(Gates {
+            transitions: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        for word in words {
+            assert!(!plain.contains(word), "`{word}` leaked into the runtime");
+        }
+        let outbox = source_gated(Gates {
+            outbox: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        for word in words {
+            assert!(outbox.contains(word), "`{word}` is missing");
+        }
+        // The outbox needs the transition guard, and a server without it fails when it is created.
+        assert!(outbox.contains("checkTransition"));
+        assert!(outbox.contains("hooks.outbox is required"));
+    }
+
+    #[test]
+    fn deadlines_and_service_levels_add_their_regions_and_nothing_else_sees_them() {
+        let plain = source_gated(Gates::default()).unwrap();
+        for word in [
+            "withDeadline",
+            "deadlineAnswer",
+            "withMetrics",
+            "reportMetric",
+            "callLimit",
+        ] {
+            assert!(!plain.contains(word), "`{word}` leaked into the runtime");
+        }
+        let timeouts = source_gated(Gates {
+            timeouts: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        for word in ["withDeadline", "deadlineAnswer", "callLimit", "timeoutMs"] {
+            assert!(timeouts.contains(word), "`{word}` is missing");
+        }
+        assert!(!timeouts.contains("withMetrics"));
+        let slo = source_gated(Gates {
+            slo: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        assert!(slo.contains("withMetrics") && slo.contains("reportMetric"));
+        assert!(!slo.contains("withDeadline"));
+        let both = source_gated(Gates {
+            slo: true,
+            timeouts: true,
+            idempotency: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        assert!(both.contains("withMetrics((r2, m2, q2, s2, h2) => withDeadline"));
+        // The deadline settles the lease of an idempotent request.
+        assert!(both.contains("lease.closed") && !timeouts.contains("lease.closed"));
+    }
+
+    #[test]
+    fn flags_add_their_regions_and_nothing_else_sees_them() {
+        let words = [
+            "FlagProvider",
+            "MemoryFlagProvider",
+            "readFlags",
+            "withFlagState",
+            "statementOn",
+            "liveSources",
+            "withReadings",
+        ];
+        let all = source_gated(Gates {
+            rules: true,
+            policies: true,
+            transitions: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        for word in words {
+            assert!(!all.contains(word), "`{word}` leaked into the runtime");
+        }
+        assert!(!all.contains("checkInputRulesIn") && !all.contains("checkAllowsIn"));
+        let flagged = source_gated(Gates {
+            flags: true,
+            rules: true,
+            policies: true,
+            transitions: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        for word in words {
+            assert!(flagged.contains(word), "`{word}` is missing");
+        }
+        // The windows: every sync walk of the rules runs with the readings of its request.
+        for word in [
+            "checkInputRulesIn",
+            "checkMessageRulesIn",
+            "scanOutputIn",
+            "checkAllowsIn",
+        ] {
+            assert!(flagged.contains(word), "`{word}` is missing");
+        }
+        // Without policies and transitions there is nothing of theirs.
+        let bare = source_gated(Gates {
+            flags: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        assert!(
+            bare.contains("readFlags")
+                && !bare.contains("liveSources")
+                && !bare.contains("checkAllowsIn")
+        );
+    }
+
+    #[test]
+    fn machines_and_policies_add_their_regions_and_endpoint_rules_never_see_them() {
+        let endpoint = source_with(true, true).unwrap();
+        for word in ["checkAllows", "checkTransition", "refusal", "PolicyVerdict"] {
+            assert!(
+                !endpoint.contains(word),
+                "`{word}` leaked into endpoint rules"
+            );
+        }
+        let machine = source_gated(Gates {
+            transitions: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        assert!(machine.contains("checkTransition") && machine.contains("refusal"));
+        assert!(!machine.contains("checkAllows"));
+        let policies = source_gated(Gates {
+            policies: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        assert!(policies.contains("checkAllows") && policies.contains("refusal"));
+        assert!(!policies.contains("checkTransition"));
+        // Each switches the endpoint machinery on.
+        assert!(machine.contains("EndpointRuleSet") && policies.contains("EndpointRuleSet"));
+    }
+
+    /// Platform phase P1 (`spec/platform.md` sections 2 to 5): the regions of the four features
+    /// pair up in every combination of them with the other features, and a build without them
+    /// has none of their words.
+    #[test]
+    fn the_platform_regions_pair_up_in_every_combination() {
+        for bits in 0u32..(1 << 14) {
+            let b = |i: u32| bits & (1 << i) != 0;
+            let gates = Gates {
+                tenant_fields: b(12),
+                tenant_events: b(13),
+                visibility: b(0),
+                tenancy: b(1),
+                audit: b(2),
+                limits: b(3),
+                limits_server: b(4),
+                endpoint_rules: b(5),
+                idempotency: b(6),
+                derived: b(7),
+                timeouts: b(8),
+                slo: b(9),
+                version: b(10),
+                flags: b(11),
+                ..Gates::default()
+            };
+            assert!(source_gated(gates).is_ok(), "{gates:?}");
+        }
+    }
+
+    #[test]
+    fn a_build_without_the_platform_features_has_none_of_their_words() {
+        let all_old = source_gated(Gates {
+            rules: true,
+            endpoint_rules: true,
+            transitions: true,
+            policies: true,
+            rollout: true,
+            version: true,
+            idempotency: true,
+            derived: true,
+            timed: true,
+            outbox: true,
+            timeouts: true,
+            slo: true,
+            flags: true,
+            runtime_config: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        for word in [
+            "PlatformState",
+            "platformOpen",
+            "callerOf",
+            "showNode",
+            "showSent",
+            "visibleTo",
+            "showValue",
+            "tenantViolations",
+            "withAudit",
+            "redactNode",
+            "checkResultTenant",
+            "factKept",
+            "MemoryLimiter",
+            "takeLimit",
+        ] {
+            assert!(!all_old.contains(word), "`{word}` leaked into the runtime");
+        }
+    }
+
+    #[test]
+    fn each_platform_feature_has_its_own_words_only() {
+        let visibility = source_gated(Gates {
+            visibility: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        for word in ["showNode", "visibleTo", "platformOpen"] {
+            assert!(visibility.contains(word), "`{word}` is missing");
+        }
+        for word in ["withAudit", "MemoryLimiter", "tenantViolations"] {
+            assert!(
+                !visibility.contains(word),
+                "`{word}` is in a visibility build"
+            );
+        }
+        // The caller's field values are read by the rules helpers, so the helpers come too.
+        assert!(visibility.contains("RuleViolationEvent"));
+    }
+
+    #[test]
+    fn the_audit_log_adds_its_regions_and_nothing_else_sees_them() {
+        let audit = source_gated(Gates {
+            audit: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        for word in [
+            "withAudit",
+            "redactNode",
+            "AuditFailure",
+            "recordAudit",
+            "auditParameters",
+        ] {
+            assert!(audit.contains(word), "`{word}` is missing");
+        }
+        // Visibility, tenancy and limits are not part of it, and it needs no rule helper.
+        for word in [
+            "showNode",
+            "tenantNode",
+            "MemoryLimiter",
+            "RuleViolationEvent",
+        ] {
+            assert!(!audit.contains(word), "`{word}` is in an audit build");
+        }
+        // With a deadline, the answer of the deadline is audited too.
+        let bounded = source_gated(Gates {
+            audit: true,
+            timeouts: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        assert!(bounded.contains("withAudit(bound(run))"));
+        assert!(audit.contains("withAudit(run)") && !audit.contains("bound(run)"));
+    }
+
+    /// Captures of a rule violation (`spec/rules.md` section 17.3): the regions pair up next to
+    /// every other feature, and nothing else sees their words.
+    #[test]
+    fn the_capture_regions_pair_up_in_every_combination() {
+        for bits in 0u32..(1 << 13) {
+            let b = |i: u32| bits & (1 << i) != 0;
+            let gates = Gates {
+                capture: true,
+                rules: b(0),
+                endpoint_rules: b(1),
+                transitions: b(2),
+                policies: b(3),
+                derived: b(4),
+                audit: b(5),
+                tenancy: b(6),
+                visibility: b(7),
+                idempotency: b(8),
+                timeouts: b(9),
+                slo: b(10),
+                flags: b(11),
+                limits_server: b(12),
+                ..Gates::default()
+            };
+            assert!(source_gated(gates).is_ok(), "{gates:?}");
+        }
+    }
+
+    #[test]
+    fn captures_add_their_regions_and_nothing_else_sees_them() {
+        let words = [
+            "ViolationCapture",
+            "CaptureSpec",
+            "CaptureState",
+            "withCapture",
+            "captureParameters",
+            "captureFact",
+            "captureOf",
+            "captureViolations",
+        ];
+        let plain = source_gated(Gates {
+            rules: true,
+            endpoint_rules: true,
+            audit: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        for word in words {
+            assert!(!plain.contains(word), "`{word}` leaked into the runtime");
+        }
+        let capture = source_gated(Gates {
+            capture: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        for word in words {
+            assert!(capture.contains(word), "`{word}` is missing");
+        }
+        // The redaction is shared with the audit log, and a capture needs the request's state.
+        assert!(capture.contains("function redactNode(") && capture.contains("PlatformState"));
+        assert!(!capture.contains("withAudit") && !capture.contains("markFactsLoaded"));
+        // Facts are captured where endpoint rules load them.
+        let facts = source_gated(Gates {
+            capture: true,
+            endpoint_rules: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        assert!(facts.contains("markFactsLoaded") && facts.contains("factKept"));
+        // The line of the event a build without captures keeps.
+        assert!(plain.contains("hooks.onRuleViolation({ rule: violation.rule"));
+        assert!(!capture.contains("hooks.onRuleViolation({ rule: violation.rule"));
+    }
+
+    /// Message catalogs (`spec/platform.md` section 22): the regions pair up next to every other
+    /// feature, and nothing else sees their words.
+    #[test]
+    fn the_message_regions_pair_up_in_every_combination() {
+        for bits in 0u32..(1 << 12) {
+            let b = |i: u32| bits & (1 << i) != 0;
+            let gates = Gates {
+                messages: b(0) || b(1),
+                messages_server: b(1),
+                rules: b(2),
+                endpoint_rules: b(3),
+                transitions: b(4),
+                policies: b(5),
+                timed: b(6),
+                derived: b(7),
+                capture: b(8),
+                audit: b(9),
+                version: b(10),
+                flags: b(11),
+                ..Gates::default()
+            };
+            assert!(source_gated(gates).is_ok(), "{gates:?}");
+        }
+    }
+
+    #[test]
+    fn catalogs_add_their_regions_and_nothing_else_sees_them() {
+        let words = [
+            "MessageCatalogs",
+            "acceptedLanguages",
+            "chooseLanguage",
+            "catalogText",
+            "keyLocal",
+            "messageKey",
+        ];
+        let server_words = [
+            "MessageSupport",
+            "MessageState",
+            "withMessages",
+            "localizeViolation",
+            "withContentLanguage",
+            "answerRules",
+            "content-language",
+        ];
+        let everything_else = source_gated(Gates {
+            rules: true,
+            endpoint_rules: true,
+            transitions: true,
+            policies: true,
+            timed: true,
+            derived: true,
+            capture: true,
+            audit: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        for word in words.iter().chain(&server_words) {
+            assert!(
+                !everything_else.contains(word),
+                "`{word}` leaked into the runtime"
+            );
+        }
+        // A client: the language helpers and the keys of the local check, not the server's.
+        let client = source_gated(Gates {
+            messages: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        for word in words {
+            assert!(client.contains(word), "`{word}` is missing from a client");
+        }
+        for word in server_words {
+            assert!(!client.contains(word), "`{word}` is in a client");
+        }
+        // A server with policies and timed moves has the denial and the not-due key.
+        let server = source_gated(Gates {
+            messages: true,
+            messages_server: true,
+            policies: true,
+            timed: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        for word in server_words {
+            assert!(server.contains(word), "`{word}` is missing from a server");
+        }
+        assert!(server.contains("function denial(") && server.contains("transitionNotDue"));
+        // Without catalogs the lines of the answer are the ones of before.
+        assert!(everything_else.contains("return rulesProblem(ep, violations, std);"));
+        assert!(!server.contains("return rulesProblem(ep, violations, std);"));
+    }
+
+    #[test]
+    fn limits_add_the_limiter_to_a_server_and_the_wait_to_a_client() {
+        let server = source_gated(Gates {
+            limits: true,
+            limits_server: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        for word in [
+            "MemoryLimiter",
+            "takeLimit",
+            "withLimiter",
+            "sendLimited",
+            "tenantText",
+        ] {
+            assert!(server.contains(word), "`{word}` is missing");
+        }
+        let client = source_gated(Gates {
+            limits: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        assert!(client.contains("sendLimited") && client.contains("retryOnLimit"));
+        for word in ["MemoryLimiter", "takeLimit", "tenantText", "withAudit"] {
+            assert!(!client.contains(word), "`{word}` is in a client build");
+        }
+        // The caller of a limit is the one of the idempotency store, when there is one.
+        let shared = source_gated(Gates {
+            limits_server: true,
+            idempotency: true,
+            ..Gates::default()
+        })
+        .unwrap();
+        assert!(shared.contains("hooks.idempotency?.caller ?? hooks.caller"));
+        assert!(
+            server.contains("return hooks.caller;")
+                && !server.contains("hooks.idempotency?.caller")
+        );
+        // Both layouts of `guard` have the step between authentication and the middleware.
+        for timed in [false, true] {
+            let text = source_gated(Gates {
+                limits_server: true,
+                timed,
+                ..Gates::default()
+            })
+            .unwrap();
+            let at = text.find("const limited = await takeLimit(").unwrap();
+            let auth = text
+                .find("authenticate(ep.auth, ctx, hooks.auth ?? {})")
+                .unwrap();
+            let middleware = text.rfind("hooks.middleware?.[name]?.(ctx)").unwrap();
+            assert!(auth < at && at < middleware, "timed = {timed}");
+        }
+    }
 }

@@ -38,18 +38,31 @@ jobs:
           java-version: |
             17
             21
+          # The Spring tests build with the Maven Wrapper. Without a cache every run downloads
+          # Maven and all of Spring Boot from Maven Central, which answers a busy day with 429.
+          cache: maven
+          cache-dependency-path: tests/toolchain/java/spring/pom.xml
+      - name: Cache the Maven distribution the wrapper downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/wrapper
+          key: maven-wrapper-${{ runner.os }}-${{ hashFiles('tests/toolchain/java/spring/.mvn/wrapper/maven-wrapper.properties') }}
       - name: Install the pinned TypeScript toolchain
         run: npm ci --prefix tests/toolchain/ts
       - name: Format
         run: cargo fmt --all --check
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Install Z3 for the `--prove` tests
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y z3
       # The registry e2e needs Go and the PostgreSQL server binaries; the `registry` job runs it on
       # Linux with both installed, so the macOS and Windows runners leave it to that job.
       - name: Test (the toolchain tests must run, not skip)
         run: cargo test --workspace ${{ runner.os != 'Linux' && '-- --skip _against_the_real_registry' || '' }}
         env:
           VELD_REQUIRE_TOOLCHAINS: "1"
+          VELD_REQUIRE_SOLVER: ${{ runner.os == 'Linux' && '1' || '' }}
 
   java17:
     name: generated Java runs on a JDK 17 JVM
@@ -65,6 +78,13 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+          cache: maven
+          cache-dependency-path: tests/toolchain/java/spring/pom.xml
+      - name: Cache the Maven distribution the wrapper downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/wrapper
+          key: maven-wrapper-${{ runner.os }}-${{ hashFiles('tests/toolchain/java/spring/.mvn/wrapper/maven-wrapper.properties') }}
       - name: Install the pinned TypeScript toolchain
         run: npm ci --prefix tests/toolchain/ts
       - name: Java toolchain tests with javac and java 17 (release 17 only)
@@ -89,6 +109,11 @@ jobs:
           java-version: "17"
           cache: maven
           cache-dependency-path: tests/toolchain/java/spring/pom.xml
+      - name: Cache the Maven distribution the wrapper downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/wrapper
+          key: maven-wrapper-${{ runner.os }}-${{ hashFiles('tests/toolchain/java/spring/.mvn/wrapper/maven-wrapper.properties') }}
       - name: Install the pinned TypeScript toolchain
         run: npm ci --prefix tests/toolchain/ts
       - name: Build the Spring Boot application with the Maven Wrapper and call it from the generated clients
@@ -120,28 +145,32 @@ jobs:
             rm -rf "$dir"
             mkdir -p "$dir"
             cp -R tests/toolchain/contract "$dir/contracts"
+            mkdir -p "$dir/services/iam" "$dir/services/orders" "$dir/apps/web"
             cat > "$dir/veld.toml" <<'TOML'
-          [project]
+          [workspace]
           name = "contract"
+          members = ["services/*", "apps/*"]
+          TOML
+            cat > "$dir/services/iam/veld.toml" <<'TOML'
+          [service]
+          contracts = "../../contracts/iam"
+          TOML
+            cat > "$dir/services/orders/veld.toml" <<'TOML'
+          [service]
+          contracts = "../../contracts/orders"
 
-          [services.iam]
-          contracts = "contracts/iam"
-
-          [services.orders]
-          contracts = "contracts/orders"
-
-          [[targets]]
+          [server]
           name = "orders-api"
-          role = "server"
           emitter = "node"
-          service = "orders"
-          out = "out/orders"
+          out = "../../out/orders"
+          TOML
+            cat > "$dir/apps/web/veld.toml" <<'TOML'
+          [app]
 
-          [[targets]]
+          [client]
           name = "web"
-          role = "client"
           emitter = "typescript"
-          out = "out/web"
+          out = "../../out/web"
           TOML
             (cd "$dir" && "$veld" generate)
           done

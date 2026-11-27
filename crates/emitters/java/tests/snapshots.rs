@@ -223,7 +223,10 @@ fn server_request(
         consumes: vec![],
         framework: framework.map(str::to_string),
     };
-    Java.generate_dyn(&req, &serde_json::Value::Null)
+    Java.generate_dyn(
+        &req,
+        &veld_codegen::with_target_name(&serde_json::Value::Null, "t"),
+    )
 }
 
 /// SSE generates for the client and for every server framework; `ws` generates for the client and
@@ -243,7 +246,13 @@ fn streaming_generates_except_ws_on_the_jdk_adapter() {
             framework: None,
         };
         assert!(check_capabilities(&sse, &req, &Java.capabilities(role)).is_empty());
-        assert!(Java.generate_dyn(&req, &serde_json::Value::Null).is_ok());
+        assert!(
+            Java.generate_dyn(
+                &req,
+                &veld_codegen::with_target_name(&serde_json::Value::Null, "t")
+            )
+            .is_ok()
+        );
     }
     for framework in [None, Some("jdk"), Some("spring")] {
         let files = server_request(&sse, &["Feed"], framework).unwrap();
@@ -393,7 +402,7 @@ fn role_framework_and_options_are_checked() {
         consumes: vec![],
         framework: framework.map(str::to_string),
     };
-    let null = serde_json::Value::Null;
+    let null = veld_codegen::with_target_name(&serde_json::Value::Null, "t");
     assert_eq!(
         Java.generate_dyn(&req(Role::Server, Some("koa")), &null)
             .unwrap_err()[0]
@@ -481,7 +490,10 @@ fn language_and_framework_versions_are_validated_centrally() {
     assert_eq!(unversioned.code, "E0803");
     // Valid combinations generate, and the options never reach the typed `Options`.
     for java in ["17", "21"] {
-        let options = serde_json::json!({ "java": java, "framework-version": "3" });
+        let options = veld_codegen::with_target_name(
+            &serde_json::json!({ "java": java, "framework-version": "3" }),
+            "t",
+        );
         assert!(
             Java.generate_dyn(&req(Role::Server, Some("spring")), &options)
                 .is_ok(),
@@ -505,7 +517,10 @@ fn java_release_does_not_change_the_default_output() {
             options,
         )
     };
-    let base = run_with(serde_json::json!({ "package": "gen.a" }));
-    let v21 = run_with(serde_json::json!({ "package": "gen.a", "java": "21" }));
+    let named = |v: serde_json::Value| veld_codegen::with_target_name(&v, "t");
+    let base = run_with(named(serde_json::json!({ "package": "gen.a" })));
+    let v21 = run_with(named(
+        serde_json::json!({ "package": "gen.a", "java": "21" }),
+    ));
     assert_eq!(base, v21);
 }

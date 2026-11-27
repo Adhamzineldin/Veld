@@ -1,0 +1,21 @@
+// The idempotency key of a request that carries a @tenant member: the fingerprint leaves it out
+// (spec/platform.md section 3), as it leaves out a @readonly member.
+
+model User {
+  id: uuid
+  tenantId?: uuid @tenant
+}
+
+principal User
+
+model Note {
+  id: uuid
+  tenantId: uuid @tenant
+  text: string
+}
+
+@auth(bearer)
+service Notes at "/notes" {
+  @idempotent
+  post "/" addNote(body: Note) -> 201 Note
+}

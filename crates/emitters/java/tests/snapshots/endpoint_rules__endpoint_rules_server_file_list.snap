@@ -1,0 +1,28 @@
+---
+source: crates/emitters/java/tests/endpoint_rules.rs
+expression: "paths.join(\"\\n\")"
+---
+README.md
+gen/b/adapters/JdkHttpServerAdapter.java
+gen/b/bookings/bookings/AmountMismatch.java
+gen/b/bookings/bookings/Booking.java
+gen/b/bookings/bookings/Coupon.java
+gen/b/bookings/bookings/NewBooking.java
+gen/b/bookings/bookings/Payment.java
+gen/b/bookings/bookings/Room.java
+gen/b/bookings/bookings/RoomClosed.java
+gen/b/bookings/bookings/RoomFull.java
+gen/b/bookings/bookings/Status.java
+gen/b/bookings/server/BookingsFactLoaders.java
+gen/b/bookings/server/BookingsHandler.java
+gen/b/bookings/server/BookingsHooks.java
+gen/b/bookings/server/BookingsService.java
+gen/b/bookings/server/BookingsTestHandler.java
+gen/b/bookings/server/CreateBookingFacts.java
+gen/b/bookings/server/CreateBookingRequest.java
+gen/b/bookings/server/PayBookingFacts.java
+gen/b/bookings/server/PayBookingRequest.java
+gen/b/prelude/Internal.java
+gen/b/prelude/NotFound.java
+gen/b/prelude/ValidationError.java
+gen/b/prelude/ValidationIssue.java

@@ -164,8 +164,31 @@ pub(super) fn field_schema(ir: &Ir, f: &Field) -> Value {
         if f.deprecated.is_some() {
             m.insert("deprecated".into(), Value::Bool(true));
         }
-        if f.readonly {
+        if f.server_set() || f.derived.is_some() {
             m.insert("readOnly".into(), Value::Bool(true));
+        }
+        if let Some(e) = &f.derived {
+            // The expression, as the contract reads it (`spec/rules.md` section 17.2): the server
+            // computes the value, so a request never carries it and a response always does.
+            m.insert(
+                "x-veld-derived".into(),
+                Value::from(crate::diff::expr_text::expr_text(e)),
+            );
+        }
+        // `spec/rules.md` section 19.3: extensions only where the annotation is.
+        if f.pii {
+            m.insert("x-veld-pii".into(), Value::Bool(true));
+        }
+        if f.secret {
+            m.insert("x-veld-secret".into(), Value::Bool(true));
+        }
+        // `spec/platform.md` section 3: the server sets the tenant; a request never carries it.
+        if f.tenant {
+            m.insert("x-veld-tenant".into(), Value::Bool(true));
+        }
+        // `spec/platform.md` section 2: the field may be left out of a response for some callers.
+        if f.visible.is_some() {
+            m.insert("x-veld-visible".into(), Value::Bool(true));
         }
         put(
             m,
@@ -205,9 +228,10 @@ fn decorate(m: &mut Map<String, Value>, d: &Decl) {
         m.insert("deprecated".into(), Value::Bool(true));
     }
     m.insert("x-veld-sig".into(), Value::from(d.sig.clone()));
+    super::rules::decorate_decl(d, m);
 }
 
-fn model_schema(ir: &Ir, d: &Decl) -> Value {
+pub(super) fn model_schema(ir: &Ir, d: &Decl) -> Value {
     let own: Vec<&Field> = d
         .fields()
         .iter()
@@ -215,7 +239,11 @@ fn model_schema(ir: &Ir, d: &Decl) -> Value {
         .collect();
     let parent = match &d.kind {
         DeclKind::Model(m) => m.parent,
-        DeclKind::Error(_) | DeclKind::Enum(_) | DeclKind::Union(_) | DeclKind::Const(_) => None,
+        DeclKind::Error(_)
+        | DeclKind::Enum(_)
+        | DeclKind::Union(_)
+        | DeclKind::Const(_)
+        | DeclKind::Event(_) => None,
     };
     let mut out = match parent {
         Some(p) => json!({ "allOf": [schema_ref(ir, p), object_of(ir, &own)] }),
@@ -269,7 +297,8 @@ pub(super) fn decl_schema(ir: &Ir, d: &Decl) -> Option<Value> {
                 "discriminator": { "propertyName": u.discriminator, "mapping": mapping },
             })
         }
-        DeclKind::Const(_) => return None,
+        // An event is not a component schema (`spec/events.md` section 13).
+        DeclKind::Const(_) | DeclKind::Event(_) => return None,
     };
     if let Some(m) = out.as_object_mut() {
         decorate(m, d);

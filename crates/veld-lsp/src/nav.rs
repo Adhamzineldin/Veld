@@ -23,7 +23,11 @@ pub fn location(a: &Analysis, span: Span) -> Option<Location> {
 
 #[must_use]
 pub fn definition(a: &Analysis, file: FileId, offset: u32) -> Option<Location> {
-    let hit = query::symbol_at(&a.index, file, offset)?;
+    let Some(hit) = query::symbol_at(&a.index, file, offset) else {
+        // A name of the rules language: a field, a fact, a policy, a state, an error.
+        let found = crate::rfind::find(a, file, offset)?;
+        return location(a, found.def?);
+    };
     match &hit.symbol {
         Symbol::Package(name) => {
             let first =
@@ -228,7 +232,9 @@ mod tests {
     use crate::workspace::Workspace;
     use std::fs;
 
-    const TOML: &str = "[project]\nname = \"p\"\n[services.iam]\ncontracts = \"iam\"\n[services.app]\ncontracts = \"app\"\nconsumes = [\"iam\"]\n";
+    const TOML: &str = "[workspace]\nname = \"p\"\nmembers = [\"iam\", \"app\"]\n";
+    const IAM_TOML: &str = "[service]\ncontracts = \".\"\n";
+    const APP_TOML: &str = "[service]\ncontracts = \".\"\nconsumes = [\"iam\"]\n";
     const USERS: &str = "model User {\n  id: uuid\n}\nenum Role { admin, guest }\n";
     const APP: &str = "use iam:users.{User as U, Role}\nmodel Order {\n  a: U\n  r: Role = .admin\n}\nmodel B { u: U }\nservice S at \"/s\" {\n  get \"/\" list() -> Order\n}\n";
 
@@ -236,6 +242,8 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         for (p, t) in [
             ("veld.toml", TOML),
+            ("iam/veld.toml", IAM_TOML),
+            ("app/veld.toml", APP_TOML),
             ("iam/users.veld", USERS),
             ("app/app.veld", APP),
         ] {

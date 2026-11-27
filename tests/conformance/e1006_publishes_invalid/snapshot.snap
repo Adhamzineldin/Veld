@@ -1,0 +1,25 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+assertion_line: 195
+---
+== diagnostics ==
+error[E1006]: service `Publisher` publishes `A` twice
+ --> app/app.veld:6:16
+  |
+6 |   publishes A, A, Plain
+  |                ^
+
+error[E1006]: `Plain` is not a channel
+ --> app/app.veld:6:19
+  |
+6 |   publishes A, A, Plain
+  |                   ^^^^^
+
+error[E1006]: service `Consumer` subscribes to `A` twice
+ --> app/app.veld:11:14
+   |
+11 |   subscribes A as "g2" { on Paid -> second }
+   |              ^
+
+== ir ==
+(no IR: compilation failed)

@@ -1,0 +1,196 @@
+//! Encoding: steps 1 to 5 of `spec/events.md` section 7.
+
+use serde_json::{Map, Value as Json};
+use thiserror::Error;
+use veld_codegen::canonical::canonical_bytes;
+use veld_ir::{ChannelId, DeclId, DeclKind, Ir, Scalar, ServiceId, Type};
+
+use super::{DATA_CONTENT_TYPE, RULES_ATTRIBUTE, TENANT_ATTRIBUTE};
+use crate::check::{Options, Violation, check_decl_full};
+use crate::error::InputError;
+use crate::wire::format_datetime;
+
+/// What a publisher supplies besides the event: the id source and the clock (section 7).
+#[derive(Debug, Clone, Copy)]
+pub struct Inputs<'a> {
+    /// A non-empty string, unique among the events of one `source`.
+    pub id: &'a str,
+    /// `veld:<package>/<Service>`, see [`source_of`].
+    pub source: &'a str,
+    /// The publisher's clock at `publish`, in milliseconds since the epoch.
+    pub time_ms: i64,
+}
+
+/// Why nothing is sent (`spec/events.md` section 7: the typed `ValidationError`, or a misuse).
+#[derive(Debug, Clone, PartialEq, Error)]
+pub enum PublishError {
+    #[error("the channel is not in the IR")]
+    NoSuchChannel,
+    #[error("`{0}` is not an event carried by the channel")]
+    NotCarried(String),
+    #[error("the value does not have the shape of the event: {0}")]
+    Shape(InputError),
+    #[error("an invariant of the event is violated")]
+    Invalid(Vec<Violation>),
+    #[error("the key `{0}` of the channel is empty")]
+    EmptyKey(String),
+    #[error("the id is empty")]
+    EmptyId,
+    #[error("the source is empty")]
+    EmptySource,
+    #[error("the key `{0}` is not a string, uuid, int or long on the wire")]
+    BadKey(String),
+}
+
+/// The `source` attribute of a service: `veld:` package `/` Service.
+#[must_use]
+pub fn source_of(ir: &Ir, service: ServiceId) -> String {
+    let s = ir.service(service);
+    format!("veld:{}/{}", ir.package(s.package).name, s.name)
+}
+
+/// The key text of the event (`spec/events.md` section 4): a `string` as it is, a `uuid` in
+/// lowercase, an `int` or `long` in decimal digits. `None` when the channel has no key.
+fn key_text(ir: &Ir, channel: ChannelId, data: &Json) -> Result<Option<String>, PublishError> {
+    let Some(key) = ir.channel(channel).key.as_ref() else {
+        return Ok(None);
+    };
+    let bad = || PublishError::BadKey(key.wire.clone());
+    let value = data.get(&key.wire).ok_or_else(bad)?;
+    let text = match (&key.ty, value) {
+        (Type::Scalar(Scalar::String), Json::String(s)) => s.clone(),
+        (Type::Scalar(Scalar::Uuid), Json::String(s)) => s.clone(),
+        (Type::Scalar(Scalar::Int), Json::Number(n)) => n.to_string(),
+        (Type::Scalar(Scalar::Long), Json::String(s)) => s.clone(),
+        (Type::Scalar(Scalar::Long), Json::Number(n)) => n.to_string(),
+        _ => return Err(bad()),
+    };
+    if text.is_empty() {
+        return Err(PublishError::EmptyKey(key.wire.clone()));
+    }
+    Ok(Some(text))
+}
+
+/// The canonical bytes of the message that publishing `value` (the event in wire form) as
+/// `event` on `channel` sends: the shape and the invariants are checked first, defaults are
+/// applied to `data`, and nothing is produced for a value that would not be sent.
+///
+/// # Errors
+/// [`PublishError`] for a value that does not have the shape of the event, one that violates an
+/// invariant (audited rules never reject), an empty key, an empty id or source, or an event the
+/// channel does not carry.
+pub fn encode(
+    ir: &Ir,
+    channel: ChannelId,
+    event: DeclId,
+    value: &Json,
+    inputs: &Inputs<'_>,
+) -> Result<Vec<u8>, PublishError> {
+    encode_with_key(ir, channel, event, value, inputs).map(|(_, bytes)| bytes)
+}
+
+/// [`encode`], and the key text of the message (its `subject`, `None` for a channel without a
+/// key) next to the bytes: what an outbox entry stores (`spec/events.md` section 11.1).
+///
+/// # Errors
+/// As [`encode`].
+pub fn encode_with_key(
+    ir: &Ir,
+    channel: ChannelId,
+    event: DeclId,
+    value: &Json,
+    inputs: &Inputs<'_>,
+) -> Result<(Option<String>, Vec<u8>), PublishError> {
+    let (decl, rules_digest) = carried_event(ir, channel, event)?;
+    let mut canonical_value = value.clone();
+    super::canon::scalars(ir, &Type::Decl(event), &mut canonical_value);
+    let (data, found) = check_decl_full(ir, decl, &canonical_value, Options::default())
+        .map_err(PublishError::Shape)?;
+    if !found.is_empty() {
+        return Err(PublishError::Invalid(found));
+    }
+    let subject = key_text(ir, channel, &data)?;
+    let bytes = assemble(decl, rules_digest, subject.clone(), data, inputs)?;
+    Ok((subject, bytes))
+}
+
+/// The message a publisher would send, without the checks of section 7: the shape and the
+/// invariants of `value` are not checked, defaults are not applied and a key that cannot be read
+/// leaves `subject` out. It exists to build the messages that a consumer must reject, for
+/// `veld test --live` (`spec/events.md` section 10.9). `rules_digest` is the event's own, so the
+/// consumer checks the rules.
+///
+/// # Errors
+/// [`PublishError`] for an event the channel does not carry, an empty id or an empty source.
+pub fn encode_unchecked(
+    ir: &Ir,
+    channel: ChannelId,
+    event: DeclId,
+    value: &Json,
+    inputs: &Inputs<'_>,
+) -> Result<Vec<u8>, PublishError> {
+    let (decl, rules_digest) = carried_event(ir, channel, event)?;
+    let mut data = value.clone();
+    super::canon::scalars(ir, &Type::Decl(event), &mut data);
+    let subject = key_text(ir, channel, &data).ok().flatten();
+    assemble(decl, rules_digest, subject, data, inputs)
+}
+
+fn carried_event(
+    ir: &Ir,
+    channel: ChannelId,
+    event: DeclId,
+) -> Result<(&veld_ir::Decl, Option<String>), PublishError> {
+    let ch = ir
+        .channels
+        .get(channel.index())
+        .ok_or(PublishError::NoSuchChannel)?;
+    match ir.decls.get(event.index()).map(|d| (d, &d.kind)) {
+        Some((d, DeclKind::Event(e))) if ch.events.contains(&event) => {
+            Ok((d, e.rules_digest.clone()))
+        }
+        _ => Err(PublishError::NotCarried(event.0.to_string())),
+    }
+}
+
+/// The text of the `@tenant` field of an event, for the attribute `veldtenant`: a `string` as it
+/// is, a `uuid` in lowercase, an `int` or `long` in decimal digits. `None` for an event without
+/// such a field, and for one whose field is absent or not a text or number.
+fn tenant_text(decl: &veld_ir::Decl, data: &Json) -> Option<String> {
+    let field = decl.tenant_field()?;
+    crate::tenant::text(field, data.get(&field.wire)?)
+}
+
+/// Steps 4 and 5 of section 7: the attributes and the canonical bytes.
+fn assemble(
+    decl: &veld_ir::Decl,
+    rules_digest: Option<String>,
+    subject: Option<String>,
+    data: Json,
+    inputs: &Inputs<'_>,
+) -> Result<Vec<u8>, PublishError> {
+    if inputs.id.is_empty() {
+        return Err(PublishError::EmptyId);
+    }
+    if inputs.source.is_empty() {
+        return Err(PublishError::EmptySource);
+    }
+    let mut m = Map::new();
+    m.insert("specversion".into(), Json::from("1.0"));
+    m.insert("id".into(), Json::from(inputs.id));
+    m.insert("source".into(), Json::from(inputs.source));
+    m.insert("type".into(), Json::from(decl.sig.as_str()));
+    if let Some(subject) = subject {
+        m.insert("subject".into(), Json::from(subject));
+    }
+    m.insert("time".into(), Json::from(format_datetime(inputs.time_ms)));
+    m.insert("datacontenttype".into(), Json::from(DATA_CONTENT_TYPE));
+    if let Some(d) = rules_digest {
+        m.insert(RULES_ATTRIBUTE.into(), Json::from(d));
+    }
+    if let Some(t) = tenant_text(decl, &data) {
+        m.insert(TENANT_ATTRIBUTE.into(), Json::from(t));
+    }
+    m.insert("data".into(), data);
+    Ok(canonical_bytes(&Json::Object(m)))
+}

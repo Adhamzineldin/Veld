@@ -1,0 +1,65 @@
+// Phase E2 (spec/events.md section 10): a channel with @retry, @deadLetter and @ordered, and the
+// examples that need the inbox: `called once` delivers the event twice and the handler runs once.
+// A server that has not built E2 refuses this contract with E0801; the reference evaluator runs it.
+// `cargo test -p veld-rules --test events` runs the examples.
+
+event OrderPlaced {
+  orderId: uuid
+  quantity: int = 1
+  rule atLeastOne: quantity >= 1
+}
+
+event OrderShipped {
+  orderId: uuid
+  carrier: string
+}
+
+@topic("shop.orders.v1")
+@retry(max: 3, backoff: exponential)
+@deadLetter
+@ordered
+channel OrderEvents {
+  carries OrderPlaced, OrderShipped
+  key orderId
+}
+
+service Orders at "/orders" {
+  publishes OrderEvents
+  get "/ping" ping() -> 204
+}
+
+service Fulfilment {
+  subscribes OrderEvents as "fulfilment" {
+    on OrderPlaced  -> reserve
+    on OrderShipped -> notifyCustomer
+  }
+}
+
+service Billing {
+  subscribes OrderEvents as "billing" {
+    on OrderPlaced -> charge
+  }
+}
+
+example "a placed order is handled once even when it is delivered twice" {
+  given event OrderPlaced { quantity: 2 }
+  expect Fulfilment.reserve called once
+  expect Billing.charge called once
+}
+
+example "called once also holds for the handlers it does not name" {
+  given event OrderShipped { carrier: "dhl" }
+  expect Fulfilment.notifyCustomer called once
+  expect Billing.charge not called
+}
+
+example "called once and called are the same offline" {
+  given event OrderPlaced { }
+  expect Fulfilment.reserve called
+  expect Billing.charge called once
+}
+
+example "an order that breaks its rule is rejected, and with @deadLetter it is copied" {
+  given event OrderPlaced { quantity: 0 }
+  expect rejected
+}

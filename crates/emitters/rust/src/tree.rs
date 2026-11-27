@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use veld_ir::{Decl, DeclId, DeclKind, Ir, PackageId, PackageKind, ServiceId};
+use veld_ir::{Decl, DeclId, DeclKind, Ir, PackageId, PackageKind, ServiceId, Type};
 
 use crate::util::{self, RESERVED_MODULES};
 
@@ -25,6 +25,35 @@ pub struct Tree<'a> {
     /// False when the target option `validate = false` is set: run-time request validation is
     /// off by default (the types stay).
     pub validate: bool,
+    /// True when the crate has declarations with invariants: every schema then carries its
+    /// check function (or `None`), and the declarations with rules get their check functions.
+    pub rules: bool,
+    /// True when the crate has an audited rule (`@rollout(audit)`, `spec/rules.md` section 17.1): the test
+    /// handler then answers with `Veld-Test-Audited`.
+    pub rollout: bool,
+    /// True when the crate has a derived field (`spec/rules.md` section 17.2): every schema then
+    /// says which of its fields are derived and carries its `derive` function (or `None`).
+    pub derived: bool,
+    /// True when the crate has an `@idempotent` endpoint (`spec/rules.md` section 11.8): every
+    /// `Conditional` of the server core has the `idempotency` member.
+    pub idempotency: bool,
+    /// True when a served endpoint takes a timed edge (`spec/platform.md` section 10): the
+    /// generated step 6 reads the clock of the due-moves run.
+    pub timed: bool,
+    /// True when an endpoint has a deadline (`spec/platform.md` section 12).
+    pub timeouts: bool,
+    /// True when a served endpoint has a service level (`@slo`).
+    pub slo: bool,
+    /// True when the crate has a flagged statement (`spec/platform.md` section 11).
+    pub flags: bool,
+    /// The runtime config of the target (`spec/runtime-config.md`), when it has settings: the
+    /// server entry of every served service takes it.
+    pub runtime: Option<crate::config::RuntimeCfg>,
+    /// What the crate uses of platform phase P1 (`spec/platform.md` sections 2 to 5).
+    pub p1: crate::platform::Flags,
+    /// True when some service of the tree publishes or subscribes: the tree then emits the events
+    /// of its channels (`spec/events.md` section 14).
+    events: bool,
 }
 
 impl<'a> Tree<'a> {
@@ -41,7 +70,9 @@ impl<'a> Tree<'a> {
         let mut set: BTreeSet<DeclId> = ir.reachable_decls(&services).into_iter().collect();
         let own: BTreeSet<PackageId> = services.iter().map(|s| ir.service(*s).package).collect();
         for d in &ir.decls {
-            if own.contains(&d.package) || (owns_prelude && is_prelude(ir, d)) {
+            let in_scope = own.contains(&d.package) || (owns_prelude && is_prelude(ir, d));
+            // An event is never emitted: a client generates nothing for events (`spec/events.md` 14).
+            if in_scope && !d.is_event() {
                 set.insert(d.id);
             }
         }
@@ -53,7 +84,149 @@ impl<'a> Tree<'a> {
             decls: set.into_iter().collect(),
             owns_prelude,
             validate: true,
+            rules: false,
+            rollout: false,
+            derived: false,
+            idempotency: false,
+            timed: false,
+            timeouts: false,
+            slo: false,
+            flags: false,
+            runtime: None,
+            p1: crate::platform::Flags::default(),
+            events: false,
         }
+    }
+
+    /// Also emits the events of the tree's services and the declarations only they reach: a server
+    /// does it for a service that publishes or subscribes (`spec/events.md` section 14), a client
+    /// never does.
+    #[must_use]
+    pub fn with_events(mut self) -> Self {
+        let ir = self.ir;
+        let mut set: BTreeSet<DeclId> = self.decls.iter().copied().collect();
+        set.extend(ir.events_of(&self.services));
+        set.extend(ir.event_reachable_decls(&self.services));
+        self.events = self.services.iter().any(|s| ir.service(*s).uses_events());
+        self.decls = set.into_iter().collect();
+        self
+    }
+
+    /// Whether some service of the tree publishes or subscribes.
+    #[must_use]
+    pub fn uses_events(&self) -> bool {
+        self.events
+    }
+
+    /// Whether any declaration of the tree has invariants.
+    #[must_use]
+    pub fn has_rules(&self) -> bool {
+        self.decls
+            .iter()
+            .any(|id| !self.ir.decl(*id).rules().is_empty())
+    }
+
+    /// Whether any declaration of the tree has a derived field.
+    #[must_use]
+    pub fn has_derived(&self) -> bool {
+        self.decls.iter().any(|id| self.ir.decl(*id).has_derived())
+    }
+
+    /// Whether any declaration of the tree has an audited invariant (`@rollout(audit)`).
+    #[must_use]
+    pub fn has_audited(&self) -> bool {
+        self.decls.iter().any(|id| {
+            self.ir
+                .decl(*id)
+                .rules()
+                .iter()
+                .any(veld_ir::Rule::is_audited)
+        })
+    }
+
+    /// Whether a value of type `ty` can hold a declaration that has invariants.
+    #[must_use]
+    pub fn type_reaches_rules(&self, ty: &Type) -> bool {
+        let mut stack = Vec::new();
+        ty.collect_decls(&mut stack);
+        let mut seen = BTreeSet::new();
+        while let Some(id) = stack.pop() {
+            if !seen.insert(id) {
+                continue;
+            }
+            let d = self.ir.decl(id);
+            if !d.rules().is_empty() {
+                return true;
+            }
+            refs(d, &mut stack);
+        }
+        false
+    }
+
+    /// Sets whether the crate has an audited rule.
+    #[must_use]
+    pub fn with_rollout(mut self, rollout: bool) -> Self {
+        self.rollout = rollout;
+        self
+    }
+
+    /// Sets whether the crate has a derived field.
+    #[must_use]
+    pub fn with_derived(mut self, derived: bool) -> Self {
+        self.derived = derived;
+        self
+    }
+
+    /// Sets whether the crate has an `@idempotent` endpoint.
+    #[must_use]
+    pub fn with_flags(mut self, flags: bool) -> Self {
+        self.flags = flags;
+        self
+    }
+
+    #[must_use]
+    pub fn with_slo(mut self, slo: bool) -> Self {
+        self.slo = slo;
+        self
+    }
+
+    #[must_use]
+    pub fn with_timeouts(mut self, timeouts: bool) -> Self {
+        self.timeouts = timeouts;
+        self
+    }
+
+    #[must_use]
+    pub fn with_timed(mut self, timed: bool) -> Self {
+        self.timed = timed;
+        self
+    }
+
+    #[must_use]
+    pub fn with_idempotency(mut self, idempotency: bool) -> Self {
+        self.idempotency = idempotency;
+        self
+    }
+
+    /// Sets what the crate uses of platform phase P1.
+    #[must_use]
+    pub fn with_p1(mut self, p1: crate::platform::Flags) -> Self {
+        self.p1 = p1;
+        self
+    }
+
+    /// Sets the runtime config of the target.
+    #[must_use]
+    pub fn with_runtime(mut self, runtime: Option<crate::config::RuntimeCfg>) -> Self {
+        self.runtime = runtime;
+        self
+    }
+
+    /// Sets whether the crate carries the invariants runtime.
+    #[must_use]
+    pub fn with_rules(mut self, rules: bool) -> Self {
+        self.rules = rules;
+        self
     }
 
     /// Sets whether the generated code validates requests at run time by default.
@@ -184,6 +357,24 @@ impl<'a> Tree<'a> {
         }
         false
     }
+
+    /// The flags of the flagged invariants of a declaration and of every declaration it reaches,
+    /// sorted (`spec/platform.md` section 11: what a publisher or a consumer reads for an event).
+    #[must_use]
+    pub fn flags_reached_from(&self, id: DeclId) -> BTreeSet<String> {
+        let mut seen = BTreeSet::new();
+        let mut out = BTreeSet::new();
+        let mut stack = vec![id];
+        while let Some(next) = stack.pop() {
+            if !seen.insert(next) {
+                continue;
+            }
+            let d = self.ir.decl(next);
+            out.extend(d.rules().iter().filter_map(|r| r.flag.clone()));
+            refs(d, &mut stack);
+        }
+        out
+    }
 }
 
 /// Whether a declaration belongs to the prelude package.
@@ -206,6 +397,11 @@ fn refs(d: &Decl, out: &mut Vec<DeclId>) {
         }
         DeclKind::Union(u) => out.extend(u.arms.iter().map(|a| a.decl)),
         DeclKind::Const(_) | DeclKind::Enum(_) => {}
+        DeclKind::Event(e) => {
+            for f in &e.fields {
+                f.ty.collect_decls(out);
+            }
+        }
     }
 }
 

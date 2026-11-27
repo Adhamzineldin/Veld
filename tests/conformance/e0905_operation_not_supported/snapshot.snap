@@ -1,0 +1,76 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0905]: `/` is not supported on `decimal`
+ --> app/app.veld:18:17
+   |
+18 |   rule divides: price / 2 <= other
+   |                 ^^^^^^^^^
+  = help: decimal division needs a rounding rule; write `a <= b * 2`, not `a / 2 <= b`
+
+error[E0905]: `%` is not supported on `decimal`
+ --> app/app.veld:19:19
+   |
+19 |   rule remainder: price % 2 == other
+   |                   ^^^^^^^^^
+  = help: decimal division needs a rounding rule; write `a <= b * 2`, not `a / 2 <= b`
+
+error[E0905]: `<` is not supported on `string`
+ --> app/app.veld:20:16
+   |
+20 |   rule orders: name < "b"
+   |                ^^^^^^^^^^
+  = help: strings are compared with `==`, `!=`, `in`, `startsWith`, `endsWith` and `contains`
+
+error[E0905]: `==` is not supported on `Inner`
+ --> app/app.veld:21:24
+   |
+21 |   rule comparesModels: inner == inner
+   |                        ^^^^^^^^^^^^^^
+  = help: models, unions, lists, maps, `bytes` and `json` cannot be compared; compare fields
+
+error[E0905]: `==` is not supported on `Inner[]`
+ --> app/app.veld:22:23
+   |
+22 |   rule comparesLists: items == items
+   |                       ^^^^^^^^^^^^^^
+  = help: models, unions, lists, maps, `bytes` and `json` cannot be compared; compare fields
+
+error[E0905]: `==` is not supported on `bytes`
+ --> app/app.veld:23:23
+   |
+23 |   rule comparesBytes: data == data
+   |                       ^^^^^^^^^^^^
+  = help: models, unions, lists, maps, `bytes` and `json` cannot be compared; compare fields
+
+error[E0905]: `==` is not supported on `json`
+ --> app/app.veld:24:22
+   |
+24 |   rule comparesJson: extra == extra
+   |                      ^^^^^^^^^^^^^^
+  = help: models, unions, lists, maps, `bytes` and `json` cannot be compared; compare fields
+
+error[E0905]: `>` is not supported on `bool`
+ --> app/app.veld:25:21
+   |
+25 |   rule ordersBools: flag > flag
+   |                     ^^^^^^^^^^^
+  = help: only numbers, dates, datetimes, times and durations can be ordered
+
+error[E0905]: constant `FIRST` cannot be used in a rule
+ --> app/app.veld:26:27
+   |
+26 |   rule usesConst: start > FIRST
+   |                           ^^^^^
+  = help: only `bool`, `string`, `int`, `long`, `float` and `decimal` constants can
+
+error[E0905]: `in` is not supported on `Inner`
+ --> app/app.veld:27:22
+   |
+27 |   rule listOfModels: inner in items
+   |                      ^^^^^^^^^^^^^^
+  = help: the elements of the list cannot be compared with `==`
+
+== ir ==
+(no IR: compilation failed)

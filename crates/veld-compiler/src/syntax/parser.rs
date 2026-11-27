@@ -9,14 +9,61 @@
     reason = "token scanning: only a few tokens matter, the rest are skipped"
 )]
 
+#[cfg(test)]
+mod derived_tests;
+mod emitted;
+#[cfg(test)]
+mod emitted_tests;
+mod endpoint;
+#[cfg(test)]
+mod endpoint_tests;
+mod event;
+#[cfg(test)]
+mod event_tests;
+mod example;
+mod expr;
+mod flags;
+#[cfg(test)]
+mod flags_tests;
+#[cfg(test)]
+mod idempotency_tests;
+mod machine;
+#[cfg(test)]
+mod platform_p1_tests;
+mod policy;
+#[cfg(test)]
+mod policy_tests;
+#[cfg(test)]
+mod rule_tests;
+mod saga;
+#[cfg(test)]
+mod saga_tests;
+#[cfg(test)]
+mod timed_tests;
+
 use super::ast::{
     Annotation, Arg, ArgValue, ConstDecl, Decl, DeclKind, Doc, Endpoint, EnumDecl, ErrorDecl,
-    Field, File, HttpMethod, Ident, Import, LitKind, Literal, ModelDecl, Param, RespItem,
-    Responses, ServiceDecl, StrLit, TypeExpr, TypeExprKind, UnionArm, UnionDecl, Use, Variant,
+    Example, Expr, Field, File, FinalStmt, FlowStmt, HttpMethod, Ident, Import, LitKind, Literal,
+    ModelDecl, Param, PolicyDecl, PrincipalDecl, RespItem, Responses, Rule, ServiceDecl, StrLit,
+    TypeExpr, TypeExprKind, UnionArm, UnionDecl, Use, Variant,
 };
 use super::lexer::{Comment, Tok, Token, lex};
 use crate::diagnostics::{Diagnostic, FileId, Span};
 use crate::language;
+
+/// The top-level items that are not declarations of the module's name table.
+#[derive(Default)]
+struct Items {
+    examples: Vec<Example>,
+    policies: Vec<PolicyDecl>,
+    principals: Vec<PrincipalDecl>,
+}
+
+impl Items {
+    fn any(&self) -> bool {
+        !(self.examples.is_empty() && self.policies.is_empty() && self.principals.is_empty())
+    }
+}
 
 /// Result of parsing one file.
 #[derive(Debug, Clone)]
@@ -52,7 +99,7 @@ struct Parser<'a> {
     pos: usize,
     file: FileId,
     diags: Vec<Diagnostic>,
-    /// Current nesting of types and annotation arguments (see [`MAX_NESTING`]).
+    /// Current nesting of types, annotation arguments and expressions (see [`MAX_NESTING`]).
     depth: usize,
 }
 
@@ -60,6 +107,16 @@ struct Parser<'a> {
 /// arguments the parser accepts. Every later pass recurses over these, so the limit keeps the
 /// stack bounded for any input.
 pub const MAX_NESTING: usize = 64;
+
+/// The deepest rule expression (`spec/rules.md` section 3.1): 32 levels above the leaves. The
+/// parser counts the leaf too (a bare `a` is depth 1, `a && b` depth 2, a chain of 33 terms
+/// depth 33), and every operator, call, list and parenthesis adds one, also in a
+/// left-associative chain. The limit keeps the IR JSON of any rule readable by a JSON reader
+/// with the default recursion limit of 128 (see `semantic::rules::depth`).
+pub const MAX_EXPR_LEVELS: usize = 32;
+
+/// [`MAX_EXPR_LEVELS`] plus the leaf, in the unit of the parser's depth counter.
+pub const MAX_EXPR_NESTING: usize = MAX_EXPR_LEVELS + 1;
 
 const V1_HELP: &str = "this is v1 syntax; see spec/language.md";
 
@@ -149,6 +206,24 @@ impl Parser<'_> {
         None
     }
 
+    /// Expects `>`. A `>=` token is split, so `Map<string, int>= ...` keeps its old meaning.
+    fn expect_gt(&mut self, what: &str) -> Option<Span> {
+        if self.peek() == &Tok::GtEq {
+            let at = self.span();
+            let i = self.pos.min(self.toks.len() - 1);
+            self.toks[i] = Token {
+                tok: Tok::Eq,
+                span: Span::new(self.file, at.start as usize + 1, at.end as usize),
+            };
+            return Some(Span::new(
+                self.file,
+                at.start as usize,
+                at.start as usize + 1,
+            ));
+        }
+        self.expect(&Tok::Gt, what)
+    }
+
     fn expect_ident(&mut self, what: &str) -> Option<Ident> {
         if let Tok::Ident(name) = self.peek().clone() {
             let span = self.advance().span;
@@ -182,8 +257,9 @@ impl Parser<'_> {
     }
 
     fn is_endpoint_start_at(&self, n: usize) -> bool {
-        matches!(self.tok_at(n), Tok::Ident(w) if language::is_method_word(w))
-            && matches!(self.tok_at(n + 1), Tok::Str(_))
+        (matches!(self.tok_at(n), Tok::Ident(w) if language::is_method_word(w))
+            && matches!(self.tok_at(n + 1), Tok::Str(_)))
+            || self.is_saga_start_at(n)
     }
 
     // ---- file ----------------------------------------------------------
@@ -192,9 +268,10 @@ impl Parser<'_> {
         let start = self.span();
         let mut uses = Vec::new();
         let mut decls: Vec<Decl> = Vec::new();
+        let mut items = Items::default();
         while !self.at_eof() {
             let before = self.pos;
-            self.parse_top_item(&mut uses, &mut decls);
+            self.parse_top_item(&mut uses, &mut decls, &mut items);
             if self.pos == before {
                 self.advance();
             }
@@ -202,18 +279,43 @@ impl Parser<'_> {
         File {
             uses,
             decls,
+            examples: items.examples,
+            policies: items.policies,
+            principals: items.principals,
             span: start.to(self.span()),
         }
     }
 
-    fn parse_top_item(&mut self, uses: &mut Vec<Use>, decls: &mut Vec<Decl>) {
+    fn parse_top_item(&mut self, uses: &mut Vec<Use>, decls: &mut Vec<Decl>, items: &mut Items) {
         let item_start = self.pos;
         let docs = self.docs();
         let anns = self.annotations_before();
         match self.peek().clone() {
             Tok::Eof => self.dangling(&docs, &anns),
+            Tok::Ident(w) if w == "example" && self.is_example_start_at(0) => {
+                self.no_annotations(&anns, "an example");
+                if let Some(e) = self.parse_example(docs) {
+                    items.examples.push(e);
+                } else {
+                    self.recover_decl(item_start);
+                }
+            }
+            Tok::Ident(w) if w == "policy" && self.is_policy_start_at(0) => {
+                self.no_annotations(&anns, "a policy");
+                match self.parse_policy(docs) {
+                    Some(p) => items.policies.push(p),
+                    None => self.recover_decl(item_start),
+                }
+            }
+            Tok::Ident(w) if w == "principal" && self.is_principal_start_at(0) => {
+                self.no_annotations(&anns, "a principal");
+                match self.parse_principal(docs) {
+                    Some(p) => items.principals.push(p),
+                    None => self.recover_decl(item_start),
+                }
+            }
             Tok::Ident(w) if w == "use" && docs.is_empty() && anns.is_empty() => {
-                if !decls.is_empty() {
+                if !decls.is_empty() || items.any() {
                     let span = self.span();
                     self.err(
                         "E0003",
@@ -228,7 +330,7 @@ impl Parser<'_> {
                 }
             }
             Tok::Ident(w) if language::V1_KEYWORDS.contains(&w.as_str()) => self.v1_syntax(&w),
-            Tok::Ident(w) if language::is_decl_keyword(&w) => {
+            Tok::Ident(w) if language::is_decl_keyword(&w) || self.is_event_decl_start() => {
                 self.warn_dangling_docs_if_any(&docs, false);
                 if let Some(d) = self.parse_decl(docs, anns) {
                     decls.push(d);
@@ -316,6 +418,7 @@ impl Parser<'_> {
                     if depth == 0
                         && (language::is_decl_keyword(w)
                             || w == "use"
+                            || self.is_rule_decl_start_at(0)
                             || language::V1_KEYWORDS.contains(&w.as_str())) =>
                 {
                     return;
@@ -351,7 +454,9 @@ impl Parser<'_> {
                 Tok::Ident(w)
                     if depth == 0
                         && self.pos > start
-                        && (language::is_decl_keyword(w) || w == "use") =>
+                        && (language::is_decl_keyword(w)
+                            || w == "use"
+                            || self.is_rule_decl_start_at(0)) =>
                 {
                     return;
                 }
@@ -461,19 +566,37 @@ impl Parser<'_> {
         let at = self.advance().span;
         let name = self.expect_ident("an annotation name")?;
         let mut end = name.span;
+        let mut when = None;
         let args = if matches!(self.peek(), Tok::LParen) {
             self.advance();
-            let args = self.parse_args()?;
-            end = self.expect(&Tok::RParen, "`)` to close the annotation arguments")?;
-            Some(args)
+            if self.at_when_argument(&name) {
+                self.advance();
+                self.advance();
+                when = Some(self.parse_expr()?);
+                end = self.expect(&Tok::RParen, "`)` to close the annotation arguments")?;
+                None
+            } else {
+                let args = self.parse_args()?;
+                end = self.expect(&Tok::RParen, "`)` to close the annotation arguments")?;
+                Some(args)
+            }
         } else {
             None
         };
         Some(Annotation {
             name,
             args,
+            when,
             span: at.to(end),
         })
+    }
+
+    /// True after the `(` of `@visible` when `when:` follows: the argument is an expression
+    /// (`spec/platform.md` section 2). `when` stays an ordinary name everywhere else.
+    fn at_when_argument(&self, name: &Ident) -> bool {
+        name.name == "visible"
+            && matches!(self.peek(), Tok::Ident(w) if w == "when")
+            && matches!(self.tok_at(1), Tok::Colon)
     }
 
     fn parse_args(&mut self) -> Option<Vec<Arg>> {
@@ -521,6 +644,21 @@ impl Parser<'_> {
             return false;
         }
         self.depth += levels;
+        true
+    }
+
+    /// Enters one expression level; reports E0005 past [`MAX_EXPR_NESTING`].
+    fn enter_expr(&mut self) -> bool {
+        if self.depth + 1 > MAX_EXPR_NESTING {
+            let span = self.span();
+            self.err(
+                "E0005",
+                format!("nesting is too deep (the limit is {MAX_EXPR_LEVELS} levels)"),
+                span,
+            );
+            return false;
+        }
+        self.depth += 1;
         true
     }
 
@@ -596,7 +734,7 @@ impl Parser<'_> {
             let parsed = self.parse_type_args(&mut args);
             self.depth -= 1;
             parsed?;
-            span = span.to(self.expect(&Tok::Gt, "`>` to close the type arguments")?);
+            span = span.to(self.expect_gt("`>` to close the type arguments")?);
         }
         Some(TypeExpr {
             kind: TypeExprKind::Named { name, args },
@@ -641,7 +779,8 @@ impl Parser<'_> {
 
     fn parse_decl(&mut self, docs: Vec<Doc>, annotations: Vec<Annotation>) -> Option<Decl> {
         let start = annotations.first().map_or(self.span(), |a| a.span);
-        let Tok::Ident(kw) = self.advance().tok else {
+        let kw_tok = self.advance();
+        let Tok::Ident(kw) = kw_tok.tok else {
             return None;
         };
         let kind = match kw.as_str() {
@@ -651,6 +790,8 @@ impl Parser<'_> {
             "union" => DeclKind::Union(self.parse_union()?),
             "service" => DeclKind::Service(self.parse_service()?),
             "const" => DeclKind::Const(self.parse_const()?),
+            "event" => DeclKind::Event(self.parse_event()?),
+            "channel" => DeclKind::Channel(self.parse_channel(kw_tok.span)?),
             _ => return None,
         };
         let end = Span {
@@ -674,11 +815,12 @@ impl Parser<'_> {
             None
         };
         self.expect(&Tok::LBrace, "`{` to open the model body")?;
-        let fields = self.parse_fields();
+        let (fields, rules) = self.parse_members();
         Some(ModelDecl {
             name,
             extends,
             fields,
+            rules,
         })
     }
 
@@ -691,17 +833,19 @@ impl Parser<'_> {
             None
         };
         self.expect(&Tok::LBrace, "`{` to open the error body")?;
-        let fields = self.parse_fields();
+        let (fields, rules) = self.parse_members();
         Some(ErrorDecl {
             name,
             status,
             fields,
+            rules,
         })
     }
 
-    /// Parses fields up to and including the closing brace.
-    fn parse_fields(&mut self) -> Vec<Field> {
+    /// Parses fields and rules up to and including the closing brace.
+    fn parse_members(&mut self) -> (Vec<Field>, Vec<Rule>) {
         let mut fields = Vec::new();
+        let mut rules = Vec::new();
         loop {
             while self.eat(&Tok::Comma) {}
             if self.at_eof() {
@@ -716,8 +860,13 @@ impl Parser<'_> {
                 self.advance();
                 break;
             }
-            match self.parse_field(docs, pre) {
-                Some(f) => fields.push(f),
+            let parsed = if self.is_rule_start_at(0) {
+                self.parse_rule(docs, pre).map(|r| rules.push(r))
+            } else {
+                self.parse_field(docs, pre).map(|f| fields.push(f))
+            };
+            match parsed {
+                Some(()) => {}
                 None => {
                     self.recover_field();
                     if self.pos == before {
@@ -726,7 +875,7 @@ impl Parser<'_> {
                 }
             }
         }
-        fields
+        (fields, rules)
     }
 
     fn parse_field(&mut self, docs: Vec<Doc>, mut annotations: Vec<Annotation>) -> Option<Field> {
@@ -734,11 +883,7 @@ impl Parser<'_> {
         let optional = self.eat(&Tok::Question);
         self.expect(&Tok::Colon, "`:` after the field name")?;
         let ty = self.parse_type()?;
-        let default = if self.eat(&Tok::Eq) {
-            Some(self.parse_literal()?)
-        } else {
-            None
-        };
+        let (default, derived) = self.parse_default_or_derived()?;
         while matches!(self.peek(), Tok::At)
             && !self.newline_between(self.prev_end(), self.span().start)
         {
@@ -757,7 +902,49 @@ impl Parser<'_> {
             optional,
             ty,
             default,
+            derived,
         })
+    }
+
+    /// What follows `=` in a field: a literal is a default, any other expression makes the field
+    /// derived (`spec/rules.md` section 17.2). A literal is tried first and kept only when no
+    /// operator or `.name` continues it, so every default parses and fails as it always did.
+    fn parse_default_or_derived(&mut self) -> Option<(Option<Literal>, Option<Expr>)> {
+        if !self.eat(&Tok::Eq) {
+            return Some((None, None));
+        }
+        if !self.starts_expression_not_literal() {
+            let (pos, diags, depth) = (self.pos, self.diags.len(), self.depth);
+            let lit = self.parse_literal()?;
+            if !self.continues_expression() {
+                return Some((Some(lit), None));
+            }
+            self.pos = pos;
+            self.diags.truncate(diags);
+            self.depth = depth;
+        }
+        Some((None, Some(self.parse_expr()?)))
+    }
+
+    /// A name that is not `true`, `false` or `null`, a parenthesis, `!`, a `-` that is not the
+    /// sign of a literal, a list that is not empty: these start an expression, not a literal.
+    fn starts_expression_not_literal(&self) -> bool {
+        match self.peek() {
+            Tok::Ident(w) => !matches!(w.as_str(), "true" | "false" | "null"),
+            Tok::LParen | Tok::Bang | Tok::Minus => true,
+            // Only the empty list `[]` is a literal.
+            Tok::LBracket => !matches!(self.tok_at(1), Tok::RBracket),
+            _ => false,
+        }
+    }
+
+    /// True when the token after a literal continues it as an expression: a binary operator, or
+    /// `.name` on the same line.
+    fn continues_expression(&self) -> bool {
+        self.binary_op().is_some()
+            || (matches!(self.peek(), Tok::Dot)
+                && matches!(self.tok_at(1), Tok::Ident(_))
+                && !self.newline_between(self.prev_end(), self.span().start))
     }
 
     fn recover_field(&mut self) {
@@ -768,7 +955,11 @@ impl Parser<'_> {
                 Tok::LBrace | Tok::LParen | Tok::LBracket => depth += 1,
                 Tok::RBrace | Tok::RParen | Tok::RBracket => depth = (depth - 1).max(0),
                 Tok::Doc(_) | Tok::At if depth == 0 => return,
-                Tok::Ident(_) if depth == 0 && self.is_field_start_at(0) => return,
+                Tok::Ident(_)
+                    if depth == 0 && (self.is_rule_start_at(0) || self.is_field_start_at(0)) =>
+                {
+                    return;
+                }
                 _ => {}
             }
             self.advance();
@@ -779,6 +970,8 @@ impl Parser<'_> {
         let name = self.expect_ident("an enum name")?;
         self.expect(&Tok::LBrace, "`{` to open the enum body")?;
         let mut variants = Vec::new();
+        let mut flows = Vec::new();
+        let mut finals = Vec::new();
         loop {
             while self.eat(&Tok::Comma) {}
             if self.at_eof() {
@@ -792,6 +985,10 @@ impl Parser<'_> {
                 self.advance();
                 break;
             }
+            if self.at_flow_stmt() || self.at_final_stmt() {
+                self.enum_statement(&docs, &annotations, &mut flows, &mut finals);
+                continue;
+            }
             match self.parse_variant(docs, annotations) {
                 Some(v) => variants.push(v),
                 None => {
@@ -802,7 +999,45 @@ impl Parser<'_> {
                 }
             }
         }
-        Some(EnumDecl { name, variants })
+        Some(EnumDecl {
+            name,
+            variants,
+            flows,
+            finals,
+        })
+    }
+
+    /// A `flow` or `final` statement of an enum body; docs and annotations do not belong to it.
+    fn enum_statement(
+        &mut self,
+        docs: &[Doc],
+        annotations: &[Annotation],
+        flows: &mut Vec<FlowStmt>,
+        finals: &mut Vec<FinalStmt>,
+    ) {
+        if let Some(d) = docs.first() {
+            self.err(
+                "E0003",
+                "a doc comment documents a variant, not a `flow` or `final` statement",
+                d.span,
+            );
+        }
+        if let Some(a) = annotations.first() {
+            self.err(
+                "E0003",
+                "an annotation belongs to a variant, not to a `flow` or `final` statement",
+                a.span,
+            );
+        }
+        let before = self.pos;
+        if self.at_flow_stmt() {
+            flows.extend(self.parse_flow());
+        } else {
+            finals.extend(self.parse_final());
+        }
+        if self.pos == before {
+            self.advance();
+        }
     }
 
     fn parse_variant(&mut self, docs: Vec<Doc>, annotations: Vec<Annotation>) -> Option<Variant> {
@@ -887,13 +1122,18 @@ impl Parser<'_> {
 
     fn parse_service(&mut self) -> Option<ServiceDecl> {
         let name = self.expect_ident("a service name")?;
-        if !self.eat_word("at") {
+        let prefix = if matches!(self.peek(), Tok::LBrace) {
+            None
+        } else if self.eat_word("at") {
+            Some(self.expect_str("a string path prefix")?)
+        } else {
             self.unexpected("`at` and a path prefix");
             return None;
-        }
-        let prefix = self.expect_str("a string path prefix")?;
+        };
         self.expect(&Tok::LBrace, "`{` to open the service body")?;
         let mut endpoints = Vec::new();
+        let mut publishes = Vec::new();
+        let mut subscribes = Vec::new();
         loop {
             if self.at_eof() {
                 self.unexpected("`}` to close the service");
@@ -913,6 +1153,17 @@ impl Parser<'_> {
                 self.v1_syntax(&w);
                 continue;
             }
+            if self.is_event_line_start_at(0) {
+                self.service_event_line(&docs, &anns, &mut publishes, &mut subscribes);
+                if self.pos == before {
+                    self.advance();
+                }
+                continue;
+            }
+            if self.is_bare_event_word() {
+                self.bare_event_word();
+                continue;
+            }
             match self.parse_endpoint(docs, anns) {
                 Some(e) => endpoints.push(e),
                 None => {
@@ -927,6 +1178,8 @@ impl Parser<'_> {
             name,
             prefix,
             endpoints,
+            publishes,
+            subscribes,
         })
     }
 
@@ -946,6 +1199,11 @@ impl Parser<'_> {
     }
 
     fn parse_endpoint(&mut self, docs: Vec<Doc>, annotations: Vec<Annotation>) -> Option<Endpoint> {
+        let saga_word = if self.is_saga_start_at(0) {
+            Some(self.advance().span)
+        } else {
+            None
+        };
         let method_span = self.span();
         let method = match self.peek().clone() {
             Tok::Ident(w) if HttpMethod::from_word(&w).is_some() => {
@@ -967,6 +1225,16 @@ impl Parser<'_> {
         } else {
             None
         };
+        let (block, saga) = if let Some(word) = saga_word {
+            if method != HttpMethod::Post {
+                self.err("E1203", "a saga is a `post` endpoint", method_span);
+            }
+            (None, Some(self.parse_saga_block(word)?))
+        } else if matches!(self.peek(), Tok::LBrace) {
+            (Some(self.parse_block()?), None)
+        } else {
+            (None, None)
+        };
         let end = Span {
             file: self.file,
             start: self.prev_end(),
@@ -981,7 +1249,9 @@ impl Parser<'_> {
             name,
             params,
             responses,
-            span: method_span.to(end),
+            block,
+            saga,
+            span: saga_word.unwrap_or(method_span).to(end),
         })
     }
 
@@ -1030,7 +1300,10 @@ impl Parser<'_> {
         };
         let type_follows = match self.peek() {
             Tok::Ident(w) if w == "stream" => true,
-            Tok::Ident(_) => status.is_none() || !self.is_endpoint_start_at(0),
+            Tok::Ident(_) => {
+                status.is_none()
+                    || !(self.is_endpoint_start_at(0) || self.is_event_line_start_at(0))
+            }
             _ => false,
         };
         if status.is_some() && !first && !type_follows {

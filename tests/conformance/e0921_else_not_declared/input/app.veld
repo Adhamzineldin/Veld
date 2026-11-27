@@ -1,0 +1,16 @@
+// The error after `else` must be one of the errors of the endpoint (spec/rules.md 9.3).
+
+model Booking { id: uuid, guests: int }
+enum Status { pending }
+error RoomFull 409 { capacity: int }
+error RoomClosed 409 {}
+
+service Bookings at "/bookings" {
+  post "/" create(body: Booking) -> 201 Booking | RoomClosed {
+    require body.guests > 0 else RoomFull { capacity: 1 }
+    require body.guests > 1 else Status
+    require body.guests > 2 else Booking
+    require body.guests > 3 else RoomClosed
+    require body.guests > 4 else Unauthorized
+  }
+}

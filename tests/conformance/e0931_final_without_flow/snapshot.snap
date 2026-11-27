@@ -1,0 +1,13 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0931]: `final` in enum `Status`, which has no `flow`: it is not a state machine
+ --> app/app.veld:5:3
+  |
+5 |   final cancelled
+  |   ^^^^^^^^^^^^^^^
+  = help: declare the flows first, for example `flow a -> b`
+
+== ir ==
+(no IR: compilation failed)

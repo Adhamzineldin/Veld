@@ -1,0 +1,16 @@
+// A flagged invariant on a message the client sends over a WebSocket (spec/platform.md section 11):
+// the message is checked on the socket's own thread, with the flags the upgrade request read.
+// Compiled as the package `flagsws` by FlagsWs.java (Java only: the JDK adapter has no WebSocket).
+
+model Say {
+  text: string
+  rule shortOnly: len(text) <= 5 message "too long" when flag("shortOnly")
+}
+
+model Heard {
+  text: string
+}
+
+service Chat at "/chat" {
+  ws "/talk" talk(body: stream Say) -> stream Heard
+}

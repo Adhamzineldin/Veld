@@ -7,6 +7,9 @@ use std::collections::BTreeMap;
 use veld_codegen::{CodeWriter, FileSet, GenDiagnostic};
 use veld_ir::{Const, Decl, DeclId, DeclKind, Enum, ErrorDecl, Model, Union};
 
+use crate::checks;
+use crate::derived;
+use crate::platform;
 use crate::tree::{FileCtx, Tree};
 use crate::types::ts_type;
 use crate::util::{add_file, doc_comment, literal, prop_key, ts_str, type_name};
@@ -22,6 +25,10 @@ pub fn emit(files: &mut FileSet, tree: &Tree<'_>) -> Result<Vec<String>, Vec<Gen
             .or_default()
             .push(id);
     }
+    let clashes = helper_clashes(tree);
+    if !clashes.is_empty() {
+        return Err(clashes);
+    }
     let mut modules = Vec::new();
     for (module, ids) in groups {
         let text = render_module(tree, &module, &ids);
@@ -29,6 +36,67 @@ pub fn emit(files: &mut FileSet, tree: &Tree<'_>) -> Result<Vec<String>, Vec<Gen
         modules.push(module);
     }
     Ok(modules)
+}
+
+/// A variant of a state machine that is called like one of its helpers would make two members of
+/// the enum's object with one name: refused (`E0801`) rather than generated wrongly. So is a
+/// declaration called like the `Output` or `Input` type of one with derived fields.
+fn helper_clashes(tree: &Tree<'_>) -> Vec<GenDiagnostic> {
+    let mut out = shape_clashes(tree);
+    for &id in tree.decls() {
+        let d = tree.ir.decl(id);
+        let DeclKind::Enum(e) = &d.kind else {
+            continue;
+        };
+        for v in &e.variants {
+            let clash = e.is_state_machine() && matches!(v.name.as_str(), "nextStates" | "isFinal")
+                || (e.has_timed_edge() && v.name == "timedMoves");
+            if clash {
+                let mut diag = GenDiagnostic::new(
+                    "E0801",
+                    format!(
+                        "enum `{}` is a state machine and has a variant `{}`, which is the name of a generated helper",
+                        d.name, v.name
+                    ),
+                );
+                diag.origin = Some(d.origin.clone());
+                out.push(diag);
+            }
+        }
+    }
+    out
+}
+
+/// A declaration whose name is `<Other>Output`, `<Other>Input` or `<Other>DataOutput`, where
+/// `<Other>` has derived fields (or reaches them): the generated type would be declared twice.
+fn shape_clashes(tree: &Tree<'_>) -> Vec<GenDiagnostic> {
+    let names: std::collections::BTreeSet<String> = tree
+        .decls()
+        .iter()
+        .map(|id| type_name(tree.ir.decl(*id)))
+        .collect();
+    let mut out = Vec::new();
+    for &id in tree.decls() {
+        let d = tree.ir.decl(id);
+        if !tree.ir.type_reaches_derived(&veld_ir::Type::Decl(id)) {
+            continue;
+        }
+        for shape in [derived::Shape::Output, derived::Shape::Input] {
+            let made = derived::shape_name(d, shape);
+            if names.contains(&made) {
+                let mut diag = GenDiagnostic::new(
+                    "E0801",
+                    format!(
+                        "`{}` has derived fields, so `{made}` is generated for it, and a declaration is called `{made}`",
+                        d.name
+                    ),
+                );
+                diag.origin = Some(d.origin.clone());
+                out.push(diag);
+            }
+        }
+    }
+    out
 }
 
 fn render_module(tree: &Tree<'_>, module: &str, ids: &[DeclId]) -> String {
@@ -50,6 +118,18 @@ fn write_decl(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl) {
         DeclKind::Union(u) => write_union(w, fc, d, u),
         DeclKind::Const(c) => write_const(w, fc, d, c),
         DeclKind::Error(e) => write_error(w, fc, d, e),
+        // An event is a record with event identity (`spec/events.md` section 3): the same
+        // interface and companion as a model, in `events/<module>.ts`. Only a server that
+        // publishes or subscribes has the declaration in its tree (`Tree::with_events`).
+        DeclKind::Event(e) => {
+            let m = Model {
+                parent: None,
+                fields: e.fields.clone(),
+                rules: e.rules.clone(),
+                retain: None,
+            };
+            write_model(w, fc, d, &m);
+        }
     }
 }
 
@@ -64,7 +144,8 @@ fn write_fields(
         .filter(|f| !own_only || f.inherited_from.is_none())
     {
         doc_comment(w, f.docs.as_deref(), f.deprecated.as_deref());
-        let ro = if f.readonly { "readonly " } else { "" };
+        // A `@tenant` field is set by the server, as a `@readonly` field is (`spec/platform.md` section 9.1).
+        let ro = if f.server_set() { "readonly " } else { "" };
         let opt = if f.optional { "?" } else { "" };
         let ty = ts_type(fc, &f.ty);
         w.line(format!("{ro}{}{opt}: {ty};", prop_key(&f.name)));
@@ -85,7 +166,15 @@ fn write_model(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, m: &Model
         write_fields(w, fc, &m.fields, true);
         w.close();
     }
+    derived::write_model_shapes(w, fc, d);
     w.blank();
+    if !d.is_event() && fc.tree.uses_visibility() && platform::has_visible(d) {
+        platform::write_show_fn(w, fc, d, &name);
+    }
+    if checks::has_rules(d) || d.has_derived() {
+        write_ruled_companion(w, fc, d, m);
+        return;
+    }
     let companion = fc.rt("Companion");
     let make = fc.rt("companion");
     w.open_with(
@@ -96,7 +185,61 @@ fn write_model(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, m: &Model
         " {",
     );
     write_object_schema(w, fc, &m.fields);
+    if !d.is_event() {
+        platform::write_schema_members(w, fc, d);
+    }
     w.close_with("});");
+}
+
+/// The companion of a model with invariants or derived fields: the plain companion plus
+/// `ruleIds` (invariants), and a schema that carries the check function (`rules`) and the compute
+/// function (`derive`).
+fn write_ruled_companion(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, m: &Model) {
+    let name = type_name(d);
+    let rules = checks::has_rules(d);
+    if rules {
+        checks::write_check_fn(w, fc, d, &name);
+        w.blank();
+    }
+    if d.has_derived() {
+        derived::write_derive_fn(w, fc, d, &name);
+        w.blank();
+    }
+    let companion = fc.rt("Companion");
+    let make = fc.rt("companion");
+    if !rules {
+        w.open_with(
+            format!(
+                "export const {name}: {companion}<{name}> = {make}<{name}>({},",
+                ts_str(&d.sig)
+            ),
+            " {",
+        );
+        write_object_schema(w, fc, &m.fields);
+        w.line(format!("derive: {},", derived::fn_name(d)));
+        if !d.is_event() {
+            platform::write_schema_members(w, fc, d);
+        }
+        w.close_with("});");
+        return;
+    }
+    let ids = checks::ids_type(d);
+    w.open_with(
+        format!("export const {name}: {companion}<{name}> & {{ readonly ruleIds: {ids} }} ="),
+        " {",
+    );
+    w.open_with(format!("...{make}<{name}>({},", ts_str(&d.sig)), " {");
+    write_object_schema(w, fc, &m.fields);
+    w.line(format!("rules: {},", checks::fn_name(d)));
+    if d.has_derived() {
+        w.line(format!("derive: {},", derived::fn_name(d)));
+    }
+    if !d.is_event() {
+        platform::write_schema_members(w, fc, d);
+    }
+    w.close_with("}),");
+    w.line(format!("ruleIds: {},", checks::ids_value(d)));
+    w.close_with("};");
 }
 
 fn write_enum(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, e: &Enum) {
@@ -122,7 +265,92 @@ fn write_enum(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, e: &Enum) 
         doc_comment(w, v.docs.as_deref(), v.deprecated.as_deref());
         w.line(format!("{}: {},", prop_key(&v.name), ts_str(&v.wire)));
     }
+    if e.is_state_machine() {
+        write_machine_helpers(w, &name, e);
+    }
     w.close_with("} as const;");
+}
+
+/// The wire value of the variant `name` of `e`.
+fn wire_of<'e>(e: &'e Enum, name: &'e str) -> &'e str {
+    e.variants
+        .iter()
+        .find(|v| v.name == name)
+        .map_or(name, |v| v.wire.as_str())
+}
+
+/// `nextStates` and `isFinal` of a state machine (`spec/rules.md` section 10.3): a client shows
+/// only the buttons the server would accept. The states are the enum's wire values.
+fn write_machine_helpers(w: &mut CodeWriter, name: &str, e: &Enum) {
+    w.line(
+        "/** The states that can follow `state`, in declaration order of the edges (`flow`). */",
+    );
+    w.open(format!("nextStates(state: {name}): readonly {name}[]"));
+    w.open("switch (state)");
+    for v in &e.variants {
+        let next: Vec<String> = e
+            .flows
+            .iter()
+            .filter(|f| f.from == v.name)
+            .map(|f| ts_str(wire_of(e, &f.to)))
+            .collect();
+        if !next.is_empty() {
+            w.line(format!(
+                "case {}: return [{}];",
+                ts_str(&v.wire),
+                next.join(", ")
+            ));
+        }
+    }
+    w.line("default: return [];");
+    w.close();
+    w.close_with("},");
+    w.line("/** Whether `state` is final: no state follows it. */");
+    w.open(format!("isFinal(state: {name}): boolean"));
+    let finals: Vec<String> = e
+        .variants
+        .iter()
+        .filter(|v| e.finals.contains(&v.name))
+        .map(|v| format!("case {}:", ts_str(&v.wire)))
+        .collect();
+    if finals.is_empty() {
+        w.line("return false;");
+    } else {
+        w.open("switch (state)");
+        w.line(finals.join(" "));
+        w.indent();
+        w.line("return true;");
+        w.dedent();
+        w.line("default: return false;");
+        w.close();
+    }
+    w.close_with("},");
+    if e.has_timed_edge() {
+        write_timed_moves(w, name, e);
+    }
+}
+
+/// `timedMoves()` of a state machine with a timed edge (`spec/platform.md` section 10.1): the
+/// source, the target and the milliseconds of each timed edge, in the order of the edges.
+fn write_timed_moves(w: &mut CodeWriter, name: &str, e: &Enum) {
+    w.line("/** The timed edges (`flow a -> b after d`): the source, the target and the milliseconds a value must have waited. */");
+    w.open(format!(
+        "timedMoves(): readonly {{ from: {name}; to: {name}; ms: number }}[]"
+    ));
+    let items: Vec<String> = e
+        .flows
+        .iter()
+        .filter_map(|f| {
+            let ms = f.after_ms.as_deref()?;
+            Some(format!(
+                "{{ from: {}, to: {}, ms: {ms} }}",
+                ts_str(wire_of(e, &f.from)),
+                ts_str(wire_of(e, &f.to))
+            ))
+        })
+        .collect();
+    w.line(format!("return [{}];", items.join(", ")));
+    w.close_with("},");
 }
 
 fn write_union(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, u: &Union) {
@@ -148,6 +376,7 @@ fn write_union(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, u: &Union
             arms.join(" | ")
         }
     ));
+    derived::write_union_shapes(w, fc, d, u);
     w.blank();
     let companion = fc.rt("Companion");
     let make = fc.rt("companion");
@@ -193,7 +422,19 @@ fn write_error(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, e: &Error
         write_fields(w, fc, &e.fields.fields, false);
         w.close();
     }
+    derived::write_error_shape(w, fc, d, &data);
     w.blank();
+    if checks::has_rules(d) {
+        checks::write_check_fn(w, fc, d, &data);
+        w.blank();
+    }
+    if d.has_derived() {
+        derived::write_derive_fn(w, fc, d, &data);
+        w.blank();
+    }
+    if fc.tree.uses_visibility() && platform::has_visible(d) {
+        platform::write_show_fn(w, fc, d, &data);
+    }
     doc_comment(w, d.docs.as_deref(), d.deprecated.as_deref());
     let base = fc.rt("VeldError");
     let init = fc.rt("ErrorInit");
@@ -206,15 +447,31 @@ fn write_error(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, e: &Error
     }
     w.open_with(format!("static readonly schema: {schema} ="), " {");
     write_object_schema(w, fc, &e.fields.fields);
+    if checks::has_rules(d) {
+        w.line(format!("rules: {},", checks::fn_name(d)));
+    }
+    if d.has_derived() {
+        w.line(format!("derive: {},", derived::fn_name(d)));
+    }
+    platform::write_schema_members(w, fc, d);
     w.close_with("};");
     w.blank();
-    w.open(format!("constructor(data: {data}, init: {init} = {{}})"));
+    // What a handler raises: a derived field of the data is optional, the server computes it.
+    let (param, cast) = if derived::has_shapes(fc, d) {
+        (
+            derived::shape_name(d, derived::Shape::Output),
+            format!(" as {data}"),
+        )
+    } else {
+        (data.clone(), String::new())
+    };
+    w.open(format!("constructor(data: {param}, init: {init} = {{}})"));
     let default = e
         .default_status
         .map(|s| format!(", {s}"))
         .unwrap_or_default();
     w.line(format!(
-        "super({name}.sig, {}, data, init{default});",
+        "super({name}.sig, {}, data{cast}, init{default});",
         ts_str(&d.name)
     ));
     w.close();
@@ -224,6 +481,48 @@ fn write_error(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, e: &Error
     ));
     w.line(format!("return {matches}(e, {name}.sig, service);"));
     w.close();
+    if checks::has_rules(d) {
+        write_error_rules_members(w, fc, d, &name, &data);
+    }
+    if d.has_derived() {
+        write_error_derive(w, fc, &name, &data);
+    }
+    w.close();
+}
+
+/// `static derive(data)` of an error with derived fields: the data with them computed.
+fn write_error_derive(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, name: &str, data: &str) {
+    let violation = fc.rt("Violation");
+    let partial = fc.rt("DeepPartial");
+    let compute = fc.rt("deriveValue");
+    w.blank();
+    w.open(format!(
+        "static derive(data: {partial}<{data}>, out: {violation}[] = []): {partial}<{data}>"
+    ));
+    w.line(format!(
+        "return {compute}({name}.schema, data, '$', out) as {partial}<{data}>;"
+    ));
+    w.close();
+}
+
+fn write_error_rules_members(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    d: &Decl,
+    name: &str,
+    data: &str,
+) {
+    let violation = fc.rt("Violation");
+    let check = fc.rt("checkValue");
+    w.blank();
+    w.line(format!(
+        "static readonly ruleIds: {} = {};",
+        checks::ids_type(d),
+        checks::ids_value(d)
+    ));
+    w.blank();
+    w.open(format!("static check(data: {data}): {violation}[]"));
+    w.line(format!("return {check}({name}.schema, data);"));
     w.close();
 }
 

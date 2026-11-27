@@ -10,7 +10,7 @@ warning[W0001]: doc comment is not attached to anything
 
 == ir ==
 {
-  "ir_version": "1.0",
+  "ir_version": "1.1",
   "packages": [
     {
       "id": 0,

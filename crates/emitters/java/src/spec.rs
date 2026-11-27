@@ -64,6 +64,15 @@ pub fn method_name(ep: &Endpoint) -> String {
     member_ident(&ep.name)
 }
 
+/// The parameters a request record has (every one but a `stream` message) with the names of their
+/// record components.
+#[must_use]
+pub fn param_idents(ep: &Endpoint) -> Vec<(&Param, String)> {
+    let shown: Vec<&Param> = ep.params.iter().filter(|p| !p.stream).collect();
+    let idents = unique(shown.iter().map(|p| member_ident(&p.name)).collect());
+    shown.into_iter().zip(idents).collect()
+}
+
 /// The constant holding an endpoint's description.
 #[must_use]
 pub fn spec_const(ep: &Endpoint) -> String {
@@ -75,14 +84,14 @@ pub fn emit_requests(
     files: &mut FileSet,
     tree: &Tree<'_>,
     package: &str,
-    names: &RequestNames,
+    (names, client): (&RequestNames, bool),
     svc: &Service,
 ) -> Result<(), Vec<GenDiagnostic>> {
     for ep in &svc.endpoints {
         let name = names.get(svc.id, &ep.name);
         let mut fc = FileCtx::new(tree, package, &name);
         let mut w = CodeWriter::new();
-        write_request(&mut w, &mut fc, &name, ep);
+        write_request(&mut w, &mut fc, &name, (ep, client));
         add_file(files, &java_path(package, &name), fc.finish(&w.finish()))?;
     }
     Ok(())
@@ -90,15 +99,28 @@ pub fn emit_requests(
 
 /// A record with one component per parameter: path params, `body`, `query`, single query params
 /// and headers, all by parameter name. `fromWire` and `toWire` use the parameter name as the key.
-fn write_request(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, name: &str, ep: &Endpoint) {
+fn write_request(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    name: &str,
+    (ep, client): (&Endpoint, bool),
+) {
     let shown: Vec<&Param> = ep.params.iter().filter(|p| !p.stream).collect();
     let idents = unique(shown.iter().map(|p| member_ident(&p.name)).collect());
     let json = fc.rt("Json");
-    let params: Vec<(String, String)> = shown
+    let mut params: Vec<(String, String)> = shown
         .iter()
         .zip(&idents)
         .map(|(p, id)| (id.clone(), param_doc(p)))
         .collect();
+    // A client's request also carries `If-Match` and the idempotency key. They are headers of the
+    // call, not parameters: they stay out of `toWire` and of the endpoint description.
+    let extra = if client {
+        crate::conditional::client_components(fc, ep)
+    } else {
+        Vec::new()
+    };
+    params.extend(extra.iter().map(|(n, _, d)| ((*n).to_string(), d.clone())));
     doc_comment(
         w,
         Some(&format!(
@@ -109,11 +131,12 @@ fn write_request(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, name: &str, ep: &
         None,
     );
     w.line("@SuppressWarnings(\"deprecation\")");
-    let comps: Vec<String> = shown
+    let mut comps: Vec<String> = shown
         .iter()
         .zip(&idents)
         .map(|(p, id)| format!("{} {id}", java_type(fc, &p.ty, p.optional)))
         .collect();
+    comps.extend(extra.iter().map(|(n, ty, _)| format!("{ty} {n}")));
     if comps.is_empty() {
         w.open(format!("public record {name}()"));
     } else {
@@ -128,6 +151,40 @@ fn write_request(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, name: &str, ep: &
         }
         w.dedent();
     }
+    if extra.is_empty() {
+        write_from_wire(w, fc, name, &shown);
+        w.blank();
+    } else if ep.idempotency.as_ref().is_some_and(|i| i.required) {
+        // A client never reads a request from the wire, so its record has no `fromWire`; a key the
+        // endpoint requires is required of the caller too.
+        let objects = fc.name("java.util.Objects");
+        w.line("/** Creates the request; the idempotency key is required. */");
+        w.open(format!("public {name}"));
+        w.line(format!(
+            "{objects}.requireNonNull({}, \"{}\");",
+            crate::conditional::KEY,
+            crate::conditional::KEY
+        ));
+        w.close();
+        w.blank();
+    }
+    w.line("/** The parameters in wire form, keyed by parameter name. */");
+    w.open(format!("public {json}.Obj toWire()"));
+    w.line(format!("return {json}.object()"));
+    w.indent().indent();
+    for (p, id) in shown.iter().zip(&idents) {
+        let c = codec_expr(fc, &p.ty);
+        w.line(format!(".put({}, {id}, {c})", java_str(&p.name)));
+    }
+    w.line(".build();");
+    w.dedent().dedent();
+    w.close();
+    w.close();
+}
+
+/// `fromWire` of a request record: reads the parameters the router bound, keyed by parameter name.
+fn write_from_wire(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, name: &str, shown: &[&Param]) {
+    let json = fc.rt("Json");
     w.line("/** Reads the parameters bound by the router, keyed by parameter name. */");
     w.open(format!("public static {name} fromWire({json}.Obj params)"));
     if shown.is_empty() {
@@ -146,19 +203,6 @@ fn write_request(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, name: &str, ep: &
         }
         end_call(w);
     }
-    w.close();
-    w.blank();
-    w.line("/** The parameters in wire form, keyed by parameter name. */");
-    w.open(format!("public {json}.Obj toWire()"));
-    w.line(format!("return {json}.object()"));
-    w.indent().indent();
-    for (p, id) in shown.iter().zip(&idents) {
-        let c = codec_expr(fc, &p.ty);
-        w.line(format!(".put({}, {id}, {c})", java_str(&p.name)));
-    }
-    w.line(".build();");
-    w.dedent().dedent();
-    w.close();
     w.close();
 }
 

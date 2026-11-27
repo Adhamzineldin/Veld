@@ -14,7 +14,7 @@ use crate::workspace::Analysis;
 
 /// Which declarations a type position accepts.
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum TypePos {
+pub(crate) enum TypePos {
     /// Fields, parameters: models, enums, unions and the built-ins.
     Value,
     /// Union arms: declarations only.
@@ -23,6 +23,10 @@ enum TypePos {
     Response,
     /// After `extends`.
     Parent,
+    /// After `carries`, `on` and `given event`: events.
+    Event,
+    /// After `else` and `->` in an example: errors.
+    Error,
 }
 
 #[must_use]
@@ -36,17 +40,23 @@ pub fn complete(a: &Analysis, file: FileId, offset: usize) -> Vec<CompletionItem
     if ctx.inert {
         return Vec::new();
     }
-    let cx = Cx { a, file, ctx: &ctx };
+    let cx = Cx {
+        a,
+        file,
+        ctx: &ctx,
+        prefix,
+    };
     cx.items()
 }
 
-struct Cx<'a> {
-    a: &'a Analysis,
-    file: FileId,
-    ctx: &'a Context,
+pub(crate) struct Cx<'a> {
+    pub(crate) a: &'a Analysis,
+    pub(crate) file: FileId,
+    pub(crate) ctx: &'a Context,
+    pub(crate) prefix: &'a str,
 }
 
-fn item(label: &str, kind: CompletionItemKind, detail: Option<&str>) -> CompletionItem {
+pub(crate) fn item(label: &str, kind: CompletionItemKind, detail: Option<&str>) -> CompletionItem {
     CompletionItem {
         label: label.to_string(),
         kind: Some(kind),
@@ -55,7 +65,12 @@ fn item(label: &str, kind: CompletionItemKind, detail: Option<&str>) -> Completi
     }
 }
 
-fn snippet(label: &str, kind: CompletionItemKind, detail: &str, body: &str) -> CompletionItem {
+pub(crate) fn snippet(
+    label: &str,
+    kind: CompletionItemKind,
+    detail: &str,
+    body: &str,
+) -> CompletionItem {
     CompletionItem {
         insert_text: Some(body.to_string()),
         insert_text_format: Some(InsertTextFormat::SNIPPET),
@@ -64,7 +79,7 @@ fn snippet(label: &str, kind: CompletionItemKind, detail: &str, body: &str) -> C
 }
 
 impl Cx<'_> {
-    fn ix(&self) -> &Index {
+    pub(crate) fn ix(&self) -> &Index {
         &self.a.index
     }
 
@@ -76,6 +91,12 @@ impl Cx<'_> {
         if self.prev() == Some(&Tok::Punct('@')) {
             return self.annotations();
         }
+        if let Some(found) = self.event_position() {
+            return found;
+        }
+        if let Some(found) = self.rules_position() {
+            return found;
+        }
         if self.ctx.at_top_level && self.ctx.use_stmt.is_some() {
             return self.use_paths();
         }
@@ -85,6 +106,7 @@ impl Cx<'_> {
             Some(Block::AnnotationArgs(name)) => annotation_args(name),
             Some(Block::Params) => self.params(),
             Some(Block::Body(kind)) => self.body(*kind),
+            Some(Block::Endpoint | Block::Nested) => Vec::new(),
         }
     }
 
@@ -219,37 +241,11 @@ impl Cx<'_> {
     // ---- scope ----------------------------------------------------------------------
 
     /// Names visible in this file: its own declarations, imports and the prelude.
-    fn visible(&self) -> BTreeMap<String, usize> {
-        let ix = self.ix();
-        let mut map = BTreeMap::new();
-        for (i, d) in ix.decls.iter().enumerate() {
-            if d.is_prelude() || d.file == self.file {
-                map.insert(d.name.clone(), i);
-            }
-        }
-        let Some(f) = ix.file(self.file) else {
-            return map;
-        };
-        for u in &f.ast.uses {
-            let pkg = u
-                .package
-                .as_ref()
-                .map_or(f.package.as_str(), |p| p.name.as_str());
-            let module = u.module_path();
-            for imp in &u.imports {
-                let hit = ix.decls.iter().position(|d| {
-                    d.package == pkg && d.module == module && d.name == imp.name.name
-                });
-                if let Some(h) = hit {
-                    let local = imp.alias.as_ref().unwrap_or(&imp.name);
-                    map.insert(local.name.clone(), h);
-                }
-            }
-        }
-        map
+    pub(crate) fn visible(&self) -> BTreeMap<String, usize> {
+        crate::scope::visible_in(self.ix(), self.file)
     }
 
-    fn types(&self, pos: TypePos) -> Vec<CompletionItem> {
+    pub(crate) fn types(&self, pos: TypePos) -> Vec<CompletionItem> {
         let mut out = Vec::new();
         if matches!(pos, TypePos::Value | TypePos::Response) {
             for s in language::SCALARS {
@@ -301,18 +297,25 @@ impl Cx<'_> {
     fn annotations(&self) -> Vec<CompletionItem> {
         let want: &[Target] = match &self.ctx.block {
             None => language::any_decl_targets(),
-            Some(Block::Body(BodyKind::Model | BodyKind::Error)) => &[Target::Field],
+            Some(Block::Body(BodyKind::Model | BodyKind::Error)) => &[Target::Field, Target::Rule],
             Some(Block::Body(BodyKind::Enum)) => &[Target::Variant],
-            Some(Block::Body(BodyKind::Service)) => &[Target::Endpoint],
+            Some(Block::Body(BodyKind::Service)) => {
+                &[Target::Endpoint, Target::Require, Target::Ensure]
+            }
+            Some(Block::Endpoint) => &[Target::Require, Target::Ensure],
             Some(Block::Params) => &[Target::Param],
             Some(Block::Body(BodyKind::Union))
+            | Some(Block::Nested)
             | Some(Block::Import)
             | Some(Block::AnnotationArgs(_)) => {
                 return Vec::new();
             }
         };
+        // Before a top-level declaration an annotation for endpoints only (`@idempotent`) is no use.
+        let top_level = self.ctx.block.is_none();
         language::ANNOTATIONS
             .iter()
+            .filter(|a| !(top_level && a.targets == [Target::Endpoint]))
             .filter(|a| a.targets.iter().any(|t| want.contains(t)))
             .map(|a| {
                 snippet(
@@ -434,12 +437,14 @@ fn parse_use_path(stmt: &[Tok]) -> (Option<String>, Vec<String>) {
 fn accepts(pos: TypePos, kind: DKind) -> bool {
     match pos {
         TypePos::Value | TypePos::Arm => matches!(kind, DKind::Model | DKind::Enum | DKind::Union),
-        TypePos::Response => kind != DKind::Const,
+        TypePos::Response => !matches!(kind, DKind::Const | DKind::Event),
         TypePos::Parent => kind == DKind::Model,
+        TypePos::Event => kind == DKind::Event,
+        TypePos::Error => kind == DKind::Error,
     }
 }
 
-fn decl_item(d: &DeclEntry, edit: Option<TextEdit>) -> CompletionItem {
+pub(crate) fn decl_item(d: &DeclEntry, edit: Option<TextEdit>) -> CompletionItem {
     decl_item_named(&d.name, d, edit)
 }
 
@@ -447,6 +452,7 @@ fn decl_item_named(label: &str, d: &DeclEntry, edit: Option<TextEdit>) -> Comple
     let kind = match d.kind {
         DKind::Enum => CompletionItemKind::ENUM,
         DKind::Const => CompletionItemKind::CONSTANT,
+        DKind::Event => CompletionItemKind::EVENT,
         DKind::Model | DKind::Error | DKind::Union => CompletionItemKind::CLASS,
     };
     let mut i = item(label, kind, Some(&d.qualified));
@@ -462,8 +468,20 @@ fn decl_item_named(label: &str, d: &DeclEntry, edit: Option<TextEdit>) -> Comple
 
 fn decl_keywords() -> Vec<CompletionItem> {
     let k = CompletionItemKind::KEYWORD;
-    vec![
+    let mut out = vec![
         item("use", k, Some("import declarations")),
+        snippet(
+            "event",
+            k,
+            "event Name { ... }",
+            "event ${1:Name} {\n  $0\n}",
+        ),
+        snippet(
+            "channel",
+            k,
+            "channel Name { carries ... }",
+            "channel ${1:Name} {\n  carries $0\n}",
+        ),
         snippet(
             "model",
             k,
@@ -495,7 +513,14 @@ fn decl_keywords() -> Vec<CompletionItem> {
             "const NAME: type = value",
             "const ${1:NAME}: ${2:string} = $0",
         ),
-    ]
+    ];
+    out.extend(
+        ["policy", "principal", "example"]
+            .iter()
+            .filter_map(|w| crate::words::word(w))
+            .map(crate::complete_rules::word_item),
+    );
+    out
 }
 
 fn method_words() -> Vec<CompletionItem> {
@@ -523,6 +548,21 @@ fn annotation_snippet(name: &str, shape: ArgShape) -> String {
 
         ArgShape::Length => format!("{name}(min: ${{1:n}}, max: ${{2:n}})"),
         ArgShape::Format => format!("{name}(${{1|email,uri,hostname,ipv4,ipv6|}})"),
+        ArgShape::Rollout => format!("{name}(audit)"),
+        // The arguments are optional: `@idempotent` alone is the usual form.
+        ArgShape::Idempotent => name.to_string(),
+        ArgShape::Retry => format!("{name}(max: ${{1:3}}, backoff: ${{2|exponential,fixed|}})"),
+        ArgShape::Timeout => format!("{name}(seconds(${{1:2}}))"),
+        ArgShape::Slo => format!("{name}(p99: ms(${{1:300}}), errors: ${{2:0.1}})"),
+        ArgShape::Retain => {
+            format!("{name}(days(${{1:30}}), since: ${{2:field}}, then: ${{3|delete,anonymize|}})")
+        }
+        ArgShape::Visible => format!("{name}(when: ${{1:expression}})"),
+        ArgShape::Limit => {
+            format!(
+                "{name}(${{1:10}}, per: ${{2|second,minute,hour,day|}}, by: ${{3|user,tenant,ip|}})"
+            )
+        }
     }
 }
 
@@ -531,6 +571,8 @@ fn annotation_args(name: &str) -> Vec<CompletionItem> {
         Some(ArgShape::Auth) => &["bearer", "basic", "none"],
         Some(ArgShape::Format) => &["email", "uri", "hostname", "ipv4", "ipv6"],
         Some(ArgShape::Length) => &["min", "max"],
+        Some(ArgShape::Rollout) => &["audit"],
+        Some(ArgShape::Idempotent) => &["header", "required"],
         _ => &[],
     };
     let mut out: Vec<CompletionItem> = words
@@ -550,10 +592,10 @@ fn annotation_args(name: &str) -> Vec<CompletionItem> {
 
 // ---- auto-import --------------------------------------------------------------------------
 
-struct ImportContext;
+pub(crate) struct ImportContext;
 
 impl Cx<'_> {
-    fn import_context(&self) -> ImportContext {
+    pub(crate) fn import_context(&self) -> ImportContext {
         ImportContext
     }
 }
@@ -561,7 +603,7 @@ impl Cx<'_> {
 impl ImportContext {
     /// The edit that makes `d` visible in `file`: extend an existing `use` of the same module,
     /// or add a new one after the last `use`.
-    fn edit_for(&self, ix: &Index, file: FileId, d: &DeclEntry) -> TextEdit {
+    pub(crate) fn edit_for(&self, ix: &Index, file: FileId, d: &DeclEntry) -> TextEdit {
         let own = ix.file(file).map(|f| f.package.as_str()).unwrap_or("");
         let Some(f) = ix.file(file) else {
             return TextEdit::new(Range::default(), String::new());
@@ -600,12 +642,19 @@ mod tests {
     use crate::workspace::Workspace;
     use std::fs;
 
-    const TOML: &str = "[project]\nname = \"p\"\n[services.iam]\ncontracts = \"iam\"\n[services.app]\ncontracts = \"app\"\nconsumes = [\"iam\"]\n";
+    const TOML: &str = "[workspace]\nname = \"p\"\nmembers = [\"iam\", \"app\"]\n";
+    const IAM_TOML: &str = "[service]\ncontracts = \".\"\n";
+    const APP_TOML: &str = "[service]\ncontracts = \".\"\nconsumes = [\"iam\"]\n";
     const USERS: &str = "/// A user.\nmodel User { id: uuid }\nmodel Team { id: uuid }\nenum Role { admin, guest }\n";
 
     fn run(app: &str, cursor_marker: &str) -> (Vec<CompletionItem>, String) {
         let tmp = tempfile::tempdir().unwrap();
-        for (p, t) in [("veld.toml", TOML), ("iam/users.veld", USERS)] {
+        for (p, t) in [
+            ("veld.toml", TOML),
+            ("iam/veld.toml", IAM_TOML),
+            ("app/veld.toml", APP_TOML),
+            ("iam/users.veld", USERS),
+        ] {
             let path = tmp.path().join(p);
             fs::create_dir_all(path.parent().unwrap()).unwrap();
             fs::write(path, t).unwrap();
@@ -701,6 +750,41 @@ mod tests {
         assert!(labels(&v).contains(&"email"));
         let (v, _) = run("service S at \"/s\" {\n  @auth(^)\n}\n", "^");
         assert!(labels(&v).contains(&"bearer") && labels(&v).contains(&"apiKey"));
+    }
+
+    #[test]
+    fn rollout_is_offered_before_a_rule_a_require_and_an_ensure_and_not_on_a_declaration() {
+        let (v, _) = run("model A {\n  x: int\n  @^\n  rule r: x > 0\n}\n", "^");
+        let rollout = v.iter().find(|i| i.label == "rollout").unwrap();
+        assert_eq!(rollout.insert_text.as_deref(), Some("rollout(audit)"));
+        let src = "model A { x: int }\nservice S at \"/s\" {\n  post \"/\" f(body: A) -> 201 A {\n    @^\n    require true\n  }\n}\n";
+        let (v, _) = run(src, "^");
+        assert!(labels(&v).contains(&"rollout"), "{:?}", labels(&v));
+        let (v, _) = run(
+            "model A {\n  x: int\n  @rollout(^)\n  rule r: x > 0\n}\n",
+            "^",
+        );
+        assert_eq!(labels(&v), ["audit"]);
+        let (v, _) = run("@^\nmodel A {}\n", "^");
+        assert!(!labels(&v).contains(&"rollout"));
+    }
+
+    #[test]
+    fn version_is_offered_on_a_field_and_idempotent_on_an_endpoint_and_nowhere_else() {
+        let (v, _) = run("model A {\n  x: int @^\n}\n", "^");
+        let version = v.iter().find(|i| i.label == "version").unwrap();
+        assert_eq!(version.insert_text.as_deref(), Some("version"));
+        assert!(!labels(&v).contains(&"idempotent"), "{:?}", labels(&v));
+        let (v, _) = run("service S at \"/s\" {\n  @^\n}\n", "^");
+        let idem = v.iter().find(|i| i.label == "idempotent").unwrap();
+        assert_eq!(idem.insert_text.as_deref(), Some("idempotent"));
+        assert!(idem.detail.as_deref().unwrap_or("").contains("required"));
+        assert!(!labels(&v).contains(&"version"), "{:?}", labels(&v));
+        let (v, _) = run("@^\nmodel A {}\n", "^");
+        assert!(!labels(&v).contains(&"version") && !labels(&v).contains(&"idempotent"));
+        // The arguments of `@idempotent` are offered by name.
+        let (v, _) = run("service S at \"/s\" {\n  @idempotent(^)\n}\n", "^");
+        assert_eq!(labels(&v), ["header", "required"]);
     }
 
     #[test]

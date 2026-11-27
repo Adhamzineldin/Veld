@@ -1,0 +1,64 @@
+// `@rollout(audit)` (spec/rules.md section 17.1) in every place it may stand: an invariant of a
+// model, of an error and of an event, a `require` (with and without `else`) and an `ensure`.
+// The rule ids are the ones the rules have without the annotation; the rules digest of the
+// service covers only the enforced invariants.
+
+enum Status { pending, paid }
+
+model Booking {
+  id: uuid
+  guests: int
+  status: Status = .pending
+
+  /// A party of more than six is only watched for now.
+  @rollout(audit)
+  rule smallParty: guests <= 6
+    message "Parties of more than six need a call"
+  rule atLeastOne: guests >= 1
+}
+
+model Receipt {
+  amount: int
+  @deprecated("use positive")
+  @rollout(audit)
+  rule nonNegative: amount >= 0
+}
+
+error RoomFull 409 {
+  capacity: int
+  @rollout(audit)
+  rule sane: capacity < 10000
+}
+
+event BookingPaid {
+  bookingId: uuid
+  amount: int
+  @rollout(audit)
+  rule bigPayments: amount < 100000
+}
+
+channel Payments {
+  carries BookingPaid
+  key bookingId
+}
+
+service Bookings at "/bookings" {
+  publishes Payments
+
+  post "/" createBooking(body: Booking) -> 201 Booking | RoomFull {
+    /// Watched for a month before it turns on.
+    @rollout(audit)
+    require body.guests <= 4 else RoomFull { capacity: 4 }
+    @rollout(audit)
+    require quiet: body.guests < 6
+    require body.guests > 0
+    @rollout(audit)
+    ensure result.status == .pending
+    @rollout(audit)
+    ensure answered: result.guests == body.guests
+      message "The booking changed the party"
+    ensure result.id != result.id implies false
+  }
+
+  get "/{id}" getBooking(id: uuid) -> 200 Booking
+}

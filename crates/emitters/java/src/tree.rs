@@ -7,7 +7,7 @@ use veld_ir::{Decl, DeclId, DeclKind, Ir, PackageId, PackageKind, ServiceId};
 use crate::util::{self, HEADER};
 
 /// Package names directly below a tree's base that the generator itself uses.
-const RESERVED_DIRS: &[&str] = &["adapters", "clients", "prelude", "runtime"];
+const RESERVED_DIRS: &[&str] = &["adapters", "clients", "prelude", "runtime", "runtimeconfig"];
 
 /// A set of generated packages rooted at one Java package.
 ///
@@ -24,6 +24,33 @@ pub struct Tree<'a> {
     pub services: Vec<ServiceId>,
     /// False when the target option `validate = false` is set (the types stay).
     pub validate: bool,
+    /// True when the contract has invariants: the output then carries the rule classes and the
+    /// rule members of the hooks, the options and the schemas (`spec/targets/java.md` section 8).
+    pub rules: bool,
+    /// True when the target option `testing` is set and the services have endpoint rules, a key, a
+    /// guard or an `ETag`: the server then also gets a test handler per such service.
+    pub testing: bool,
+    /// True when the contract uses policies or reads the principal: a service with a principal
+    /// then gets typed auth hooks, and `allow`, the policy methods and `can<Endpoint>` are
+    /// generated (`spec/targets/java.md` section 11).
+    pub policies: bool,
+    /// True when the contract has an audited rule (`@rollout(audit)`, `spec/rules.md` section 17.1): the
+    /// output then carries `Audit` and the `rollout` regions of the runtime, and the test handler
+    /// answers with `Veld-Test-Audited`.
+    pub rollout: bool,
+    /// True when a service of the tree publishes or subscribes: the tree then also emits the events
+    /// of its channels and the declarations only they reach (`spec/events.md` section 14).
+    pub events: bool,
+    /// The typed runtime config of the target, when it has one: a server entry then takes it as
+    /// its last argument, and a server with `rules.output` takes the mode from it.
+    pub runtime_config: Option<crate::config::Info>,
+    /// What a server of the tree uses of platform phase P1 (visibility, tenancy, the audit log,
+    /// rate limits). Nothing for a client and for a consumed service.
+    pub platform: crate::platform::Uses,
+    /// True for the server's own tree when a package of its services has message catalogs and the
+    /// rule classes are carried: it answers in the language of the request (`spec/targets/java.md`
+    /// section 18.3).
+    pub messages_server: bool,
     decls: Vec<DeclId>,
 }
 
@@ -35,7 +62,10 @@ impl<'a> Tree<'a> {
         let mut set: BTreeSet<DeclId> = ir.reachable_decls(&services).into_iter().collect();
         let own: BTreeSet<PackageId> = services.iter().map(|s| ir.service(*s).package).collect();
         for d in &ir.decls {
-            if ir.package(d.package).kind == PackageKind::Prelude || own.contains(&d.package) {
+            let in_scope =
+                ir.package(d.package).kind == PackageKind::Prelude || own.contains(&d.package);
+            // An event is never emitted: a client generates nothing for events (`spec/events.md` 14).
+            if in_scope && !d.is_event() {
                 set.insert(d.id);
             }
         }
@@ -45,14 +75,93 @@ impl<'a> Tree<'a> {
             runtime: runtime.to_string(),
             services,
             validate: true,
+            rules: false,
+            testing: false,
+            policies: false,
+            rollout: false,
+            events: false,
+            runtime_config: None,
+            platform: crate::platform::Uses::default(),
+            messages_server: false,
             decls: set.into_iter().collect(),
         }
+    }
+
+    /// Also emits the events of the tree's services and the declarations only they reach. The
+    /// server target calls it for its own tree; a client and a consumed service never do, because
+    /// a client generates nothing for events (`spec/events.md` section 14).
+    #[must_use]
+    pub fn with_events(mut self) -> Self {
+        let ir = self.ir;
+        let mut set: BTreeSet<DeclId> = self.decls.iter().copied().collect();
+        set.extend(ir.events_of(&self.services));
+        set.extend(ir.event_reachable_decls(&self.services));
+        self.events = self.services.iter().any(|s| ir.service(*s).uses_events());
+        self.decls = set.into_iter().collect();
+        self
     }
 
     /// Sets whether the generated code validates requests at run time by default.
     #[must_use]
     pub fn with_validate(mut self, validate: bool) -> Self {
         self.validate = validate;
+        self
+    }
+
+    /// Sets whether the server also gets a test handler per service that needs one.
+    #[must_use]
+    pub fn with_testing(mut self, testing: bool) -> Self {
+        self.testing = testing;
+        self
+    }
+
+    /// Sets whether the contract uses policies or reads the principal.
+    #[must_use]
+    pub fn with_policies(mut self, policies: bool) -> Self {
+        self.policies = policies;
+        self
+    }
+
+    /// Sets whether the contract has an audited rule.
+    #[must_use]
+    pub fn with_rollout(mut self, rollout: bool) -> Self {
+        self.rollout = rollout;
+        self
+    }
+
+    /// Sets the runtime config of the target.
+    #[must_use]
+    pub fn with_runtime(mut self, info: Option<crate::config::Info>) -> Self {
+        self.runtime_config = info;
+        self
+    }
+
+    /// Sets what the tree's server uses of platform phase P1.
+    #[must_use]
+    pub fn with_platform(mut self, platform: crate::platform::Uses) -> Self {
+        self.platform = platform;
+        self
+    }
+
+    /// Whether a package of the tree's services has message catalogs.
+    #[must_use]
+    pub fn uses_messages(&self) -> bool {
+        self.packages()
+            .into_iter()
+            .any(|p| !self.ir.package(p).messages.is_empty())
+    }
+
+    /// Sets whether the server answers in the language of the request.
+    #[must_use]
+    pub fn with_messages_server(mut self, on: bool) -> Self {
+        self.messages_server = on;
+        self
+    }
+
+    /// Sets whether the output carries the rule classes and members.
+    #[must_use]
+    pub fn with_rules(mut self, rules: bool) -> Self {
+        self.rules = rules;
         self
     }
 
@@ -96,8 +205,14 @@ impl<'a> Tree<'a> {
         if self.ir.package(d.package).kind == PackageKind::Prelude {
             return format!("{}.prelude", self.base);
         }
-        let mut pkg = self.pkg_package(d.package);
-        for (i, seg) in d.module.split('.').filter(|s| !s.is_empty()).enumerate() {
+        self.module_package(d.package, &d.module)
+    }
+
+    /// Java package of the declarations of one module of a contract package.
+    #[must_use]
+    pub fn module_package(&self, package: PackageId, module: &str) -> String {
+        let mut pkg = self.pkg_package(package);
+        for (i, seg) in module.split('.').filter(|s| !s.is_empty()).enumerate() {
             let mut s = util::segment(seg);
             if i == 0 && (s == "client" || s == "server") {
                 s.push('_');

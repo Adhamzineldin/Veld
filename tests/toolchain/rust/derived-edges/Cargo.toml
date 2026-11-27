@@ -1,0 +1,13 @@
+[package]
+name = "derived-edges"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+edges-server = { path = "../server" }
+edges-client = { path = "../client" }
+axum = "0.8"
+reqwest = "0.13"
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time"] }

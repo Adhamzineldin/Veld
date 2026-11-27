@@ -1,0 +1,16 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0950]: example "lists" is already declared in this package
+ --> app/app.veld:13:9
+   |
+13 | example "lists" {
+   |         ^^^^^^^
+ --> app/app.veld:9:9
+  |
+9 | example "lists" {
+  |         ------- first declared here
+
+== ir ==
+(no IR: compilation failed)

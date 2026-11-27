@@ -1,0 +1,16 @@
+// Membership in lists of dates, instants, times and floats: the shared vectors have no such case.
+
+model Calendar {
+  day: date
+  moment: datetime
+  hour: time
+  closedDays: date[]
+  moments: datetime[]
+  hours: time[]
+  score: float
+  scores: float[]
+  rule dayOpen: !(day in closedDays)
+  rule momentFree: !(moment in moments)
+  rule hourFree: !(hour in hours)
+  rule known: score in scores
+}

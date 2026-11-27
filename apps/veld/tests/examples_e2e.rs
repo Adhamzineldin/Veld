@@ -12,13 +12,19 @@ use std::fs;
 use std::io::Read;
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Command;
 use std::time::{Duration, Instant};
 
 use common::*;
 use serde_json::{Value, json};
 use tempfile::TempDir;
-use veld_test_support::ProcessTree;
+use veld_test_support::{BUILD_LIMIT, ProcessTree, RUN_LIMIT, run_limited};
+
+/// Runs a command with a time limit; on expiry the process tree is killed and the test fails
+/// with the command line and the time.
+fn limited(cmd: &mut Command, limit: Duration) -> std::process::Output {
+    run_limited(cmd, limit).unwrap_or_else(|e| panic!("{e}"))
+}
 
 // ---------------------------------------------------------------------------
 // Toolchain
@@ -37,15 +43,12 @@ impl Npm {
             }
             None => Command::new(if cfg!(windows) { "npm.cmd" } else { "npm" }),
         };
-        let out = cmd
-            .args(args)
+        cmd.args(args)
             .current_dir(dir)
             .env("npm_config_audit", "false")
             .env("npm_config_fund", "false")
-            .env("npm_config_update_notifier", "false")
-            .stdin(Stdio::null())
-            .output()
-            .unwrap_or_else(|e| panic!("cannot start npm: {e}"));
+            .env("npm_config_update_notifier", "false");
+        let out = limited(&mut cmd, BUILD_LIMIT);
         assert!(
             out.status.success(),
             "npm {args:?} failed in {}\n{}\n{}",
@@ -57,19 +60,18 @@ impl Npm {
 }
 
 fn ok(cmd: &mut Command) -> bool {
-    cmd.stdin(Stdio::null())
-        .output()
-        .is_ok_and(|o| o.status.success())
+    run_limited(cmd, RUN_LIMIT).is_ok_and(|o| o.status.success())
 }
 
 fn find_npm() -> Result<Npm, String> {
     if !ok(Command::new("node").arg("--version")) {
         return Err("`node` is not on PATH".into());
     }
-    let probe = Command::new("node")
-        .args(["-p", "process.execPath"])
-        .output()
-        .map_err(|e| e.to_string())?;
+    let probe = run_limited(
+        Command::new("node").args(["-p", "process.execPath"]),
+        RUN_LIMIT,
+    )
+    .map_err(|e| e.to_string())?;
     let exe = PathBuf::from(String::from_utf8_lossy(&probe.stdout).trim());
     let dir = exe.parent().map(Path::to_path_buf).unwrap_or_default();
     let candidates = [
@@ -281,11 +283,12 @@ fn install_and_typecheck(npm: &Npm, apps: &[PathBuf]) {
         npm.run(app, &["ci"]);
     }
     for app in apps {
-        let tsc = Command::new("node")
-            .args(["node_modules/typescript/bin/tsc", "--noEmit"])
-            .current_dir(app)
-            .output()
-            .unwrap();
+        let tsc = limited(
+            Command::new("node")
+                .args(["node_modules/typescript/bin/tsc", "--noEmit"])
+                .current_dir(app),
+            BUILD_LIMIT,
+        );
         assert!(
             tsc.status.success(),
             "tsc --noEmit failed in {}\n{}{}",
@@ -301,7 +304,7 @@ fn run_render_test(app: &Path, envs: &[(&str, String)]) {
     for (k, v) in envs {
         cmd.env(k, v);
     }
-    let out = cmd.output().unwrap();
+    let out = limited(&mut cmd, RUN_LIMIT);
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
         out.status.success() && stdout.contains("render ok"),
@@ -315,12 +318,13 @@ fn rust_catalog_lookup_against_the_axum_server() {
     let (guard, root) = copy_example("rust-catalog");
     veld(&root).arg("generate").assert().success();
     let target = repo_root().join("target/rust-catalog-e2e");
-    let build = Command::new(env!("CARGO"))
-        .args(["build", "--locked", "--bins", "--target-dir"])
-        .arg(&target)
-        .current_dir(&root)
-        .output()
-        .unwrap();
+    let build = limited(
+        Command::new(env!("CARGO"))
+            .args(["build", "--locked", "--bins", "--target-dir"])
+            .arg(&target)
+            .current_dir(&root),
+        BUILD_LIMIT,
+    );
     assert!(
         build.status.success(),
         "{}",
@@ -339,11 +343,12 @@ fn rust_catalog_lookup_against_the_axum_server() {
         guard.path(),
     );
     let lookup = |isbn: &str| {
-        Command::new(binary("lookup"))
-            .env("CATALOG_URL", url(port))
-            .arg(isbn)
-            .output()
-            .unwrap()
+        limited(
+            Command::new(binary("lookup"))
+                .env("CATALOG_URL", url(port))
+                .arg(isbn),
+            RUN_LIMIT,
+        )
     };
     let found = lookup("9780141439518");
     assert!(
@@ -390,6 +395,204 @@ fn hello_server_and_react_app_run() {
     assert_eq!(missing.1["data"]["resource"], "nobody");
 
     run_render_test(&web, &[("VELD_HELLO_URL", base)]);
+}
+
+// ---------------------------------------------------------------------------
+// bookings (business rules)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn bookings_server_enforces_the_contract_rules() {
+    let Some(npm) = tools(false) else { return };
+    let (guard, root) = copy_example("bookings");
+    assert_up_to_date(&root);
+    let (server, web) = (root.join("server"), root.join("web"));
+    install_and_typecheck(&npm, &[server.clone(), web.clone()]);
+
+    let logs = guard.path();
+    let (port, test_port) = (free_port(), free_port());
+    let _api = Svc::start("bookings", node_ts(&server, "src/main.ts"), port, logs);
+    let _test = Svc::start(
+        "bookings-test",
+        node_ts(&server, "src/test-server.ts"),
+        test_port,
+        logs,
+    );
+    let base = url(port);
+
+    // A rule violation over plain HTTP: the 422 problem with `violations`.
+    let room = "00000000-0000-4000-8000-0000000000a1";
+    let body = |guests: u32, start: &str, end: &str| json!({ "roomId": room, "guests": guests, "start": start, "end": end });
+    let (start, end) = ("2030-06-10T00:00:00Z", "2030-06-12T00:00:00Z");
+    // The demo accounts of the server: Ann and Bob are guests, Sam is staff, Eve is suspended.
+    let post = |b: &Value| {
+        call(
+            "POST",
+            &format!("{base}/bookings"),
+            Some("token-ann"),
+            Some(b),
+        )
+    };
+    let backwards = post(&body(2, end, start));
+    assert_error(&backwards, 422, "ValidationError");
+    assert_eq!(backwards.1["violations"].as_array().map(Vec::len), Some(1));
+    assert_eq!(
+        backwards.1["violations"][0]["message"],
+        "The stay must end after it starts"
+    );
+    assert_eq!(
+        backwards.1["violations"][0]["fields"],
+        json!(["end", "start"])
+    );
+    assert_eq!(backwards.1["violations"][0]["path"], "body");
+    // A `require ... else` answers its declared error with the payload.
+    let full = post(&body(3, start, end));
+    assert_error(&full, 409, "RoomFull");
+    assert_eq!(full.1["data"]["capacity"], 2);
+    // A valid booking is priced by the handler: two nights at 89.50.
+    let created = post(&body(2, start, end));
+    assert_eq!(
+        (created.0, created.1["total"].clone()),
+        (201, json!("179.00"))
+    );
+    assert_eq!(created.1["status"], "pending");
+    assert_eq!(created.1["guestId"], "00000000-0000-4000-8000-0000000000aa");
+    bookings_over_http(&base, &created.1);
+
+    // The same through the generated client, including the local check.
+    let out = limited(
+        node_ts(&web, "test/client.ts").env("VELD_BOOKINGS_URL", &base),
+        RUN_LIMIT,
+    );
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success() && text.contains("client ok"),
+        "{text}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    // The examples of the contract, run against the test server.
+    let live = url(test_port);
+    let contract = fs::read_to_string(root.join("contracts/bookings.veld")).unwrap();
+    let count = contract
+        .lines()
+        .filter(|l| l.starts_with("example \""))
+        .count();
+    for extra in [&[][..], &["--dry-run"][..]] {
+        let out = veld(&root)
+            .args(["test", "--live", &live])
+            .args(extra)
+            .assert()
+            .success()
+            .get_output()
+            .stdout
+            .clone();
+        let text = String::from_utf8(out).unwrap();
+        assert!(
+            text.contains(&format!(" {count} passed")),
+            "{extra:?}: {text}"
+        );
+    }
+    // The fuzzer builds callers, bookings in every state and bodies, and the test server agrees
+    // with the reference evaluator on all of them.
+    let out = veld(&root)
+        .args(["test", "--live", &live, "--fuzz", "100", "--seed", "1"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let text = String::from_utf8(out).unwrap();
+    assert!(!text.to_lowercase().contains("disagree"), "{text}");
+}
+
+/// The rules of the contract over plain HTTP: who may call, which moves are legal, what the answers
+/// say. `created` is a pending booking of Ann.
+fn bookings_over_http(base: &str, created: &Value) {
+    let id = created["id"].as_str().unwrap().to_string();
+    let at = |path: &str| format!("{base}/bookings{path}");
+    let get = |path: &str, token: Option<&str>| call("GET", &at(path), token, None);
+    let act = |path: &str, token: Option<&str>, body: Option<&Value>| {
+        call("POST", &at(path), token, body)
+    };
+    let pay_ann = |amount: &str| {
+        act(
+            &format!("/{id}/pay"),
+            Some("token-ann"),
+            Some(&json!({ "amount": amount })),
+        )
+    };
+
+    // A public endpoint needs no token, a protected one does.
+    let rooms = get("/rooms", None);
+    assert_eq!((rooms.0, rooms.1.as_array().map(Vec::len)), (200, Some(3)));
+    assert_error(&get("/me", None), 401, "Unauthorized");
+    assert_error(&get("/me", Some("token-nobody")), 401, "Unauthorized");
+    assert_eq!(get("/me", Some("token-sam")).1["roles"], json!(["staff"]));
+
+    // A denied caller: 403 with the message of the policy.
+    let stranger = get(&format!("/{id}"), Some("token-bob"));
+    assert_error(&stranger, 403, "Forbidden");
+    assert_eq!(stranger.1["data"]["message"], "not permitted");
+    assert_eq!(stranger.1["violations"][0]["message"], "not permitted");
+    assert_eq!(get(&format!("/{id}"), Some("token-sam")).0, 200);
+    let suspended = act(
+        "",
+        Some("token-eve"),
+        Some(
+            &json!({ "roomId": "00000000-0000-4000-8000-0000000000a1", "guests": 1,
+                      "start": "2030-06-10T00:00:00Z", "end": "2030-06-12T00:00:00Z" }),
+        ),
+    );
+    assert_error(&suspended, 403, "Forbidden");
+    assert_eq!(
+        suspended.1["data"]["message"],
+        "A suspended account cannot book"
+    );
+
+    // A missing booking is a 404, before any policy is asked.
+    let missing = get("/00000000-0000-4000-8000-00000000ffff", Some("token-bob"));
+    assert_error(&missing, 404, "NotFound");
+    assert_eq!(missing.1["data"]["resource"], "booking");
+
+    // The order of the checks: policy, then the move, then the amount.
+    assert_error(
+        &act(&format!("/{id}/cancel"), Some("token-bob"), None),
+        403,
+        "Forbidden",
+    );
+    assert_error(&pay_ann("1.00"), 422, "AmountMismatch");
+
+    // A legal move.
+    let paid = pay_ann("179.00");
+    assert_eq!((paid.0, paid.1["status"].clone()), (200, json!("paid")));
+    assert_eq!(
+        get(&format!("/{id}"), Some("token-ann")).1["status"],
+        "paid"
+    );
+
+    // An illegal move: 409 with the field and both states, whatever the amount.
+    let again = pay_ann("1.00");
+    assert_error(&again, 409, "InvalidTransition");
+    assert_eq!(
+        again.1["data"],
+        json!({ "field": "status", "from": "paid", "to": "paid" })
+    );
+
+    // The staff-only refund, then a final state with no way out.
+    assert_error(
+        &act(&format!("/{id}/refund"), Some("token-ann"), None),
+        403,
+        "Forbidden",
+    );
+    let refunded = act(&format!("/{id}/refund"), Some("token-sam"), None);
+    assert_eq!(
+        (refunded.0, refunded.1["status"].clone()),
+        (200, json!("refunded"))
+    );
+    let stuck = act(&format!("/{id}/cancel"), Some("token-sam"), None);
+    assert_error(&stuck, 409, "InvalidTransition");
+    assert_eq!(stuck.1["data"]["from"], "refunded");
 }
 
 // ---------------------------------------------------------------------------
@@ -492,11 +695,12 @@ fn library_package_services_share_types_and_errors() {
     assert_eq!((second.0, second.1["paid"].clone()), (200, json!(true)));
 
     // The typed client script (`web`) does the same through `@veld/web`.
-    let out = node_ts(&apps[2], "src/report.ts")
-        .env("VELD_ORDERS_URL", &orders)
-        .env("VELD_INVOICES_URL", &invoices)
-        .output()
-        .unwrap();
+    let out = limited(
+        node_ts(&apps[2], "src/report.ts")
+            .env("VELD_ORDERS_URL", &orders)
+            .env("VELD_INVOICES_URL", &invoices),
+        RUN_LIMIT,
+    );
     let text = String::from_utf8_lossy(&out.stdout);
     assert!(
         out.status.success(),
@@ -537,12 +741,13 @@ fn compile_java(service: &Path, out: &Path) {
     let args = out.join("sources.args");
     fs::write(&args, sources.join("\n")).unwrap();
     let classes = out.join("classes");
-    let res = Command::new("javac")
-        .args(["--release", "17", "-d"])
-        .arg(&classes)
-        .arg(format!("@{}", args.display()))
-        .output()
-        .unwrap();
+    let res = limited(
+        Command::new("javac")
+            .args(["--release", "17", "-d"])
+            .arg(&classes)
+            .arg(format!("@{}", args.display())),
+        BUILD_LIMIT,
+    );
     assert!(
         res.status.success(),
         "javac failed\n{}{}",

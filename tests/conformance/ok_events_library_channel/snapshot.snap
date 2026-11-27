@@ -1,0 +1,135 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+assertion_line: 195
+---
+== diagnostics ==
+(none)
+
+== ir ==
+{
+  "ir_version": "1.1",
+  "packages": [
+    {
+      "id": 0,
+      "name": "shared",
+      "kind": "library"
+    },
+    {
+      "id": 1,
+      "name": "watcher",
+      "kind": "service"
+    }
+  ],
+  "decls": [
+    {
+      "id": 0,
+      "package": 0,
+      "module": "events",
+      "name": "Ping",
+      "qualified": "shared:events.Ping",
+      "sig": "veld:shared/Ping@935cb38ba2933623",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "events.veld",
+        "line": 3,
+        "col": 7
+      },
+      "kind": "event",
+      "fields": [
+        {
+          "name": "id",
+          "wire": "id",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "events.veld",
+            "line": 3,
+            "col": 14
+          }
+        }
+      ]
+    }
+  ],
+  "services": [
+    {
+      "id": 0,
+      "package": 1,
+      "name": "Watcher",
+      "prefix": "",
+      "base_url": null,
+      "docs": null,
+      "auth": {
+        "kind": "none",
+        "header": null
+      },
+      "middleware": [],
+      "endpoints": [],
+      "subscriptions": [
+        {
+          "channel": 0,
+          "group": "watcher",
+          "handlers": [
+            {
+              "event": 0,
+              "name": "onPing",
+              "docs": null,
+              "origin": {
+                "file": "app.veld",
+                "line": 7,
+                "col": 5
+              }
+            }
+          ],
+          "origin": {
+            "file": "app.veld",
+            "line": 6,
+            "col": 3
+          }
+        }
+      ],
+      "origin": {
+        "file": "app.veld",
+        "line": 5,
+        "col": 9
+      }
+    }
+  ],
+  "consumes": {},
+  "channels": [
+    {
+      "name": "Pings",
+      "package": 0,
+      "module": "events",
+      "qualified": "shared:events.Pings",
+      "topic": "shared.Pings",
+      "events": [
+        0
+      ],
+      "key": null,
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "events.veld",
+        "line": 5,
+        "col": 9
+      }
+    }
+  ]
+}

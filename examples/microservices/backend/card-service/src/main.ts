@@ -8,10 +8,21 @@ import {
   NotFound,
   accounts,
   createCardsHandler,
+  createClients,
+  fromEnv,
   iam,
   toFastify,
 } from '@veld/cards-api';
 import type { Card, CardsService } from '@veld/cards-api';
+
+/** The addresses of the consumed services are settings of the deployment; the variable names are this service's choice. */
+const runtime = fromEnv({
+  'services.accounts.url': 'VELD_ACCOUNTS_URL',
+  'services.iam.url': 'VELD_IAM_URL',
+});
+
+/** The clients of the consumed services, all calling with `token`. */
+const clientsFor = (token: string) => createClients(runtime, { auth: { bearer: () => token } });
 
 interface Principal {
   user: iam.User;
@@ -23,7 +34,7 @@ const principalOf = (ctx: { principal: unknown }): Principal => ctx.principal as
 
 async function authenticate(token: string): Promise<Principal | null> {
   try {
-    const user = await new iam.IamClient({ auth: { bearer: () => token } }).getProfile({});
+    const user = await clientsFor(token).iam.getProfile({});
     return { user, token };
   } catch (e) {
     if (iam.Unauthorized.matches(e)) return null;
@@ -54,7 +65,7 @@ const impl: CardsService = {
   async requestCard({ body }, ctx) {
     const p = principalOf(ctx);
     try {
-      const account = await new accounts.AccountsClient({ auth: { bearer: () => p.token } }).getAccount({
+      const account = await clientsFor(p.token).accounts.getAccount({
         id: body.accountId,
       });
       if (account.status !== 'active') throw new NotFound({ resource: 'active account' });
@@ -96,7 +107,7 @@ const impl: CardsService = {
 };
 
 const app = Fastify();
-app.all('/*', toFastify(createCardsHandler(impl, { auth: { bearer: authenticate } })));
+app.all('/*', toFastify(createCardsHandler(impl, { auth: { bearer: authenticate } }, runtime)));
 
 const port = Number(process.env.PORT ?? 3004);
 app.listen({ port, host: process.env.HOST ?? '127.0.0.1' }).then(

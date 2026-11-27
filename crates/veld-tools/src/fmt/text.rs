@@ -75,6 +75,9 @@ fn args_list(args: &[Arg]) -> String {
 }
 
 pub(super) fn annotation(a: &Annotation) -> String {
+    if let Some(when) = &a.when {
+        return format!("@{}(when: {})", a.name.name, super::expr::expr_text(when));
+    }
     match &a.args {
         Some(args) => format!("@{}({})", a.name.name, args_list(args)),
         None => format!("@{}", a.name.name),

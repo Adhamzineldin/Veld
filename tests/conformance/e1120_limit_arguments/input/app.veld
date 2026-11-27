@@ -1,0 +1,20 @@
+// A limit is a whole count from 1, a window and a subject.
+
+model Room { id: uuid }
+
+service Rooms at "/rooms" {
+  @limit(0, per: minute, by: ip)
+  get "/a" a() -> Room[]
+
+  @limit(10, per: week, by: ip)
+  get "/b" b() -> Room[]
+
+  @limit(10, per: minute, by: group)
+  get "/c" c() -> Room[]
+
+  @limit(10, per: minute)
+  get "/d" d() -> Room[]
+
+  @limit(10, per: minute, by: ip, burst: 3)
+  get "/e" e() -> Room[]
+}

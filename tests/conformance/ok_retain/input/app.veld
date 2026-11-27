@@ -1,0 +1,42 @@
+// `@retain` on models (spec/platform.md section 23): both outcomes, a `date` and an optional
+// `datetime`, an inherited `since` field and an inherited `@pii` field.
+
+@retain(days(30), since: checkedOutAt, then: anonymize)
+model Guest {
+  id: uuid @readonly
+  name: string @pii
+  phone?: string @pii
+  password: string @secret
+  checkedOutAt?: datetime
+}
+
+@retain(days(1), since: day, then: delete)
+model AccessLog {
+  id: uuid
+  day: date
+}
+
+model Contact {
+  email: string @pii
+  loggedAt: datetime
+}
+
+@retain(days(365), since: loggedAt, then: anonymize)
+model Reminder extends Contact {
+  note: string
+}
+
+// The words are ordinary names elsewhere.
+model Names {
+  retain: string
+  since: string
+  then: string
+  days: int
+  delete: bool
+  anonymize: bool
+}
+
+@auth(bearer)
+service Guests at "/guests" {
+  get "/{id}" getGuest(id: uuid) -> Guest | NotFound
+}

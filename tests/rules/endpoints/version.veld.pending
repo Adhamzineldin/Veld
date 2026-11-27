@@ -1,0 +1,206 @@
+// @version and If-Match (spec/rules.md 11.7 and 11.9). The examples are the vectors: every server
+// target and the reference evaluator must give exactly the stated outcome.
+//
+// This file waits under a `.pending` suffix until a generator implements `rules_version`; the
+// reference evaluator runs it already (crates/veld-rules/tests/examples.rs). What an example cannot
+// state: the ETag of a response, a malformed If-Match, and the version the handler receives.
+
+enum Status {
+  pending, paid, cancelled
+  flow pending -> paid
+  flow pending -> cancelled
+  final paid, cancelled
+}
+
+model User {
+  id: uuid
+  roles: string[]
+}
+
+principal User
+
+model Room {
+  id: uuid
+  name: string
+  @version
+  revision: long
+}
+
+/// An `int` version, on a field that is called `version`.
+model Counter {
+  id: uuid
+  total: int
+  @version
+  version: int
+}
+
+/// A version with a wire name of its own.
+model Order {
+  id: uuid
+  status: Status = .pending
+  @wire("rev")
+  @version
+  revision: long
+}
+
+model Rename { name: string }
+model Note { text: string }
+error TooLong 422 { limit: int }
+
+policy Staff(user: User) {
+  permit when "staff" in user.roles
+}
+
+service Rooms at "/rooms" {
+  put "/{id}" rename(id: uuid, body: Rename) -> Room {
+    fact room: Room = id
+  }
+
+  patch "/{id}/touch" touch(id: uuid) -> Room {
+    fact maybe?: Room = id
+  }
+
+  post "/{id}/tick" tick(id: uuid) -> Counter {
+    fact counter: Counter = id
+  }
+
+  get "/{id}" getRoom(id: uuid) -> Room
+}
+
+@auth(bearer)
+service Orders at "/orders" {
+  post "/{id}/pay" payOrder(id: uuid, body: Note) -> Order | TooLong {
+    fact order: Order = id
+    allow Staff(user)
+    transition order.status: pending -> paid
+    require len(body.text) <= 5 else TooLong { limit: 5 }
+  }
+}
+
+// --- the tag and the version ---
+
+example "a tag that is the current version passes" {
+  given room = { revision: 4 }
+  ifMatch 4
+  rename(id: room.id, body: { name: "Blue" }) -> ok
+}
+
+example "a tag that is not the current version is refused" {
+  given room = { revision: 4 }
+  ifMatch 3
+  rename(id: room.id, body: { name: "Blue" }) -> PreconditionFailed { expected: 3, actual: 4 }
+}
+
+example "a tag ahead of the row is refused too" {
+  given room = { revision: 4 }
+  ifMatch 9
+  rename(id: room.id, body: { name: "Blue" }) -> PreconditionFailed { expected: 9, actual: 4 }
+}
+
+example "a star passes whatever the version is" {
+  given room = { revision: 4 }
+  ifMatch any
+  rename(id: room.id, body: { name: "Blue" }) -> ok
+}
+
+example "a request without If-Match is not checked" {
+  given room = { revision: 4 }
+  rename(id: room.id, body: { name: "Blue" }) -> ok
+}
+
+example "version zero is a version" {
+  given room = { revision: 0 }
+  ifMatch 0
+  rename(id: room.id, body: { name: "Blue" }) -> ok
+}
+
+example "the largest long is a version" {
+  given room = { revision: 9223372036854775807 }
+  ifMatch 9223372036854775807
+  rename(id: room.id, body: { name: "Blue" }) -> ok
+}
+
+example "one below the largest long is stale" {
+  given room = { revision: 9223372036854775807 }
+  ifMatch 9223372036854775806
+  rename(id: room.id, body: { name: "Blue" }) -> PreconditionFailed { expected: 9223372036854775806, actual: 9223372036854775807 }
+}
+
+// --- an int version, and a wire name ---
+
+example "an int version that is stale is refused" {
+  given counter = { version: 2 }
+  ifMatch 1
+  tick(id: counter.id) -> PreconditionFailed { expected: 1, actual: 2 }
+}
+
+example "an int version that is current passes" {
+  given counter = { version: 2 }
+  ifMatch 2
+  tick(id: counter.id) -> ok
+}
+
+example "a version with a wire name is read by that name" {
+  given order = { revision: 4 }
+  as { id: "00000000-0000-4000-8000-0000000000aa", roles: ["staff"] }
+  ifMatch 3
+  payOrder(id: order.id, body: { text: "ok" }) -> PreconditionFailed { expected: 3, actual: 4 }
+}
+
+// --- an optional fact ---
+
+example "an optional fact that is absent has nothing to compare" {
+  given maybe = absent
+  ifMatch 3
+  touch(id: "00000000-0000-4000-8000-000000000001") -> ok
+}
+
+example "an optional fact that is there is compared" {
+  given maybe = { revision: 4 }
+  ifMatch 3
+  touch(id: maybe.id) -> PreconditionFailed { expected: 3, actual: 4 }
+}
+
+// --- where the check stands among the steps ---
+
+example "the guard comes after the policies" {
+  given order = { revision: 4 }
+  as { id: "00000000-0000-4000-8000-0000000000aa", roles: [] }
+  ifMatch 3
+  payOrder(id: order.id, body: { text: "ok" }) -> Forbidden
+}
+
+example "the guard comes before the transition" {
+  given order = { revision: 4, status: .paid }
+  as { id: "00000000-0000-4000-8000-0000000000aa", roles: ["staff"] }
+  ifMatch 3
+  payOrder(id: order.id, body: { text: "ok" }) -> PreconditionFailed { expected: 3, actual: 4 }
+}
+
+example "a current tag leaves the transition to answer" {
+  given order = { revision: 4, status: .paid }
+  as { id: "00000000-0000-4000-8000-0000000000aa", roles: ["staff"] }
+  ifMatch 4
+  payOrder(id: order.id, body: { text: "ok" }) -> InvalidTransition
+}
+
+example "the guard comes before require" {
+  given order = { revision: 4 }
+  as { id: "00000000-0000-4000-8000-0000000000aa", roles: ["staff"] }
+  ifMatch 3
+  payOrder(id: order.id, body: { text: "far too long" }) -> PreconditionFailed
+}
+
+example "a current tag leaves require to answer" {
+  given order = { revision: 4 }
+  as { id: "00000000-0000-4000-8000-0000000000aa", roles: ["staff"] }
+  ifMatch 4
+  payOrder(id: order.id, body: { text: "far too long" }) -> TooLong { limit: 5 }
+}
+
+example "a current tag passes every step" {
+  given order = { revision: 4 }
+  as { id: "00000000-0000-4000-8000-0000000000aa", roles: ["staff"] }
+  ifMatch 4
+  payOrder(id: order.id, body: { text: "ok" }) -> ok
+}

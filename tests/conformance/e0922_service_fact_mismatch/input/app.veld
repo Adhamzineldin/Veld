@@ -1,0 +1,23 @@
+// One loader serves every endpoint of a service, so facts of one name must agree in type, key
+// type and optionality (spec/rules.md 9.2).
+
+model Room { id: uuid }
+model Booking { id: uuid, guests: int }
+
+service Bookings at "/bookings" {
+  post "/a" a(body: Booking) -> 201 Booking {
+    fact room: Room = body.id
+  }
+  post "/b" b(body: Booking) -> 201 Booking {
+    fact room: Booking = body.id
+  }
+  post "/c" c(body: Booking) -> 201 Booking {
+    fact room: Room = body.guests
+  }
+  post "/d" d(body: Booking) -> 201 Booking {
+    fact room?: Room = body.id
+  }
+  post "/e" e(body: Booking) -> 201 Booking {
+    fact room: Room = body.id
+  }
+}

@@ -53,24 +53,23 @@ You now have a config and one contract:
 
 ```toml
 # veld.toml
-[project]
+[service]
 name = "shop"
-contracts = "contracts"
 
-[[targets]]
+[server]
 name = "api"
-role = "server"
 emitter = "node"
 framework = "express"
-service = "shop"
 out = "generated/server"
 
-[[targets]]
+[client]
 name = "web"
-role = "client"
 emitter = "typescript"
 out = "generated/client"
 ```
+
+One `veld.toml` with one `[service]` is a whole project. A larger project is a workspace, with a
+`veld.toml` per service or app: see [Workspaces](workspaces.md).
 
 ```veld
 // contracts/hello.veld
@@ -91,8 +90,9 @@ as `method "path" name(params) -> success | errors`. `NotFound` is a built-in er
 declare it. The whole language is in [`spec/language.md`](../../spec/language.md); every
 `veld.toml` key is in [`spec/config.md`](../../spec/config.md).
 
-Each `[[targets]]` entry is one generated output: a `role` (`server` or `client`), an `emitter`
-(`node`, `typescript` or `java`) and the folder `out` it writes into. Veld writes only inside `out`.
+Each `[server]` or `[client]` table is one generated output: the table name is the role, and an
+`emitter` (`node`, `typescript`, `java` or `rust`) and the folder `out` it writes into. Veld writes
+only inside `out`.
 
 ## 3. Check the contract
 

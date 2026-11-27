@@ -1,0 +1,20 @@
+// `@rollout(audit)` written twice on one rule, `require` or `ensure` is `E0602`
+// (spec/rules.md section 17.1).
+
+model M {
+  n: int
+  @rollout(audit)
+  @rollout(audit)
+  rule a: n > 0
+}
+
+service S at "/s" {
+  post "/" f(body: M) -> 201 M {
+    @rollout(audit)
+    @rollout(audit)
+    require body.n > 0
+    @rollout(audit)
+    @rollout(audit)
+    ensure result.n > 0
+  }
+}

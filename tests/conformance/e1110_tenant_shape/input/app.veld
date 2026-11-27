@@ -1,0 +1,18 @@
+// A tenant is a required uuid, string, int or long; a model has one; an error has none.
+
+model Wrong {
+  flag: bool @tenant
+}
+
+model Twice {
+  a: uuid @tenant
+  b: uuid @tenant
+}
+
+model Maybe {
+  a?: uuid @tenant
+}
+
+error Refused 409 {
+  t: uuid @tenant
+}

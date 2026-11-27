@@ -1,0 +1,27 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0602]: `@min` cannot be applied to a rule
+ --> app/app.veld:3:3
+  |
+3 |   @min(1)
+  |   ^^^^^^^
+  = help: `@min` applies to: field, parameter
+
+error[E0602]: `@readonly` cannot be applied to a rule
+ --> app/app.veld:5:3
+  |
+5 |   @readonly @wire("x")
+  |   ^^^^^^^^^
+  = help: `@readonly` applies to: field
+
+error[E0602]: `@wire` cannot be applied to a rule
+ --> app/app.veld:5:13
+  |
+5 |   @readonly @wire("x")
+  |             ^^^^^^^^^^
+  = help: `@wire` applies to: field
+
+== ir ==
+(no IR: compilation failed)

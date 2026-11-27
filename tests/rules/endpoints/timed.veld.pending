@@ -1,0 +1,97 @@
+// Timed moves: flow ... after and transition ... since (spec/platform.md section 10). The examples
+// are the vectors: every server target and the reference evaluator must give exactly the stated
+// outcome.
+//
+// This file waits under a `.pending` suffix until a generator implements `rules_timed`; the
+// reference evaluator runs it already (crates/veld-rules/tests/platform_p2.rs). What an example
+// cannot state: the `violates rule transition: not due` message of a refusal, the due-moves
+// runner and its loaders, and `timedMoves()`.
+//
+// Every example runs at 2026-06-11T12:00:00Z, so 24 hours earlier is 2026-06-10T12:00:00Z.
+
+enum BookingStatus {
+  pending, paid, cancelled, expired
+  flow pending -> paid
+  flow pending -> cancelled after hours(24)
+  flow pending -> expired after days(1) + hours(24)
+  final paid, cancelled, expired
+}
+
+model Booking {
+  id: uuid
+  status: BookingStatus = .pending
+  pendingSince: datetime
+}
+
+service Bookings at "/bookings" {
+  post "/{id}/expire" expireBooking(id: uuid) -> Booking {
+    fact booking: Booking = id
+    transition booking.status: pending -> cancelled since booking.pendingSince
+  }
+
+  post "/{id}/archive" archiveBooking(id: uuid) -> Booking {
+    fact booking: Booking = id
+    transition booking.status: pending -> expired since booking.pendingSince
+  }
+
+  post "/{id}/pay" payBooking(id: uuid) -> Booking {
+    fact booking: Booking = id
+    transition booking.status: pending -> paid
+  }
+}
+
+// --- the due check ---
+
+example "a booking that has waited exactly the duration is due" {
+  given booking = { status: .pending, pendingSince: "2026-06-10T12:00:00Z" }
+  at "2026-06-11T12:00:00Z"
+  expireBooking(id: booking.id) -> ok
+}
+
+example "a booking that has waited one millisecond less is not due" {
+  given booking = { status: .pending, pendingSince: "2026-06-10T12:00:00.001Z" }
+  at "2026-06-11T12:00:00Z"
+  expireBooking(id: booking.id) -> InvalidTransition { field: "status", from: "pending", to: "cancelled" }
+}
+
+example "a booking that has waited far longer is due" {
+  given booking = { status: .pending, pendingSince: "2026-05-01T00:00:00Z" }
+  at "2026-06-11T12:00:00Z"
+  expireBooking(id: booking.id) -> ok
+}
+
+example "a booking whose since is in the future is not due" {
+  given booking = { status: .pending, pendingSince: "2026-06-12T12:00:00Z" }
+  at "2026-06-11T12:00:00Z"
+  expireBooking(id: booking.id) -> InvalidTransition { from: "pending", to: "cancelled" }
+}
+
+// --- the state is checked as before ---
+
+example "a booking in another state is refused whatever its clock says" {
+  given booking = { status: .paid, pendingSince: "2026-05-01T00:00:00Z" }
+  at "2026-06-11T12:00:00Z"
+  expireBooking(id: booking.id) -> InvalidTransition { from: "paid", to: "cancelled" }
+}
+
+// --- a second timed edge from the same state ---
+
+example "the longer edge from the same state is not due yet" {
+  given booking = { status: .pending, pendingSince: "2026-06-10T12:00:00Z" }
+  at "2026-06-11T12:00:00Z"
+  archiveBooking(id: booking.id) -> InvalidTransition { from: "pending", to: "expired" }
+}
+
+example "the longer edge is due after its own duration" {
+  given booking = { status: .pending, pendingSince: "2026-06-09T12:00:00Z" }
+  at "2026-06-11T12:00:00Z"
+  archiveBooking(id: booking.id) -> ok
+}
+
+// --- an ordinary edge from the same state does not look at the clock ---
+
+example "an ordinary edge ignores the time" {
+  given booking = { status: .pending, pendingSince: "2026-06-12T12:00:00Z" }
+  at "2026-06-11T12:00:00Z"
+  payBooking(id: booking.id) -> ok
+}

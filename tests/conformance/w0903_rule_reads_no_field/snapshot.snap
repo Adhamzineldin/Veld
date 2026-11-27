@@ -1,0 +1,248 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+warning[W0903]: rule `alwaysTrue` reads no field of `Constant`
+ --> app/app.veld:5:8
+  |
+5 |   rule alwaysTrue: 1 < 2
+  |        ^^^^^^^^^^
+  = help: a rule that depends on no field is always true or always false
+
+warning[W0903]: rule `onlyConst` reads no field of `Constant`
+ --> app/app.veld:6:8
+  |
+6 |   rule onlyConst: LIMIT > 2
+  |        ^^^^^^^^^
+  = help: a rule that depends on no field is always true or always false
+
+== ir ==
+{
+  "ir_version": "1.1",
+  "packages": [
+    {
+      "id": 0,
+      "name": "app",
+      "kind": "service"
+    }
+  ],
+  "decls": [
+    {
+      "id": 0,
+      "package": 0,
+      "module": "app",
+      "name": "Constant",
+      "qualified": "app:app.Constant",
+      "sig": "veld:app/Constant@b150ee288d140daf",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 3,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "n",
+          "wire": "n",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 4,
+            "col": 3
+          }
+        }
+      ],
+      "rules": [
+        {
+          "name": "alwaysTrue",
+          "id": "veld:app/Constant.alwaysTrue@23a2a16830cfc3ad",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "lt",
+                "l": {
+                  "t": {
+                    "scalar": "int"
+                  },
+                  "e": {
+                    "lit": {
+                      "int": 1
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "int"
+                  },
+                  "e": {
+                    "lit": {
+                      "int": 2
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 5,
+            "col": 8
+          }
+        },
+        {
+          "name": "onlyConst",
+          "id": "veld:app/Constant.onlyConst@6df74fd389c8967a",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "gt",
+                "l": {
+                  "t": {
+                    "scalar": "int"
+                  },
+                  "e": {
+                    "lit": {
+                      "int": 3
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "int"
+                  },
+                  "e": {
+                    "lit": {
+                      "int": 2
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 6,
+            "col": 8
+          }
+        },
+        {
+          "name": "readsField",
+          "id": "veld:app/Constant.readsField@9d6a82702d31f202",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "lt",
+                "l": {
+                  "t": {
+                    "scalar": "int"
+                  },
+                  "e": {
+                    "path": {
+                      "root": "self",
+                      "steps": [
+                        {
+                          "name": "n",
+                          "wire": "n",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "int"
+                  },
+                  "e": {
+                    "lit": {
+                      "int": 3
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "n"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 7,
+            "col": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "package": 0,
+      "module": "app",
+      "name": "LIMIT",
+      "qualified": "app:app.LIMIT",
+      "sig": "veld:app/LIMIT@df503a431b5c7e7d",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 1,
+        "col": 7
+      },
+      "kind": "const",
+      "type": {
+        "scalar": "int"
+      },
+      "value": {
+        "lit": "int",
+        "value": 3
+      }
+    }
+  ],
+  "services": [],
+  "consumes": {}
+}

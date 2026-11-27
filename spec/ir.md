@@ -14,7 +14,7 @@ The Rust types live in `crates/veld-ir`. Their JSON form, `veld debug ir` and th
 
 ```jsonc
 {
-  "ir_version": "1.0",
+  "ir_version": "1.1",
   "packages": [ { "id": 0, "name": "orders", "kind": "service" | "library" | "registry" | "prelude" } ],
   "decls":    [ Decl, ... ],          // arena; DeclId = index
   "services": [ Service, ... ],       // arena; ServiceId = index
@@ -37,6 +37,10 @@ Decl = {
 Model  = { "kind": "model", "parent": DeclId|null, "fields": [Field] }  // fields = own + inherited, parent first
 Error  = { "kind": "error", "default_status": 404|null, "fields": [Field] }
 Enum   = { "kind": "enum", "variants": [ { "name": "paid", "wire": "PAID", "docs": .., "deprecated": .. } ] }
+                                                          // state machines (spec/rules.md §10.4); both keys omitted when empty:
+Enum  += { "flows": [ { "from": "pending", "to": "paid" } ],   // variant names, first declaration order, no duplicates
+                                                                //   a flow may add "emits": DeclId (spec/events.md §11), omitted when absent
+           "finals": [ "cancelled" ] }                          // variant names, declaration order
 Union  = { "kind": "union", "discriminator": "kind", "arms": [ { "label": "card", "decl": DeclId } ] }
 Const  = { "kind": "const", "type": Type, "value": Literal }
 Field  = { "name": "firstName", "wire": "first_name", "type": Type, "optional": false,
@@ -72,9 +76,137 @@ Endpoint = {
 Auth = { "kind": "none|bearer|basic|api_key", "header": "X-API-Key"|null }
 ```
 
+### 3.1 Endpoint rules, service facts and examples
+
+Three additions carry endpoint rules (`spec/rules.md` §9) and examples (§12). Each key is **omitted from the JSON when empty or absent**, so the IR of a contract without them is unchanged:
+
+```jsonc
+Endpoint += { "rules": EndpointRules }                    // facts, requires and ensures of the endpoint block
+EndpointRules += { "transition": EndpointTransition }         // omitted when absent; spec/rules.md §10.4
+Service  += { "facts": [ ServiceFact ],                   // one loader method per fact name, sorted by name
+              "rules_digest": "3fa9c2e1b7d04a55" }        // spec/rules.md §9.7
+Ir       += { "examples": [ Example ] }                   // spec/rules.md §12
+```
+
+`EndpointRules`, `ServiceFact`, `Example` and `ExampleValue` (`json`, `ref`, `object`, `list`) are defined in `spec/rules.md` §13.1 and described by `spec/ir.d.ts`. An endpoint with `rules` uses the feature `rules_endpoint`; examples need no feature. An enum with `flows`, or an endpoint with a `transition`, uses the feature `rules_transitions`; a generator that cannot represent it reports `E0801` at the first flow or transition.
+
+### 3.2 Policies, the principal and `allow`
+
+Three more keys carry policies (`spec/rules.md` §11), each **omitted from the JSON when empty or absent**:
+
+```jsonc
+Ir            += { "policies": [ Policy ] }                          // sorted by qualified name
+Service       += { "principal": { "decl": DeclId, "name": "user" } } // the principal of the service's package
+EndpointRules += { "allows": [ { "policy": 0, "args": [Expr], "reads": ["id"], "origin": Origin } ] }
+                                                                     // in source order; "policy" indexes Ir.policies
+Policy         = { "name", "package", "module", "qualified", "id": "veld:<package>/<Policy>@<hex16>",
+                   "params": [ { "name", "type": Type } ],
+                   "clauses": [ { "effect": "permit" | "forbid", "expr": Expr, "message": "…" | null, "origin": Origin } ],
+                   "docs", "origin" }
+```
+
+In a policy's expressions a parameter is the root `{ "param": name }`; in an endpoint block the caller is the root `"principal"`. An endpoint with an `allow` uses the feature `rules_policies`; a generator that cannot represent it reports `E0801` at the first `allow`. A policy that no endpoint uses needs no feature. An endpoint with an `allow` also declares `Forbidden` among its `errors`.
+
+### 3.3 Events
+
+Events, channels, `publishes` and `subscribes` are described in `spec/events.md` §13. Every key is **omitted from the JSON when empty or absent**: `Decl.kind` `"event"` (with `fields`, `rules`, `rules_digest`), `Ir.channels`, `Service.publishes`, `Service.subscriptions`, and in an `Example` the keys `event` and `expect`. An example of the event form has no `service`, `endpoint` or `outcome`. `Service.prefix` is `""` for a service without `at`. A `Channel` has `"retry": { "max": 5, "backoff": "fixed" | "exponential" }`, `"dead_letter": true` and `"ordered": true` for `@retry`, `@deadLetter` and `@ordered` (`spec/events.md` §10.2), each omitted when absent, and an event example's `expect` entry has `"once": true` for `called once`. A service that publishes or subscribes to a channel with one of the three annotations uses the opt-in feature `events_delivery` (`spec/events.md` §10.8); a generator that does not declare it reports `E0801` at the name of that channel. A flow gains `"emits": DeclId` and an endpoint's `transition` gains `"emits": [ { "event": DeclId, "channel": <index into Ir.channels> } ]`, and a call example gains `"emitted": [DeclId]` (`[]` for `expect not emitted`), each omitted when absent (`spec/events.md` §11, §13). A service with an endpoint whose `transition` has `emits` uses the opt-in feature `events_outbox`; a generator that does not declare it reports `E0801` at that `transition`. A service with `publishes` or `subscriptions` uses the feature `events`; a generator that cannot represent it reports `E0801` at the first such line. `Service.publishes` is a list of `{ "channel": <index>, "origin": Origin }`, one entry per channel in source order; the origin is the position of the channel name in its `publishes` line, so that the first one is where `E0801` points.
+
+### 3.4 Rolling a rule out
+
+A `Rule` (an invariant of a model, an error or an event), an `EndpointRequire` and an `EndpointEnsure` carry `"rollout": "audit"` when the source has `@rollout(audit)` (`spec/rules.md` §17.1). The key is **omitted from the JSON when the rule is enforced**, so the IR of a contract without the annotation is unchanged. The rule id and the signature of the declaration do not depend on it. A service that reaches an audited invariant (of a model or an error its endpoints reach) or has an audited `require` or `ensure` uses the feature `rules_rollout`; so does a service that publishes or subscribes to a channel whose event has an audited invariant, on the event or on a declaration the event reaches (`spec/rules.md` §17.1; a client generates nothing for events and is not concerned); a generator that does not declare it reports `E0801` at the first audited rule. The `rules_digest` of a service and of an event covers only the invariants that are enforced, and a service whose reached invariants are all audited has none.
+
+### 3.5 Versions and idempotent endpoints
+
+`@version` and `@idempotent` (`spec/rules.md` §11.7 to §11.9) add four keys, each **omitted from the JSON when absent**, so the IR of a contract without the annotations is unchanged:
+
+```jsonc
+Field         += { "version": true }                       // the @version field of a model (never false: the key is left out)
+EndpointRules += { "version": { "id": "veld:<pkg>/<Service>.<endpoint>.version@<hex16>",
+                                "fact": "room", "field": "revision", "wire": "rev", "origin": Origin } }
+Endpoint      += { "idempotency": { "header": "Idempotency-Key", "required": false, "caller": true, "origin": Origin } }
+Endpoint      += { "saga": { "steps": [ { "name", "call": SagaCall, "compensate": SagaCall (absent when none), "origin" } ], "timeout_ms": "300000", "passes": [DeclId] (absent when empty) } }
+SagaCall      = { "service": ServiceId, "endpoint": string, "args": [ { "name": param, "value": Expr | { "object": [ { "name", "wire", "value": same } ] } } ] }
+Example       += { "saga": { "steps": [ { "step", "answer" } ], "undos": [ .. ], "expect": { "compensated": [string] } | "stuck" } }   // answer: "unavailable" | { "answer": ExampleOutcome }
+Example       += { "if_match": "any" | { "version": "3" },
+                   "key": { "value": "k-1", "store": "other" | "running" | { "stored": ExampleOutcome } } }
+```
+
+A derived field (`spec/rules.md` §17.2: `total: decimal = subtotal - discount`) adds two keys to `Field`, each **omitted when absent**, so the IR of a contract without derived fields is the same bytes. The feature `rules_derived` is opt-in: a generator that does not declare it reports `E0801` at the first derived field.
+
+```jsonc
+Field += { "derived": Expr,                                 // the expression, typed as in a rule; the type of the field
+           "derived_id": "veld:<pkg>/<Decl>.<wire>@<hex16>" } // the identity of §17.2; an inherited field keeps the id of its parent
+```
+`Endpoint.saga` is the body of a `saga post` endpoint (`spec/platform.md` sections 17 and 18); it is omitted when absent, so the IR of a contract without a saga is unchanged. A step is read in an argument as `{ "fact": "<step name>" }` and a parameter as `{ "param": .. }`. The feature `sagas` is opt-in. A saga endpoint also has `idempotency` with `required: true` and `SagaFailed` (502), `Conflict` and `ValidationError` among its errors. No signature depends on a saga.
+
+`EndpointRules.version` is the guard: the first fact, in declaration order, whose type is a model with a `version` field (an optional fact too: when it is absent there is nothing to compare). `id` is the rule id of §11.9; `field` and `wire` name the version field of the fact's model. `Idempotency.caller` is true when the endpoint's effective auth is not `none`: the scope of a key then includes the caller. `ExampleKey.store` is left out when the line is the key alone (the store holds nothing for it). The errors of the two features are in `Endpoint.errors` like any other: `PreconditionFailed` (412) with a guard, `Conflict` (409) with `@idempotent`, and `ValidationError` (422) with either, because a malformed header is refused with it. They are not declared by the author and they appear in the IR only when a contract reaches them, like `InvalidTransition`. No declaration signature and no operation signature depends on either annotation.
+
+A service uses the feature `rules_version` when an endpoint has a guard **or** answers with a model that has a `version` field (the `ETag`), and `idempotency` when an endpoint has `idempotency`. Both are opt-in, like `rules_rollout`: `Capabilities::all_except` does not hand them out and a generator adds them with `Capabilities::with` once it implements them; until then it reports `E0801` at the first use (the fact of a guard, the endpoint that only owes an `ETag`, the `@idempotent` line). A guard is not a statement: an endpoint that has only a guard and no other statement does not use `rules_endpoint` on that account (a guard needs a fact, so it always has one).
+
+### Platform P2 (`spec/platform.md` sections 10 to 13)
+
+```jsonc
+Flow               += { "after_ms": "86400000" }            // a timed edge: milliseconds as text, omitted when the edge is not timed
+EndpointTransition += { "since": [ Step ] }                  // the datetime field below the fact; omitted when the transition is not timed
+```
+
+```jsonc
+Flow           += { "flag": "shortStays" }                    // omitted when absent; also on Rule, EndpointRequire, EndpointEnsure, PolicyClause
+Example        += { "flags": [ "shortStays" ] }               // the flags that are on, sorted; omitted when empty
+Endpoint       += { "timeout_ms": "2000",                     // @timeout, milliseconds as text
+                    "slo": { "p50_ms": "80", "p90_ms": "150", "p95_ms": "200", "p99_ms": "300", "errors": "0.1" } }  // @slo, each member omitted when not stated
+```
+
+The features are `rules_flags` (any `flag`), `timeouts` (any `timeout_ms`) and `slo` (any `slo`); all three are opt-in. A flag is not part of a rule id, and a flagged invariant is left out of the rules digest. `errors` is the percent as written. The prelude error `DeadlineExceeded` (`504`, `{ timeoutMs: long }`) is in the IR only when an endpoint has `timeout_ms`.
+
+An enum with a flow that has `after_ms`, or an endpoint whose `transition` has `since`, uses the feature `rules_timed`. It is opt-in, like `rules_version`: a generator that does not declare it reports `E0801` at the first timed edge or transition. A contract without `after` and `since` has the IR it had before.
+
+### 3.6 Personal data and secrets
+
+`@pii` and `@secret` (`spec/rules.md` §19.3) add two keys to a `Field`, each **omitted from the JSON when false**, so the IR of a contract without the annotations is unchanged:
+
+```jsonc
+Field += { "pii": true }      // @pii: the field holds personal data
+Field += { "secret": true }   // @secret: the value must never be shown
+```
+
+Neither is a feature and neither changes a signature, an id or a byte on the wire. An inherited field has the flags of the field it came from.
+
+### 3.7 Message catalogs and retention
+
+Catalogs and `@retain` (`spec/platform.md` §22 and §23) add, each **omitted from the JSON when absent**:
+
+```jsonc
+Package += { "messages": { "ar": { "<key>": "<text>" } }, "messages_dir": "messages" }
+Model   += { "retain": { "after_ms": "2592000000", "since": "checkedOutAt", "then": "delete" | "anonymize" } }
+```
+
+`messages` is sorted by language and by key; `messages_dir` is the directory relative to the member, so that `E0801` can name `<messages_dir>/<tag>.toml`. `retain.after_ms` is a string like every `long`, and `since` is the wire name of the field. A member with catalogs uses the feature `messages`; a server of a member with a retained model uses `retention` (a client does not). Both are opt-in. Neither changes a signature or an id. `veld_ir::message_keys` gives the message key of a rule id, and `Ir::retention_plan` is the list every generator builds `retentionPlan` from.
+
+### 3.8 Platform P1: visibility, tenancy, audit and limits
+
+`spec/platform.md` sections 2 to 5 add, each **omitted from the JSON when absent** (a contract that uses none of them keeps its IR, its ids and its digests):
+
+```jsonc
+Endpoint += { "limit": { "count": 10, "per": "minute", "by": "user" } }   // @limit; per: second | minute | hour | day, by: user | tenant | ip
+Endpoint += { "audited": true }               // @audited, on the endpoint or on its service; omitted when false
+Field += { "tenant": true,                       // @tenant: set by the server, never by the caller
+           "tenant_id": "veld:app/Booking.tenant@4d83fde944ed8600" }   // present exactly when `tenant` is
+Field += { "visible": Expr,                 // @visible(when: e): bool; roots are `self`, `principal` and `now`
+           "visible_principal": DeclId }    // the principal model the expression was checked against; present exactly when `visible` is
+```
+
+```jsonc
+ExampleValue += { "absent": true }   // `field: absent` in a pattern after `ok` or an error: the member is not in the answer
+```
+
+The feature of `audited` is `audit` (opt-in, not asked of a client); the feature of `limit` is `limits` (opt-in, asked of a client too: it waits when it is refused). An endpoint with a limit declares `429 TooManyRequests`. `tenant_id` is computed in `veld-compiler::signature` (`spec/platform.md` §9.1) and is in no signature. The feature is `tenancy` (opt-in; a client is asked when an endpoint returns a tenant-scoped model): any field with `tenant`, and any fact whose type reaches one. A rule that reads a `@tenant` field has `reads_readonly`, as for a `@readonly` field.
+
+`visible` is a typed rule expression like the body of an invariant, with three roots: `self` (the fields of the declaration), `principal` and `now`. It is not part of any signature or id. `visible_principal` is the model of the principal of the package that declared the field: the spec's `visible` alone cannot say which principal type the caller it reads is, and a server whose own principal is another model has no caller of that type (section 2 of the platform spec). A field that a declaration inherits carries both keys of the field it came from. The feature is `visibility`, opt-in; a client generates nothing for it, so the gate does not ask a client.
+
 ## 4. Capabilities
 
-The compiler computes the set of features that a target needs (`Feature` enum: `unions`, `constraints`, `auth`, `headers`, `streaming_sse`, `streaming_ws`, `page`, `consts`, `bytes`, …). Before it invokes a generator, the core compares that set with the generator's declared `Capabilities`. For every feature that is used but not supported, it emits `E0801` with the span of the first use.
+The compiler computes the set of features that a target needs (`Feature` enum: `unions`, `constraints`, `auth`, `headers`, `streaming_sse`, `streaming_ws`, `page`, `consts`, `bytes`, `rules_invariants`, `rules_endpoint`, `rules_transitions`, `rules_policies`, `rules_rollout`, `rules_version`, `idempotency`, `events`, `events_delivery`, `events_outbox`, `messages`, `retention`, `visibility`, `tenancy`, `audit`, `limits`, …). A feature that changes what a rule means or what a request does (`rules_rollout`, `rules_version`, `idempotency`, `events_delivery`, `events_outbox`, `messages`, `retention`) is opt-in: `Capabilities::all_except` does not hand it out, and a generator adds it with `Capabilities::with` once it implements it. Before it invokes a generator, the core compares that set with the generator's declared `Capabilities`. For every feature that is used but not supported, it emits `E0801` with the span of the first use.
 
 ## 5. Identity signatures (normative)
 

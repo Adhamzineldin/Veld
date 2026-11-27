@@ -1,0 +1,1874 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+(none)
+
+== ir ==
+{
+  "ir_version": "1.1",
+  "packages": [
+    {
+      "id": 0,
+      "name": "app",
+      "kind": "service"
+    },
+    {
+      "id": 1,
+      "name": "veld",
+      "kind": "prelude"
+    }
+  ],
+  "decls": [
+    {
+      "id": 0,
+      "package": 0,
+      "module": "app",
+      "name": "Room",
+      "qualified": "app:app.Room",
+      "sig": "veld:app/Room@06d6025512b73495",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 9,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "fact",
+          "wire": "fact",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 10,
+            "col": 3
+          }
+        },
+        {
+          "name": "require",
+          "wire": "require",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 11,
+            "col": 3
+          }
+        },
+        {
+          "name": "ensure",
+          "wire": "ensure",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 12,
+            "col": 3
+          }
+        },
+        {
+          "name": "else",
+          "wire": "else",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 13,
+            "col": 3
+          }
+        },
+        {
+          "name": "old",
+          "wire": "old",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 14,
+            "col": 3
+          }
+        },
+        {
+          "name": "now",
+          "wire": "now",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 15,
+            "col": 3
+          }
+        },
+        {
+          "name": "result",
+          "wire": "result",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 16,
+            "col": 3
+          }
+        },
+        {
+          "name": "absent",
+          "wire": "absent",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 17,
+            "col": 3
+          }
+        },
+        {
+          "name": "returns",
+          "wire": "returns",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 18,
+            "col": 3
+          }
+        },
+        {
+          "name": "ok",
+          "wire": "ok",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 19,
+            "col": 3
+          }
+        },
+        {
+          "name": "given",
+          "wire": "given",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 20,
+            "col": 3
+          }
+        },
+        {
+          "name": "example",
+          "wire": "example",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 21,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "package": 0,
+      "module": "app",
+      "name": "Vocabulary",
+      "qualified": "app:app.Vocabulary",
+      "sig": "veld:app/Vocabulary@26aabc6a5248345c",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 5,
+        "col": 6
+      },
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "fact",
+          "wire": "fact",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "require",
+          "wire": "require",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "ensure",
+          "wire": "ensure",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "else",
+          "wire": "else",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "old",
+          "wire": "old",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "now",
+          "wire": "now",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "result",
+          "wire": "result",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "absent",
+          "wire": "absent",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "returns",
+          "wire": "returns",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "ok",
+          "wire": "ok",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "given",
+          "wire": "given",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "example",
+          "wire": "example",
+          "docs": null,
+          "deprecated": null
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "package": 0,
+      "module": "app",
+      "name": "absent",
+      "qualified": "app:app.absent",
+      "sig": "veld:app/absent@ba5d28bec9eafdaf",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 25,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "value",
+          "wire": "value",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 25,
+            "col": 16
+          }
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "package": 0,
+      "module": "app",
+      "name": "example",
+      "qualified": "app:app.example",
+      "sig": "veld:app/example@8a19f511bf139d93",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 24,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "value",
+          "wire": "value",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 24,
+            "col": 17
+          }
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "package": 0,
+      "module": "app",
+      "name": "ok",
+      "qualified": "app:app.ok",
+      "sig": "veld:app/ok@a3444c4157328b6a",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 27,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "value",
+          "wire": "value",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 27,
+            "col": 12
+          }
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "package": 0,
+      "module": "app",
+      "name": "returns",
+      "qualified": "app:app.returns",
+      "sig": "veld:app/returns@54f34811a8459ce7",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 26,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "value",
+          "wire": "value",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 26,
+            "col": 17
+          }
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "package": 1,
+      "module": "prelude",
+      "name": "Internal",
+      "qualified": "veld:prelude.Internal",
+      "sig": "veld:veld/Internal@c2b1f6bb355266e7",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 8,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 500,
+      "parent": null,
+      "fields": [
+        {
+          "name": "message",
+          "wire": "message",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 8,
+            "col": 29
+          }
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "package": 1,
+      "module": "prelude",
+      "name": "NotFound",
+      "qualified": "veld:prelude.NotFound",
+      "sig": "veld:veld/NotFound@a0eaf7a3323dce7c",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 4,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 404,
+      "parent": null,
+      "fields": [
+        {
+          "name": "resource",
+          "wire": "resource",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 4,
+            "col": 29
+          }
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "package": 1,
+      "module": "prelude",
+      "name": "ValidationError",
+      "qualified": "veld:prelude.ValidationError",
+      "sig": "veld:veld/ValidationError@7836aff24d914bea",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 6,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 422,
+      "parent": null,
+      "fields": [
+        {
+          "name": "issues",
+          "wire": "issues",
+          "type": {
+            "list": {
+              "decl": 9
+            }
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 6,
+            "col": 29
+          }
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "package": 1,
+      "module": "prelude",
+      "name": "ValidationIssue",
+      "qualified": "veld:prelude.ValidationIssue",
+      "sig": "veld:veld/ValidationIssue@253beeea259ebf75",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 9,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "path",
+          "wire": "path",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 9,
+            "col": 29
+          }
+        },
+        {
+          "name": "code",
+          "wire": "code",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 9,
+            "col": 43
+          }
+        },
+        {
+          "name": "message",
+          "wire": "message",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 9,
+            "col": 57
+          }
+        }
+      ]
+    }
+  ],
+  "services": [
+    {
+      "id": 0,
+      "package": 0,
+      "name": "Words",
+      "prefix": "/words",
+      "base_url": null,
+      "docs": null,
+      "auth": {
+        "kind": "none",
+        "header": null
+      },
+      "middleware": [],
+      "endpoints": [
+        {
+          "name": "fact",
+          "method": "GET",
+          "path": "/words/fact",
+          "sig": "veld:app/Words.fact@1d6f0339cd9e50ce",
+          "docs": null,
+          "deprecated": null,
+          "auth": {
+            "kind": "none",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "require",
+              "binding": "query",
+              "header": null,
+              "type": {
+                "scalar": "int"
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            },
+            {
+              "name": "ensure",
+              "binding": "query",
+              "header": null,
+              "type": {
+                "scalar": "int"
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            },
+            {
+              "name": "old",
+              "binding": "query",
+              "header": null,
+              "type": {
+                "scalar": "int"
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 200,
+            "type": {
+              "decl": 0
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 404,
+              "decl": 7
+            },
+            {
+              "status": 422,
+              "decl": 8
+            },
+            {
+              "status": 500,
+              "decl": 6
+            }
+          ],
+          "rules": {
+            "facts": [
+              {
+                "name": "ok",
+                "type": {
+                  "decl": 0
+                },
+                "optional": false,
+                "key": {
+                  "t": {
+                    "scalar": "int"
+                  },
+                  "e": {
+                    "path": {
+                      "root": {
+                        "param": "require"
+                      },
+                      "steps": []
+                    }
+                  }
+                },
+                "origin": {
+                  "file": "app.veld",
+                  "line": 31,
+                  "col": 10
+                }
+              },
+              {
+                "name": "given",
+                "type": {
+                  "decl": 0
+                },
+                "optional": false,
+                "key": {
+                  "t": {
+                    "scalar": "int"
+                  },
+                  "e": {
+                    "path": {
+                      "root": {
+                        "param": "ensure"
+                      },
+                      "steps": []
+                    }
+                  }
+                },
+                "origin": {
+                  "file": "app.veld",
+                  "line": 32,
+                  "col": 10
+                }
+              },
+              {
+                "name": "example",
+                "type": {
+                  "decl": 0
+                },
+                "optional": true,
+                "key": null,
+                "origin": {
+                  "file": "app.veld",
+                  "line": 33,
+                  "col": 10
+                }
+              },
+              {
+                "name": "absent",
+                "type": {
+                  "decl": 0
+                },
+                "optional": false,
+                "key": {
+                  "t": {
+                    "scalar": "int"
+                  },
+                  "e": {
+                    "path": {
+                      "root": {
+                        "param": "old"
+                      },
+                      "steps": []
+                    }
+                  }
+                },
+                "origin": {
+                  "file": "app.veld",
+                  "line": 34,
+                  "col": 10
+                }
+              }
+            ],
+            "requires": [
+              {
+                "name": "old",
+                "id": "veld:app/Words.fact.old@fe425ae0a439c287",
+                "expr": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "and",
+                      "l": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "bin": {
+                            "op": "gt",
+                            "l": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "path": {
+                                  "root": {
+                                    "param": "require"
+                                  },
+                                  "steps": []
+                                }
+                              }
+                            },
+                            "r": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "lit": {
+                                  "int": 0
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "bin": {
+                            "op": "gt",
+                            "l": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "path": {
+                                  "root": {
+                                    "param": "old"
+                                  },
+                                  "steps": []
+                                }
+                              }
+                            },
+                            "r": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "lit": {
+                                  "int": 0
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "message": null,
+                "reads": [
+                  "require",
+                  "old"
+                ],
+                "else": null,
+                "docs": null,
+                "origin": {
+                  "file": "app.veld",
+                  "line": 35,
+                  "col": 13
+                }
+              },
+              {
+                "name": "else",
+                "id": "veld:app/Words.fact.else@7c44aa37e60619ea",
+                "expr": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "gt",
+                      "l": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "path": {
+                            "root": {
+                              "param": "ensure"
+                            },
+                            "steps": []
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "lit": {
+                            "int": 0
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "message": "named else",
+                "reads": [
+                  "ensure"
+                ],
+                "else": null,
+                "docs": null,
+                "origin": {
+                  "file": "app.veld",
+                  "line": 36,
+                  "col": 13
+                }
+              },
+              {
+                "name": null,
+                "id": "veld:app/Words.fact.require@350a3830935eda98",
+                "expr": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "implies",
+                      "l": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "has": {
+                            "root": {
+                              "fact": "example"
+                            },
+                            "steps": []
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "bin": {
+                            "op": "eq",
+                            "l": {
+                              "t": {
+                                "scalar": "string"
+                              },
+                              "e": {
+                                "path": {
+                                  "root": {
+                                    "fact": "example"
+                                  },
+                                  "steps": [
+                                    {
+                                      "name": "fact",
+                                      "wire": "fact",
+                                      "optional": false
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            "r": {
+                              "t": {
+                                "scalar": "string"
+                              },
+                              "e": {
+                                "path": {
+                                  "root": {
+                                    "fact": "ok"
+                                  },
+                                  "steps": [
+                                    {
+                                      "name": "fact",
+                                      "wire": "fact",
+                                      "optional": false
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "message": null,
+                "reads": [],
+                "else": null,
+                "docs": null,
+                "origin": {
+                  "file": "app.veld",
+                  "line": 37,
+                  "col": 5
+                }
+              }
+            ],
+            "ensures": [
+              {
+                "name": "now",
+                "id": "veld:app/Words.fact.now@b963d6f36ac4eac7",
+                "expr": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "ge",
+                      "l": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "path": {
+                            "root": "result",
+                            "steps": [
+                              {
+                                "name": "old",
+                                "wire": "old",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "lit": {
+                            "int": 0
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "message": null,
+                "reads": [],
+                "docs": null,
+                "origin": {
+                  "file": "app.veld",
+                  "line": 38,
+                  "col": 12
+                }
+              },
+              {
+                "name": "returns",
+                "id": "veld:app/Words.fact.returns@d19082ef4bad6ac5",
+                "expr": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "eq",
+                      "l": {
+                        "t": {
+                          "scalar": "string"
+                        },
+                        "e": {
+                          "old": {
+                            "t": {
+                              "scalar": "string"
+                            },
+                            "e": {
+                              "path": {
+                                "root": {
+                                  "fact": "ok"
+                                },
+                                "steps": [
+                                  {
+                                    "name": "fact",
+                                    "wire": "fact",
+                                    "optional": false
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "string"
+                        },
+                        "e": {
+                          "old": {
+                            "t": {
+                              "scalar": "string"
+                            },
+                            "e": {
+                              "path": {
+                                "root": {
+                                  "fact": "given"
+                                },
+                                "steps": [
+                                  {
+                                    "name": "fact",
+                                    "wire": "fact",
+                                    "optional": false
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "message": null,
+                "reads": [],
+                "docs": null,
+                "origin": {
+                  "file": "app.veld",
+                  "line": 39,
+                  "col": 12
+                }
+              },
+              {
+                "name": "example",
+                "id": "veld:app/Words.fact.example@b9039a08f54e1b9b",
+                "expr": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "eq",
+                      "l": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "path": {
+                            "root": "result",
+                            "steps": [
+                              {
+                                "name": "require",
+                                "wire": "require",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "path": {
+                            "root": {
+                              "param": "require"
+                            },
+                            "steps": []
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "message": null,
+                "reads": [
+                  "require"
+                ],
+                "docs": null,
+                "origin": {
+                  "file": "app.veld",
+                  "line": 40,
+                  "col": 12
+                }
+              }
+            ]
+          },
+          "origin": {
+            "file": "app.veld",
+            "line": 30,
+            "col": 15
+          }
+        },
+        {
+          "name": "given",
+          "method": "GET",
+          "path": "/words/given",
+          "sig": "veld:app/Words.given@895bf97239c388e8",
+          "docs": null,
+          "deprecated": null,
+          "auth": {
+            "kind": "none",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "given",
+              "binding": "query",
+              "header": null,
+              "type": {
+                "scalar": "int"
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 200,
+            "type": {
+              "decl": 0
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 422,
+              "decl": 8
+            },
+            {
+              "status": 500,
+              "decl": 6
+            }
+          ],
+          "origin": {
+            "file": "app.veld",
+            "line": 43,
+            "col": 16
+          }
+        },
+        {
+          "name": "ok",
+          "method": "GET",
+          "path": "/words/ok",
+          "sig": "veld:app/Words.ok@3f306aedbae07332",
+          "docs": null,
+          "deprecated": null,
+          "auth": {
+            "kind": "none",
+            "header": null
+          },
+          "middleware": [],
+          "params": [],
+          "success": {
+            "status": 200,
+            "type": {
+              "decl": 0
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 500,
+              "decl": 6
+            }
+          ],
+          "origin": {
+            "file": "app.veld",
+            "line": 45,
+            "col": 13
+          }
+        },
+        {
+          "name": "absent",
+          "method": "GET",
+          "path": "/words/absent",
+          "sig": "veld:app/Words.absent@4de7ed21353f6a50",
+          "docs": null,
+          "deprecated": null,
+          "auth": {
+            "kind": "none",
+            "header": null
+          },
+          "middleware": [],
+          "params": [],
+          "success": {
+            "status": 200,
+            "type": {
+              "decl": 0
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 500,
+              "decl": 6
+            }
+          ],
+          "origin": {
+            "file": "app.veld",
+            "line": 47,
+            "col": 17
+          }
+        },
+        {
+          "name": "example",
+          "method": "GET",
+          "path": "/words/example",
+          "sig": "veld:app/Words.example@a888b35709233972",
+          "docs": null,
+          "deprecated": null,
+          "auth": {
+            "kind": "none",
+            "header": null
+          },
+          "middleware": [],
+          "params": [],
+          "success": {
+            "status": 200,
+            "type": {
+              "decl": 0
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 500,
+              "decl": 6
+            }
+          ],
+          "origin": {
+            "file": "app.veld",
+            "line": 49,
+            "col": 18
+          }
+        }
+      ],
+      "facts": [
+        {
+          "name": "absent",
+          "type": {
+            "decl": 0
+          },
+          "key": {
+            "scalar": "int"
+          },
+          "optional": false
+        },
+        {
+          "name": "example",
+          "type": {
+            "decl": 0
+          },
+          "key": null,
+          "optional": true
+        },
+        {
+          "name": "given",
+          "type": {
+            "decl": 0
+          },
+          "key": {
+            "scalar": "int"
+          },
+          "optional": false
+        },
+        {
+          "name": "ok",
+          "type": {
+            "decl": 0
+          },
+          "key": {
+            "scalar": "int"
+          },
+          "optional": false
+        }
+      ],
+      "origin": {
+        "file": "app.veld",
+        "line": 29,
+        "col": 9
+      }
+    }
+  ],
+  "consumes": {},
+  "examples": [
+    {
+      "name": "an endpoint called given",
+      "package": 0,
+      "service": 0,
+      "endpoint": "given",
+      "givens": [],
+      "principal": null,
+      "now": null,
+      "args": [
+        {
+          "param": "given",
+          "value": {
+            "json": 1
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "ok": null
+      },
+      "docs": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 58,
+        "col": 1
+      }
+    },
+    {
+      "name": "example",
+      "package": 0,
+      "service": 0,
+      "endpoint": "example",
+      "givens": [],
+      "principal": null,
+      "now": null,
+      "args": [],
+      "returns": null,
+      "outcome": {
+        "ok": null
+      },
+      "docs": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 70,
+        "col": 1
+      }
+    },
+    {
+      "name": "ok",
+      "package": 0,
+      "service": 0,
+      "endpoint": "ok",
+      "givens": [],
+      "principal": null,
+      "now": null,
+      "args": [],
+      "returns": null,
+      "outcome": {
+        "ok": null
+      },
+      "docs": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 66,
+        "col": 1
+      }
+    },
+    {
+      "name": "ok, absent and returns are names",
+      "package": 0,
+      "service": 0,
+      "endpoint": "absent",
+      "givens": [],
+      "principal": null,
+      "now": null,
+      "args": [],
+      "returns": {
+        "object": [
+          {
+            "name": "ok",
+            "wire": "ok",
+            "value": {
+              "json": 1
+            }
+          },
+          {
+            "name": "returns",
+            "wire": "returns",
+            "value": {
+              "json": 2
+            }
+          },
+          {
+            "name": "absent",
+            "wire": "absent",
+            "value": {
+              "json": 3
+            }
+          }
+        ]
+      },
+      "outcome": {
+        "ok": {
+          "object": [
+            {
+              "name": "ok",
+              "wire": "ok",
+              "value": {
+                "json": 1
+              }
+            }
+          ]
+        }
+      },
+      "docs": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 62,
+        "col": 1
+      }
+    },
+    {
+      "name": "words",
+      "package": 0,
+      "service": 0,
+      "endpoint": "fact",
+      "givens": [
+        {
+          "fact": "ok",
+          "value": null
+        },
+        {
+          "fact": "given",
+          "value": {
+            "object": [
+              {
+                "name": "fact",
+                "wire": "fact",
+                "value": {
+                  "json": "x"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": null,
+      "now": null,
+      "args": [
+        {
+          "param": "require",
+          "value": {
+            "json": 1
+          }
+        },
+        {
+          "param": "ensure",
+          "value": {
+            "json": 1
+          }
+        },
+        {
+          "param": "old",
+          "value": {
+            "json": 1
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "error": {
+          "decl": 7,
+          "pattern": null
+        }
+      },
+      "docs": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 52,
+        "col": 1
+      }
+    }
+  ]
+}

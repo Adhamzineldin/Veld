@@ -29,6 +29,16 @@ final class WsConnection implements WsSession<Json, Json> {
   private final List<String> early = new ArrayList<>();
   private boolean ready;
   private volatile boolean closed;
+  // #if rules
+  private HandlerHooks rulesHooks;
+  // #endif
+  // #if flags
+  private volatile Flags.View flagView;
+  // #endif
+  // #if shapes
+  private HandlerHooks shapeHooks;
+  private volatile Platform.State platformState;
+  // #endif
 
   WsConnection(
       EndpointSpec spec,
@@ -50,6 +60,28 @@ final class WsConnection implements WsSession<Json, Json> {
     this.incomingSchema = in;
   }
 
+  // #if rules
+  /** Gives the connection the hooks that carry the rule output mode and the violation hook. */
+  void rules(HandlerHooks hooks) {
+    this.rulesHooks = hooks;
+  }
+
+  // #endif
+  // #if shapes
+  /** Gives the connection what shapes its messages: the hooks and the state of the request (the caller and the clock). */
+  void platform(HandlerHooks hooks, Platform.State state) {
+    this.shapeHooks = hooks;
+    this.platformState = state;
+  }
+
+  // #endif
+  // #if flags
+  /** Gives the connection the flags the request read, for the messages that arrive on the socket's own thread. */
+  void flags(Flags.View view) {
+    this.flagView = view;
+  }
+
+  // #endif
   /** Starts listening; frames are held back until {@link #ready()}. */
   void attach() {
     socket.onMessage(this::onText);
@@ -83,6 +115,10 @@ final class WsConnection implements WsSession<Json, Json> {
   }
 
   private void accept(String text) {
+    // #if flags
+    Flags.View enclosing = Flags.install(flagView);
+    try {
+    // #endif
     if (closed) {
       return;
     }
@@ -103,7 +139,42 @@ final class WsConnection implements WsSession<Json, Json> {
       fail(validation(issues));
       return;
     }
-    inbox.add(Wire.prepare(incomingSchema, raw, Wire.Mode.REQUEST));
+    // #if rules_no_derived
+    if (rulesHooks != null && validateRequests) {
+      VeldResponse broken = RuleWalk.messageFailure(
+          spec, rulesHooks, incomingSchema, Wire.prepare(incomingSchema, raw, Wire.Mode.REQUEST), std);
+      if (broken != null) {
+        fail(broken);
+        return;
+      }
+    }
+    // #endif
+    // #if no_derived
+    inbox.add(Wire.fillReadonly(incomingSchema, Wire.prepare(incomingSchema, raw, Wire.Mode.REQUEST)));
+    // #endif
+    // #if derived
+    Json prepared = Derive.input(incomingSchema, Wire.prepare(incomingSchema, raw, Wire.Mode.REQUEST), "message");
+    if (rulesHooks != null && validateRequests) {
+      VeldResponse broken = RuleWalk.messageFailure(spec, rulesHooks, incomingSchema, prepared, std);
+      if (broken != null) {
+        fail(broken);
+        return;
+      }
+    } else {
+      VeldResponse broken = rulesHooks == null ? null : RuleWalk.derivedFailure(spec, rulesHooks, std);
+      Derive.take();
+      if (broken != null) {
+        fail(broken);
+        return;
+      }
+    }
+    inbox.add(Wire.fillReadonly(incomingSchema, prepared));
+    // #endif
+    // #if flags
+    } finally {
+      Flags.restore(enclosing);
+    }
+    // #endif
   }
 
   private void invalid(Issue issue) {
@@ -198,12 +269,40 @@ final class WsConnection implements WsSession<Json, Json> {
       throw new IllegalStateException(spec.name() + ": this endpoint sends no messages");
     }
     Json wire = Wire.prepare(spec.success(), message, Wire.Mode.RESPONSE);
+    // #if derived
+    wire = Derive.output(spec.success(), wire);
+    // #endif
     if (validateResponses) {
       List<Issue> issues = Wire.validate(spec.success(), wire, "$", false);
       if (!issues.isEmpty()) {
         throw new IllegalStateException(spec.name() + ": message failed validation: " + issues);
       }
     }
+    // #if rules
+    if (rulesHooks != null) {
+      try {
+        RuleWalk.checkItem(spec, rulesHooks, wire);
+      } catch (RuleWalk.Rejected rejected) {
+        fail(Router.problem(std.internal(), "Internal", 500, spec.sig(), Json.object().build()));
+        throw rejected;
+      }
+    }
+    // #endif
+    // #if tenancy
+    if (platformState != null) {
+      try {
+        Platform.tenantItem(shapeHooks, spec, wire, platformState.ctx());
+      } catch (RuleWalk.Rejected rejected) {
+        fail(Router.problem(std.internal(), "Internal", 500, spec.sig(), Json.object().build()));
+        throw rejected;
+      }
+    }
+    // #endif
+    // #if visibility
+    if (platformState != null) {
+      wire = Platform.shown(spec.success(), wire, platformState.ctx());
+    }
+    // #endif
     socket.send("{\"data\":" + Wire.canonicalOf(spec.success(), wire) + "}");
   }
 

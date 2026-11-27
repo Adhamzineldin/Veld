@@ -1,0 +1,41 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+assertion_line: 195
+---
+== diagnostics ==
+error[E1005]: event `A` has no field `nope`, the key of channel `NoSuchField`
+ --> app/app.veld:9:37
+  |
+9 | channel NoSuchField { carries A key nope }
+  |                                     ^^^^
+
+error[E1005]: the key `n` must be required, but it is optional in `A`
+ --> app/app.veld:10:37
+   |
+10 | channel OptionalKey { carries A key n }
+   |                                     ^
+
+error[E1005]: the key `f` has type `float`; a key is a `string`, `uuid`, `int` or `long`
+ --> app/app.veld:11:36
+   |
+11 | channel BadKeyType { carries A key f }
+   |                                    ^
+
+error[E1005]: the key `id` has another type in `B`
+ --> app/app.veld:12:39
+   |
+12 | channel MixedTypes { carries A, B key id }
+   |                                       ^^
+
+error[E1005]: channel `TwoKeys` has more than one `key`
+ --> app/app.veld:13:36
+   |
+13 | channel TwoKeys { carries A key id key name }
+   |                                    ^^^^^^^^
+ --> app/app.veld:13:29
+   |
+13 | channel TwoKeys { carries A key id key name }
+   |                             ------ first `key` here
+
+== ir ==
+(no IR: compilation failed)

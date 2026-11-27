@@ -1,0 +1,13 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0924]: `ensure` is not allowed on an endpoint whose success is a stream
+ --> app/app.veld:7:5
+  |
+7 |     ensure true
+  |     ^^^^^^^^^^^
+  = help: a stream has no single result to check
+
+== ir ==
+(no IR: compilation failed)

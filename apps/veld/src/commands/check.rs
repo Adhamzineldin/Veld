@@ -6,7 +6,7 @@ use std::time::Instant;
 
 use anyhow::Result;
 use veld_tools::lint::{self, LintConfig, LintIssue, LintLevel};
-use veld_tools::{DepsFormat, deps};
+use veld_tools::{DepsFormat, deps_with_owners};
 
 use crate::cli::{CheckArgs, GraphFormat};
 use crate::error::{Exit, user};
@@ -47,7 +47,12 @@ pub fn run(ui: &Ui, config: Option<&Path>, args: &CheckArgs) -> Result<Exit> {
         });
     };
     if let Some(format) = args.graph {
-        print!("{}", deps(&ir, deps_format(format)));
+        let owners = project
+            .members
+            .iter()
+            .map(|m| (m.name.clone(), m.owners.clone()))
+            .collect();
+        print!("{}", deps_with_owners(&ir, deps_format(format), &owners));
         return Ok(Exit::Ok);
     }
     let issues = match args.no_lint {
@@ -61,7 +66,31 @@ pub fn run(ui: &Ui, config: Option<&Path>, args: &CheckArgs) -> Result<Exit> {
             run_lint(ui, &project, &ir, &cfg, scope.as_ref())
         }
     };
-    summarize(ui, &ir, counts, &issues, args.strict, started)
+    let example_errors = run_examples(ui, &project, &ir, scope.as_ref());
+    let prove_errors = match args.prove.prove {
+        true => super::prove::check(ui, &project, &ir, scope.as_ref(), &args.prove),
+        false => 0,
+    };
+    summarize(
+        ui,
+        &ir,
+        counts,
+        &issues,
+        Failures {
+            examples: example_errors,
+            proofs: prove_errors,
+        },
+        args.strict,
+        started,
+    )
+}
+
+/// What fails a check besides compiler errors and lint errors.
+struct Failures {
+    /// `E0953`.
+    examples: usize,
+    /// `E0970` of `--prove`. `W0970` (unknown or unsupported) is never counted here.
+    proofs: usize,
 }
 
 fn deps_format(f: GraphFormat) -> DepsFormat {
@@ -108,22 +137,89 @@ pub fn render_issue(issue: &LintIssue, packages: &BTreeMap<String, String>) -> S
     )
 }
 
+/// `E0953`: an example whose left-out values cannot be filled in, or whose filled-in value
+/// breaks an invariant (`spec/rules.md` section 12.2). Prints each one and returns how many.
+fn run_examples(
+    ui: &Ui,
+    project: &veld_project::config::Project,
+    ir: &veld_ir::Ir,
+    scope: Option<&Scope>,
+) -> usize {
+    let packages = pipeline::file_packages(project);
+    let mut count = 0;
+    for ex in &ir.examples {
+        if scope.is_some_and(|s| !s.has_relative(&ex.origin.file)) {
+            continue;
+        }
+        let filled = if ex.event.is_some() {
+            veld_rules::fill_event_example(ir, ex).map(|_| ())
+        } else {
+            veld_rules::fill_example(ir, ex).map(|_| ())
+        };
+        let Err(err) = filled else {
+            continue;
+        };
+        if err.code() != "E0953" {
+            continue;
+        }
+        count += 1;
+        let file = &ex.origin.file;
+        let shown = match packages.get(file) {
+            Some(pkg) => format!("{pkg}/{file}"),
+            None => file.clone(),
+        };
+        ui.diagnostic(&format!(
+            "error[E0953]: {err}\n --> {shown}:{}:{}\n",
+            ex.origin.line, ex.origin.col
+        ));
+    }
+    count
+}
+
+/// The flags the workspace uses and how many statements each gates, one line
+/// (`spec/platform.md` section 11); `None` without flags.
+fn flags_line(ir: &veld_ir::Ir) -> Option<String> {
+    let usage = ir.flag_usage();
+    if usage.is_empty() {
+        return None;
+    }
+    let items: Vec<String> = usage
+        .iter()
+        .map(|(name, u)| format!("{name} ({})", pipeline::plural(u.total(), "statement")))
+        .collect();
+    Some(format!("flags: {}", items.join(", ")))
+}
+
 fn summarize(
     ui: &Ui,
     ir: &veld_ir::Ir,
     counts: Counts,
     issues: &[LintIssue],
+    failures: Failures,
     strict: bool,
     started: Instant,
 ) -> Result<Exit> {
+    let Failures {
+        examples: example_errors,
+        proofs: prove_errors,
+    } = failures;
     let lint_errors = issues
         .iter()
         .filter(|i| i.level == LintLevel::Error)
         .count();
     let lint_warns = issues.len() - lint_errors;
-    let failed = lint_errors > 0 || (strict && counts.warnings > 0);
+    let failed = lint_errors > 0
+        || example_errors > 0
+        || prove_errors > 0
+        || (strict && counts.warnings > 0);
     if failed {
         let mut parts = Vec::new();
+        if example_errors > 0 {
+            parts.push(pipeline::plural(example_errors, "example error"));
+        }
+        if prove_errors > 0 {
+            parts.push(pipeline::plural(prove_errors, "proof finding"));
+        }
         if lint_errors > 0 {
             parts.push(pipeline::plural(lint_errors, "lint error"));
         }
@@ -151,5 +247,11 @@ fn summarize(
             &format!("in {}", render::elapsed(started.elapsed()))
         )
     ));
+    if let Some(line) = flags_line(ir) {
+        ui.info(&line);
+    }
+    if let Some(line) = veld_tools::timed_line(ir) {
+        ui.info(&line);
+    }
     Ok(Exit::Ok)
 }

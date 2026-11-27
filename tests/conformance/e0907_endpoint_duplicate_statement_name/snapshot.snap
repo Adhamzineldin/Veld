@@ -1,0 +1,26 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0907]: statement `positive` is already declared in endpoint `create`
+ --> app/app.veld:8:13
+  |
+8 |     require positive: body.guests > 1
+  |             ^^^^^^^^
+ --> app/app.veld:7:13
+  |
+7 |     require positive: body.guests > 0
+  |             -------- first declared here
+
+error[E0907]: statement `positive` is already declared in endpoint `create`
+ --> app/app.veld:9:12
+  |
+9 |     ensure positive: result.guests > 0
+  |            ^^^^^^^^
+ --> app/app.veld:7:13
+  |
+7 |     require positive: body.guests > 0
+  |             -------- first declared here
+
+== ir ==
+(no IR: compilation failed)

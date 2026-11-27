@@ -1,7 +1,15 @@
 //! The shared generator conformance kit, for both TypeScript generators. Every fixture is
 //! generated, including the streaming ones (SSE, WebSocket, with auth, errors and parameters).
+#![allow(clippy::unwrap_used, clippy::panic)]
+use veld_codegen::{DynGenerator, GenRequest, check_capabilities};
+use veld_emit_conformance::{
+    compiled_endpoint_rules_contract, compiled_policy_contract, compiled_principal_read_contract,
+    compiled_state_machine_contract, compiled_transition_contract, compiled_unused_policy_contract,
+    ir_with_endpoint_rules, ir_with_rule,
+};
 use veld_emit_node::Node;
 use veld_emit_typescript::TypeScript;
+use veld_ir::{Feature, Ir};
 
 #[test]
 fn node_passes_the_conformance_kit() {
@@ -11,4 +19,209 @@ fn node_passes_the_conformance_kit() {
 #[test]
 fn typescript_passes_the_conformance_kit() {
     veld_emit_conformance::check_generator(&TypeScript);
+}
+
+/// Both generators enforce every rules feature (`spec/rules.md` section 8): invariants, endpoint
+/// rules, state machines and policies. The shared `check_*_are_refused` helpers still hold the
+/// Rust generator to refusing, so the support is asserted here, with a check at least as strict.
+const SUPPORTED: [Feature; 4] = [
+    Feature::RulesInvariants,
+    Feature::RulesEndpoint,
+    Feature::RulesTransitions,
+    Feature::RulesPolicies,
+];
+
+/// Every contract must pass the gate and generate, in every role, with every rules feature
+/// declared.
+fn assert_generates(generator: &dyn DynGenerator, contracts: &[Ir]) {
+    for role in generator.roles() {
+        let caps = generator.capabilities(*role);
+        for f in Feature::RULES {
+            assert_eq!(
+                caps.supports(f),
+                SUPPORTED.contains(&f),
+                "{}: `{}`",
+                role.name(),
+                f.name()
+            );
+        }
+        for ir in contracts {
+            let req = GenRequest {
+                ir,
+                role: *role,
+                services: ir.services.iter().map(|s| s.id).collect(),
+                consumes: vec![],
+                framework: None,
+            };
+            let gate = check_capabilities(ir, &req, &caps);
+            assert!(
+                gate.is_empty(),
+                "{}: the gate reported {gate:?}",
+                role.name()
+            );
+            let options = veld_codegen::with_target_name(&serde_json::Value::Null, "conformance");
+            if let Err(d) = generator.generate_dyn(&req, &options) {
+                panic!("{}: generate failed: {d:?}", role.name());
+            }
+        }
+    }
+}
+
+fn every_contract() -> Vec<Ir> {
+    vec![
+        ir_with_rule(),
+        ir_with_endpoint_rules(),
+        compiled_endpoint_rules_contract(),
+        compiled_state_machine_contract().0,
+        compiled_transition_contract().0,
+        compiled_policy_contract().0,
+        compiled_principal_read_contract().0,
+        compiled_unused_policy_contract(),
+    ]
+}
+
+#[test]
+fn typescript_and_node_enforce_every_rules_feature() {
+    assert_generates(&Node, &every_contract());
+    assert_generates(&TypeScript, &every_contract());
+}
+
+/// Events (`spec/events.md`): the Node server generates a service that publishes or subscribes (the
+/// Java and Rust servers still refuse it with `E0801`), and the TypeScript client generates the same files with and without events.
+#[test]
+fn node_generates_events_and_typescript_ignores_them() {
+    veld_emit_conformance::check_events_are_generated(&Node).unwrap();
+    veld_emit_conformance::check_events_are_ignored_by_clients(&TypeScript).unwrap();
+}
+
+/// `@retry`, `@deadLetter` and `@ordered` (`spec/events.md` section 10.8): the Node server declares
+/// `events_delivery` and generates a service that uses one; the TypeScript client keeps its bytes.
+#[test]
+fn node_generates_channel_annotations_and_typescript_ignores_them() {
+    veld_emit_conformance::check_events_delivery_is_generated(&Node).unwrap();
+    veld_emit_conformance::check_events_delivery_is_ignored_by_clients(&TypeScript).unwrap();
+}
+
+/// `@rollout(audit)` (`spec/rules.md` section 17.1): both generators declare `rules_rollout`, so
+/// the gate lets an audited invariant, `require` and `ensure` through and `generate` makes files,
+/// for the server and the client alike.
+#[test]
+fn node_and_typescript_generate_audited_rules() {
+    veld_emit_conformance::check_rollout_is_generated(&Node).unwrap();
+    veld_emit_conformance::check_rollout_is_generated(&TypeScript).unwrap();
+}
+
+/// Derived fields (`spec/rules.md` section 17.2): the Node server and the TypeScript client both
+/// declare `rules_derived`, so the gate lets a contract with one through (a body, an error, and a
+/// fact that only the server loads) and `generate` makes files.
+#[test]
+fn node_and_typescript_generate_derived_fields() {
+    veld_emit_conformance::check_derived_is_generated(&Node).unwrap();
+    veld_emit_conformance::check_derived_is_generated(&TypeScript).unwrap();
+}
+
+/// `@version` and `@idempotent` (`spec/rules.md` sections 11.7 to 11.12): the Node server and the
+/// TypeScript client both declare `rules_version` and `idempotency`, so the gate lets a contract
+/// with a guard, an `ETag` or `@idempotent` through and `generate` makes files.
+#[test]
+fn node_and_typescript_generate_version_and_idempotency() {
+    veld_emit_conformance::check_version_is_generated(&Node).unwrap();
+    veld_emit_conformance::check_idempotency_is_generated(&Node).unwrap();
+    veld_emit_conformance::check_version_is_generated(&TypeScript).unwrap();
+    veld_emit_conformance::check_idempotency_is_generated(&TypeScript).unwrap();
+}
+
+/// Sagas (`spec/platform.md` sections 17 and 18): until a generator declares `sagas`, a contract
+/// with a `saga post` endpoint is refused with `E0801` at the endpoint, in every role.
+#[test]
+fn node_and_typescript_refuse_sagas() {
+    veld_emit_conformance::check_sagas_are_refused(&Node).unwrap();
+    veld_emit_conformance::check_sagas_are_refused(&TypeScript).unwrap();
+}
+
+/// `rules_timed` is opt-in and Node and TypeScript declare it: a timed edge and a timed
+/// transition generate.
+#[test]
+fn node_and_typescript_generate_timed_moves() {
+    veld_emit_conformance::check_timed_is_generated(&Node).unwrap();
+    veld_emit_conformance::check_timed_is_generated(&TypeScript).unwrap();
+}
+
+/// `rules_flags` is opt-in and Node and TypeScript declare it: a flagged statement generates.
+#[test]
+fn node_and_typescript_generate_flags() {
+    veld_emit_conformance::check_flags_are_generated(&Node).unwrap();
+    veld_emit_conformance::check_flags_are_generated(&TypeScript).unwrap();
+}
+
+/// `timeouts` and `slo` are opt-in and Node and TypeScript declare them: a deadline and a service
+/// level generate.
+#[test]
+fn node_and_typescript_generate_deadlines_and_service_levels() {
+    veld_emit_conformance::check_timeouts_are_generated(&Node).unwrap();
+    veld_emit_conformance::check_slo_is_generated(&Node).unwrap();
+    veld_emit_conformance::check_timeouts_are_generated(&TypeScript).unwrap();
+    veld_emit_conformance::check_slo_is_generated(&TypeScript).unwrap();
+}
+
+/// `visibility` is opt-in (`spec/platform.md` section 2): the Node server declares it and
+/// generates a `@visible` field; the TypeScript client has nothing to hide, is not asked, and
+/// still generates.
+#[test]
+fn node_generates_visibility_and_typescript_is_not_asked() {
+    veld_emit_conformance::check_visibility_is_generated(&Node).unwrap();
+    veld_emit_conformance::check_visibility_is_generated(&TypeScript).unwrap();
+}
+
+/// `tenancy` is opt-in (`spec/platform.md` section 3): the Node server declares it and generates
+/// a `@tenant` field that it loads, returns or publishes, and the TypeScript client declares it for
+/// a model that an endpoint returns (a request does not carry the field).
+#[test]
+fn node_and_typescript_generate_tenancy() {
+    veld_emit_conformance::check_tenancy_is_generated(&Node).unwrap();
+    veld_emit_conformance::check_tenancy_is_generated(&TypeScript).unwrap();
+}
+
+/// `audit` is opt-in (`spec/platform.md` section 4): the Node server declares it and generates an
+/// audited endpoint (and still refuses an audited `ws` endpoint at the endpoint); the TypeScript
+/// client is not asked and still generates.
+#[test]
+fn node_generates_audit_and_typescript_is_not_asked() {
+    veld_emit_conformance::check_audit_is_generated(&Node).unwrap();
+    veld_emit_conformance::check_audited_ws_is_refused(&Node).unwrap();
+    veld_emit_conformance::check_audit_is_generated(&TypeScript).unwrap();
+}
+
+/// `limits` is opt-in (`spec/platform.md` section 5): the Node server, which counts, and the
+/// TypeScript client, which waits when it is refused, both declare it and generate an endpoint
+/// with `@limit`.
+#[test]
+fn node_and_typescript_generate_limits() {
+    veld_emit_conformance::check_limits_are_generated(&Node).unwrap();
+    veld_emit_conformance::check_limits_are_generated(&TypeScript).unwrap();
+}
+
+/// Message catalogs (`spec/platform.md` section 22): the Node server and the TypeScript client
+/// both declare `messages` and generate a member that has catalogs.
+#[test]
+fn node_and_typescript_generate_message_catalogs() {
+    veld_emit_conformance::check_messages_are_generated(&Node).unwrap();
+    veld_emit_conformance::check_messages_are_generated(&TypeScript).unwrap();
+}
+
+/// Retention (`spec/platform.md` section 23): the Node server declares `retention` and generates a
+/// contract with `@retain` models; the TypeScript client, which has nothing to generate for it, is
+/// not affected.
+#[test]
+fn node_generates_retention_and_typescript_ignores_it() {
+    veld_emit_conformance::check_retention_is_generated(&Node).unwrap();
+    veld_emit_conformance::check_retention_is_generated(&TypeScript).unwrap();
+}
+
+/// `emits` and the outbox (`spec/events.md` section 11): the Node server generates a service with
+/// an emitting `transition`; the TypeScript client keeps its bytes.
+#[test]
+fn node_generates_the_outbox_and_typescript_ignores_it() {
+    veld_emit_conformance::check_events_outbox_is_generated(&Node).unwrap();
+    veld_emit_conformance::check_events_outbox_is_ignored_by_clients(&TypeScript).unwrap();
 }

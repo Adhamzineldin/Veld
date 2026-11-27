@@ -1,0 +1,4 @@
+# A library has no endpoints of its own and no target. Its declarations are generated into
+# every target that uses them. Its contracts are the files next to this one.
+[library]
+contracts = "."

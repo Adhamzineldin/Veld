@@ -91,28 +91,29 @@ service Orders at "/orders" {
 The project file, `veld.toml` (see [`spec/config.md`](spec/config.md)):
 
 ```toml
-[project]
+[service]
 name = "shop"
 
-[[targets]]
-role = "server"
+[server]
 emitter = "node"
 framework = "express"
-service = "shop"
 out = "api/src/generated"
 
-[[targets]]
-role = "client"
+[client]
 emitter = "typescript"
 out = "web/src/generated"
 ```
+
+One file is a whole project. A larger project is a workspace: a root `veld.toml` that lists the
+members, and a small `veld.toml` in the directory of each service, app or library
+([Microservices](#microservices-and-mutual-consumes)).
 
 Prelude errors (`NotFound`, `Unauthorized`, `ValidationError`, ...) and `Page<T>` need no
 declaration. Veld validates requests on the server and in the client, and maps errors to RFC 9457
 `application/problem+json`.
 
-More complete projects are in [`examples/`](examples): `hello`, `microservices` and
-`library-package`. Each has hand-written servers and frontends that import the generated code, and
+More complete projects are in [`examples/`](examples): `hello`, `bookings` (business rules),
+`microservices` and `library-package`. Each has hand-written servers and frontends that import the generated code, and
 end-to-end tests run them (the generated output is committed and checked to be up to date).
 
 ## Using it in your code
@@ -204,6 +205,17 @@ Gradle (`sourceSets.main.java.srcDir`) build and you import the generated packag
 server also gets the clients of the services it consumes, through the same package
 (`import { iam, transactions } from '@veld/accounts-api'`). See [`examples/microservices`](examples/microservices).
 
+## Business rules
+
+A contract can state what must always be true. A `rule` in a model, `require` and `ensure` on an endpoint,
+a `flow` on an enum (the legal state changes) and a `policy` (who may call) are written once. The generated
+server checks the request before your handler runs and the result after it. The generated client checks the
+rules before it sends a request, and has helpers for the states and the policies. `example` blocks run
+offline with `veld test`, and against the test handler of a running server with `veld test --live`.
+The TypeScript, Node, Java and Rust generators support them. See the
+[business rules guide](docs/guides/rules.md), [testing with examples](docs/guides/testing.md) and the
+[`bookings` example](examples/bookings).
+
 ## Targets
 
 | Emitter | Role | Output | Spec |
@@ -225,11 +237,11 @@ the `node` server also supports `nest`. `veld export openapi` produces an OpenAP
 With `query-options = true` on a `typescript` client target, Veld also writes `queries.ts` next to each package's client: query keys, query options and mutation options as plain objects. The generated code imports no package, so you decide what to use them with:
 
 ```toml
-[[targets]]
-role = "client"
+[client]
 emitter = "typescript"
 out = "web/src/generated"
-[targets.options]
+
+[client.options]
 query-options = true
 ```
 
@@ -249,27 +261,47 @@ Keys are built from the canonical bytes of the request, so equal requests share 
 
 ### Skipping run-time request validation
 
-`validate = false` in `[targets.options]` of a `node`, `typescript`, `java` or `rust` target skips run-time request validation by default and keeps the types. The client option `validate: true` (TypeScript) or `ClientOptions.validate(true)` (Java) switches it back on.
+`validate = false` in `[server.options]` or `[client.options]` of a `node`, `typescript`, `java` or `rust` target skips run-time request validation by default and keeps the types. The client option `validate: true` (TypeScript) or `ClientOptions.validate(true)` (Java) switches it back on.
 
 ## Microservices and mutual consumes
 
-A workspace lists services, and each service says which others it calls:
+A workspace is a root `veld.toml` that lists its members, and one `veld.toml` per member next to
+its code. Each service says which others it calls:
 
 ```toml
-[services.accounts]
-contracts = "contracts/accounts"
+# veld.toml (the root)
+[workspace]
+name = "bank"
+members = ["services/*", "apps/*"]
+```
+
+```toml
+# services/accounts/veld.toml
+[service]
 consumes = ["iam", "transactions"]
 
-[services.transactions]
-contracts = "contracts/transactions"
+[server]
+emitter = "node"
+```
+
+```toml
+# services/transactions/veld.toml
+[service]
 consumes = ["iam", "accounts"]     # accounts and transactions call each other
+
+[server]
+emitter = "java"
 ```
 
 Cycles are legal. Every server target also gets a generated client for each consumed service, in
 the server's own language, and modules can import each other's types across services
-(`use accounts:accounts.{Account}`). Shared contracts live in a `[libraries.<name>]` package.
+(`use accounts:accounts.{Account}`). Shared contracts live in a `[library]` member.
 Server targets of different languages can sit in one workspace: the
 [`microservices` example](examples/microservices) has Node servers and one Java server.
+
+Inside a member's directory `veld generate` works on that member; `-p accounts` picks one from
+anywhere, `--workspace` takes them all, and `veld generate --affected --since origin/master` takes
+the members that a change can have affected. See [`docs/guides/workspaces.md`](docs/guides/workspaces.md).
 
 ## Signature-based equality
 
@@ -289,12 +321,13 @@ repository tests this with generated TypeScript and Java that call each other
 |---|---|
 | `veld init` | Create `veld.toml`, starter contracts and a `README.md`. On a terminal with no flags it asks (project, single service or workspace, servers, client, output folders) and ends by offering to run `generate` and `setup`; it starts from an existing `package.json` or `pom.xml`. Flags `--name`, `--workspace a,b`, `--server node:express`, `--client typescript:react`, `--template crud` (users, auth and pagination), `--base-url SERVICE=URL` and `--consumes SERVICE=a,b` (a workspace asks per service for its base URL and which services it calls; nothing is consumed unless you say so), `--yes` answer the same questions without a TTY |
 | `veld check [PATH...]` | Compile all contracts, lint them (`[lint]` in `veld.toml` sets each rule to `off`, `warn` or `error`) and report diagnostics. `PATH...` limits the report to those files or folders, `--no-lint` skips lint, `--strict` makes warnings fail, `--graph [text\|dot\|json]` prints the service dependency graph |
-| `veld generate [target]` | Generate code for every target, or one by name. `--dry-run` writes nothing; `--check` writes nothing and exits 1 when any output is stale (CI), `--diff` adds unified diffs to either. Before it writes over a breaking change it asks on a terminal, fails with `--strict` or off a terminal, and continues with `--accept-breaking`. `--setup` runs `veld setup` afterwards, `--watch` regenerates on every change (`veld watch` is a hidden alias). `--force` overwrites files you edited. `[hooks] post-generate` in `veld.toml` runs after a successful write. |
+| `veld generate [target]` | Generate code for every target, or one by name. `--dry-run` writes nothing; `--check` writes nothing and exits 1 when any output is stale (CI), `--diff` adds unified diffs to either. Before it writes over a breaking change, or a possibly breaking one such as a changed rule, it asks on a terminal, fails with `--strict` or off a terminal, and continues with `--accept-breaking`. `--setup` runs `veld setup` afterwards, `--watch` regenerates on every change (`veld watch` is a hidden alias). `--force` overwrites files you edited. `[hooks] post-generate` in `veld.toml` runs after a successful write. |
 | `veld setup [target]` | Wire generated targets into your apps: `@veld/<target>` `file:` dependencies in `package.json`, a source root in `pom.xml` or `build.gradle(.kts)`. `--dry-run` shows the edits; idempotent and format preserving |
 | `veld clean` | Remove generated files that you have not modified; `--lock` also removes `veld.lock.ir.json`, the breaking-change baseline |
 | `veld doctor` | Check that the config loads, packages and the registry lock resolve, emitters and plugins resolve with matching hashes, output folders are writable, and that `git`, `node`, `npm`, `javac` exist for the wired targets, plus `mvn` or `gradle` for Java server targets that build with them. A fix is printed under every problem; exit 1 on failure |
 | `veld fmt` | Format `.veld` files canonically |
-| `veld diff` | Show breaking and non-breaking contract changes (`--strict` exits 1 on a breaking one) |
+| `veld diff` | Show breaking, possibly breaking (a rule expression changed) and non-breaking contract changes (`--strict` exits 1 on a breaking or possibly breaking one) |
+| `veld test [PATH...]` | Run the `example` blocks of the contracts offline (`--filter TEXT`), or against a running test handler (`--live BASE_URL`, `--dry-run`, `--fuzz N --seed S`); see [the testing guide](docs/guides/testing.md) |
 | `veld export <what>` | `openapi` prints OpenAPI 3.1 JSON to stdout or `-o FILE` (`--service S`, repeatable, limits it); `ir` prints the compiled IR for plugin authors. A file you own is written without a manifest and is never overwritten without `--force` |
 | `veld plugin new` / `plugin test` | Scaffold an emitter plugin, run the protocol conformance suite |
 | `veld add` / `install` / `publish` / `login` / `logout` | Registry packages (`veld.lock` pins versions and checksums) |
@@ -328,5 +361,7 @@ manifest. Files that Veld did not write are never touched.
 ## Documentation
 
 - [`docs/`](docs/README.md): index of guides and specs
+- [`docs/guides/rules.md`](docs/guides/rules.md): business rules in the contract, with the [`bookings` example](examples/bookings)
+- [`docs/guides/testing.md`](docs/guides/testing.md): `example` blocks and `veld test`
 - [`docs/emitter-guide.md`](docs/emitter-guide.md): writing an emitter
 - [`CONTRIBUTING.md`](CONTRIBUTING.md), [`CHANGELOG.md`](CHANGELOG.md), [`CLAUDE.md`](CLAUDE.md)

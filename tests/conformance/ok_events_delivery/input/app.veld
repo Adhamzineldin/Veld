@@ -1,0 +1,78 @@
+// The three channel annotations and `called once` (spec/events.md section 10): every spelling that
+// is allowed, and a service that uses them, so that its IR has `events_delivery`.
+
+event OrderPlaced {
+  orderId: uuid
+  quantity: int = 1
+  rule atLeastOne: quantity >= 1
+}
+
+event OrderShipped {
+  orderId: uuid
+  carrier: string
+}
+
+/// Everything at once.
+@topic("shop.orders.v1")
+@retry(max: 3, backoff: exponential)
+@deadLetter
+@ordered
+channel OrderEvents {
+  carries OrderPlaced, OrderShipped
+  key orderId
+}
+
+// The arguments in either order, `backoff` defaulting to `exponential`, no retries at all.
+@retry(backoff: fixed, max: 100)
+@deadLetter
+channel Audit { carries OrderPlaced }
+
+@retry(max: 0)
+@deadLetter
+channel Once { carries OrderShipped }
+
+@ordered
+channel Strict { carries OrderPlaced }
+
+@deadLetter
+channel Kept { carries OrderPlaced }
+
+service Orders at "/orders" {
+  publishes OrderEvents, Audit, Once, Strict, Kept
+  get "/ping" ping() -> 204
+}
+
+service Fulfilment {
+  subscribes OrderEvents as "fulfilment" {
+    on OrderPlaced  -> reserve
+    on OrderShipped -> notifyCustomer
+  }
+  subscribes Audit as "audit" { on OrderPlaced -> auditOrder }
+  subscribes Once as "once" { on OrderShipped -> shippedOnce }
+  subscribes Strict as "strict" { on OrderPlaced -> strictOrder }
+  subscribes Kept as "kept" { on OrderPlaced -> keepOrder }
+}
+
+// `once` is an ordinary name outside `called once`.
+service once {
+  subscribes OrderEvents as "once" {
+    on OrderPlaced -> once
+  }
+}
+
+example "a placed order is handled once when it is delivered twice" {
+  given event OrderPlaced { quantity: 2 } on OrderEvents
+  expect Fulfilment.reserve called once
+  expect once.once called once
+}
+
+example "called and called once mix" {
+  given event OrderShipped { carrier: "dhl" } on OrderEvents
+  expect Fulfilment.notifyCustomer called once
+  expect once.once not called
+}
+
+example "an event that breaks its rule is rejected" {
+  given event OrderPlaced { quantity: 0 } on OrderEvents
+  expect rejected
+}

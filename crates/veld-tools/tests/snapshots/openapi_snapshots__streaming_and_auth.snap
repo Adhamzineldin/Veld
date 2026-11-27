@@ -445,5 +445,5 @@ expression: "export(\"ok_streaming_and_auth\")"
   "x-veld-websocket-operations": [
     "veld:app/Live.chat@7fbc247d66f6a8a7"
   ],
-  "x-veld-ir-version": "1.0"
+  "x-veld-ir-version": "1.1"
 }

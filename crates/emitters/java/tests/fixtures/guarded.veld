@@ -1,0 +1,92 @@
+// The policies of tests/rules/endpoints/policies.veld and a state machine on the same
+// endpoint: the order of the checks over HTTP (a missing fact, then the policies, then the
+// transition guard, then require) and `can<Endpoint>` against the server.
+
+enum Status {
+  pending, paid, cancelled
+  flow pending -> paid
+  flow pending -> cancelled
+  final paid, cancelled
+}
+
+model User {
+  id: uuid
+  roles: string[]
+  suspended: bool
+}
+
+principal User
+
+model Booking {
+  id: uuid
+  guestId: uuid
+  status: Status = .pending
+  total: decimal
+}
+
+model Payment {
+  amount: decimal
+}
+
+policy ManageBooking(user: User, booking: Booking) {
+  permit when booking.guestId == user.id
+  permit when "support" in user.roles
+  forbid when user.suspended
+    message "A suspended account cannot manage bookings"
+}
+
+policy AnyRole(user: User) {
+  permit when len(user.roles) > 0
+}
+
+// A clause that cannot be evaluated fails closed: such a `permit` does not permit and such a
+// `forbid` forbids. A zero divisor is the evaluation error.
+policy Divides(user: User) {
+  permit when 100 / len(user.roles) > 10
+  forbid when 100 / len(user.roles) > 50
+}
+
+policy Positive(user: User, n: int) {
+  permit when n > 0
+}
+
+// An argument that reads a request parameter: the violation names it and can<Endpoint> takes it.
+policy SmallPayment(user: User, payment: Payment) {
+  permit when payment.amount <= 100.00
+}
+
+@auth(bearer)
+service Bookings at "/bookings" {
+  get "/{id}/divides" dividesBooking(id: uuid) -> Booking {
+    fact booking: Booking = id
+    allow Divides(user)
+  }
+
+  post "/{id}/refund" refundBooking(id: uuid, body: Payment) -> Booking {
+    fact booking: Booking = id
+    allow SmallPayment(user, body)
+  }
+
+  get "/{id}/positive" positiveBooking(id: uuid) -> Booking {
+    fact booking: Booking = id
+    allow Positive(user, 100 / len(user.roles))
+  }
+
+  post "/{id}/pay" payBooking(id: uuid, body: Payment) -> Booking {
+    fact booking: Booking = id
+    allow ManageBooking(user, booking)
+    transition booking.status: pending -> paid
+    require body.amount == booking.total
+  }
+
+  get "/{id}" getBooking(id: uuid) -> Booking {
+    fact booking: Booking = id
+    allow ManageBooking(user, booking)
+    allow AnyRole(user)
+  }
+
+  post "/{id}/cancel" cancelBooking(id: uuid) -> Booking {
+    fact booking: Booking = id
+    transition booking.status: pending -> cancelled
+  }
+}

@@ -1,0 +1,36 @@
+{ "cases": [
+  { "name": "an empty list: all is true, any is false, count and sum are zero", "type": "Order",
+    "value": { "items": [], "total": "0" }, "expect": [] },
+  { "name": "three items break three rules", "type": "Order",
+    "value": { "items": [ { "sku": "a", "qty": 2, "price": "1.50" },
+                          { "sku": "b", "qty": 0, "price": "0" },
+                          { "sku": "c", "qty": 1, "price": "0.00" } ],
+               "total": "3.00" },
+    "expect": [ { "rule": "allPositive", "path": "$", "fields": ["items"] },
+                { "rule": "someBig", "path": "$", "fields": ["items"] },
+                { "rule": "fewFree", "path": "$", "fields": ["items"] } ] },
+  { "name": "a decimal sum compared across scales", "type": "Order",
+    "value": { "items": [ { "sku": "a", "qty": 10, "price": "0.10" },
+                          { "sku": "b", "qty": 3, "price": "0.20" } ],
+               "total": "1.6" },
+    "expect": [] },
+  { "name": "a wrong total", "type": "Order",
+    "value": { "items": [ { "sku": "a", "qty": 1, "price": "9.99" } ], "total": "10" },
+    "expect": [ { "rule": "totalMatches", "path": "$", "fields": ["items", "total"] } ] },
+
+  { "name": "an int sum overflows", "type": "Totals", "value": { "parts": [2147483647, 1] },
+    "expect": [ { "rule": "capped", "path": "$", "fields": ["parts"], "error": "overflow" } ] },
+  { "name": "count at its limit", "type": "Totals", "value": { "parts": [1, 2, 3] },
+    "expect": [ { "rule": "few", "path": "$", "fields": ["parts"] } ] },
+  { "name": "negative parts are not counted", "type": "Totals", "value": { "parts": [-1, -2, -3, 4] }, "expect": [] },
+
+  { "name": "a nested comprehension, and the inner models are checked too", "type": "Matrix",
+    "value": { "rows": [ { "parts": [1, 2] }, { "parts": [3, 0, 5, 6] } ] },
+    "expect": [ { "rule": "noZero", "path": "$", "fields": ["rows"] },
+                { "rule": "few", "path": "$.rows[1]", "fields": ["parts"] } ] },
+  { "name": "no rows", "type": "Matrix", "value": { "rows": [] }, "expect": [] },
+
+  { "name": "a constant bound", "type": "Party", "value": { "guests": 5, "tier": "std" },
+    "expect": [ { "rule": "fits", "path": "$", "fields": ["guests", "tier"] } ] },
+  { "name": "a constant string", "type": "Party", "value": { "guests": 5, "tier": "vip" }, "expect": [] }
+] }

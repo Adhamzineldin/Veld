@@ -1,6 +1,7 @@
 # docker compose up --build   ->   http://localhost:8080
-# Every service finds the others by name (the `base-url` values in veld.toml); the VELD_<SERVICE>_URL
-# variables below say the same thing explicitly and are what you would change elsewhere.
+# Every service finds the others by name: the VELD_<SERVICE>_URL variables below are the addresses.
+# The Node services read them with `fromEnv` (the names are theirs to choose) and pass them to the
+# generated handler as its runtime config.
 x-urls: &urls
   VELD_IAM_URL: http://iam-service:3001
   VELD_ACCOUNTS_URL: http://account-service:3002

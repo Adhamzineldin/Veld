@@ -58,10 +58,14 @@ fn format_file(ui: &Ui, file: &Path, check: bool) -> Result<Outcome> {
             for d in &diags {
                 ui.diagnostic(&sources.render(d));
             }
-            ui.error(&format!(
-                "{}: not formatted because of syntax errors",
-                pipeline::display_path(file)
-            ));
+            // A file without an error is refused for one reason only: a doc comment that is
+            // attached to nothing (`W0001`), which printing from the tree would drop.
+            let why = if diags.iter().any(|d| d.is_error()) {
+                "not formatted because of syntax errors"
+            } else {
+                "not formatted: a doc comment is attached to nothing and formatting would drop it"
+            };
+            ui.error(&format!("{}: {why}", pipeline::display_path(file)));
             Ok(Outcome::Failed)
         }
     }

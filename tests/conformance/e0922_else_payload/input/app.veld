@@ -1,0 +1,15 @@
+// The payload of `else` gives every field of the error that is neither optional nor defaulted,
+// and nothing else (spec/rules.md 9.3).
+
+model Booking { id: uuid, guests: int }
+error RoomFull 409 { capacity: int, name: string, hint?: string, level: int = 1 }
+
+service Bookings at "/bookings" {
+  post "/" create(body: Booking) -> 201 Booking | RoomFull {
+    require body.guests > 0 else RoomFull
+    require body.guests > 1 else RoomFull { capacity: 1 }
+    require body.guests > 2 else RoomFull { capacity: 1, name: "x", extra: 2 }
+    require body.guests > 3 else RoomFull { capacity: 1, capacity: 2, name: "x" }
+    require body.guests > 4 else RoomFull { capacity: 1, name: "x", hint: "ok", level: 2 }
+  }
+}

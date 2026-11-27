@@ -1,0 +1,33 @@
+/// A server message with an invariant: the implementation can break it.
+model Reading {
+  low: int
+  high: int
+  rule ordered: low <= high
+    message "low must not exceed high"
+}
+
+/// A client message with an invariant.
+model Note {
+  text: string
+  stars: int
+  rule starRange: stars >= 0 && stars <= 5
+    message "stars must be between 0 and 5"
+}
+
+/// A declared error whose own invariant the implementation can break: it needs `seats` above `limit`.
+error Overbooked 409 {
+  seats: int
+  limit: int
+  rule overflow: seats > limit
+    message "an Overbooked error needs seats above the limit"
+}
+
+/// Streams and an error with invariants.
+service Live at "/live" {
+  /// Three readings; the one at index `bad` (when 0 to 2) violates its rule.
+  get "/readings" readings(@query bad: int) -> stream Reading
+  /// Echoes every note as a reading with `high` = stars. A note whose text is `bad` is answered with a violating reading.
+  ws "/notes" notes(body: stream Note) -> stream Reading
+  /// A declared error with a rule: `ok` builds a valid one.
+  get "/seats" seats(@query ok: bool) -> int | Overbooked
+}

@@ -1,0 +1,7067 @@
+{
+  "ir_version": "1.1",
+  "packages": [
+    {
+      "id": 0,
+      "name": "bookings",
+      "kind": "service"
+    },
+    {
+      "id": 1,
+      "name": "veld",
+      "kind": "prelude"
+    }
+  ],
+  "decls": [
+    {
+      "id": 0,
+      "package": 0,
+      "module": "bookings",
+      "name": "AmountMismatch",
+      "qualified": "bookings:bookings.AmountMismatch",
+      "sig": "veld:bookings/AmountMismatch@821d2ec4af6b28cc",
+      "docs": "The payment is not the price of the stay.",
+      "deprecated": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 93,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 422,
+      "parent": null,
+      "fields": [
+        {
+          "name": "expected",
+          "wire": "expected",
+          "type": {
+            "scalar": "decimal"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 94,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "package": 0,
+      "module": "bookings",
+      "name": "Booking",
+      "qualified": "bookings:bookings.Booking",
+      "sig": "veld:bookings/Booking@0e89caf046c02263",
+      "docs": "A booking the hotel has accepted.",
+      "deprecated": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 41,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": 2,
+      "fields": [
+        {
+          "name": "roomId",
+          "wire": "roomId",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": 2,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 14,
+            "col": 3
+          }
+        },
+        {
+          "name": "guests",
+          "wire": "guests",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": 2,
+          "constraints": {
+            "min": 1.0,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 15,
+            "col": 3
+          }
+        },
+        {
+          "name": "start",
+          "wire": "start",
+          "type": {
+            "scalar": "datetime"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": 2,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 16,
+            "col": 3
+          }
+        },
+        {
+          "name": "end",
+          "wire": "end",
+          "type": {
+            "scalar": "datetime"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": 2,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 17,
+            "col": 3
+          }
+        },
+        {
+          "name": "id",
+          "wire": "id",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": true,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 42,
+            "col": 3
+          }
+        },
+        {
+          "name": "guestId",
+          "wire": "guestId",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": "The guest who made the booking.",
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 44,
+            "col": 3
+          }
+        },
+        {
+          "name": "total",
+          "wire": "total",
+          "type": {
+            "scalar": "decimal"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": "The price of the whole stay.",
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 46,
+            "col": 3
+          }
+        },
+        {
+          "name": "status",
+          "wire": "status",
+          "type": {
+            "decl": 7
+          },
+          "optional": false,
+          "default": {
+            "lit": "enum_variant",
+            "value": {
+              "name": "pending",
+              "wire": "pending"
+            }
+          },
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 47,
+            "col": 3
+          }
+        }
+      ],
+      "rules": [
+        {
+          "name": "endAfterStart",
+          "id": "veld:bookings/NewBooking.endAfterStart@ada6a4114a0970df",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "gt",
+                "l": {
+                  "t": {
+                    "scalar": "datetime"
+                  },
+                  "e": {
+                    "path": {
+                      "root": "self",
+                      "steps": [
+                        {
+                          "name": "end",
+                          "wire": "end",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "datetime"
+                  },
+                  "e": {
+                    "path": {
+                      "root": "self",
+                      "steps": [
+                        {
+                          "name": "start",
+                          "wire": "start",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": "The stay must end after it starts",
+          "reads": [
+            "end",
+            "start"
+          ],
+          "reads_readonly": false,
+          "inherited_from": 2,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 19,
+            "col": 8
+          }
+        },
+        {
+          "name": "atMost30Days",
+          "id": "veld:bookings/NewBooking.atMost30Days@38d265b42b364d76",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "le",
+                "l": {
+                  "t": "duration",
+                  "e": {
+                    "bin": {
+                      "op": "sub",
+                      "l": {
+                        "t": {
+                          "scalar": "datetime"
+                        },
+                        "e": {
+                          "path": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "end",
+                                "wire": "end",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "datetime"
+                        },
+                        "e": {
+                          "path": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "start",
+                                "wire": "start",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "r": {
+                  "t": "duration",
+                  "e": {
+                    "call": {
+                      "f": "days",
+                      "args": [
+                        {
+                          "t": {
+                            "scalar": "int"
+                          },
+                          "e": {
+                            "lit": {
+                              "int": 30
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": "A stay is at most 30 days",
+          "reads": [
+            "end",
+            "start"
+          ],
+          "reads_readonly": false,
+          "inherited_from": 2,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 21,
+            "col": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "package": 0,
+      "module": "bookings",
+      "name": "NewBooking",
+      "qualified": "bookings:bookings.NewBooking",
+      "sig": "veld:bookings/NewBooking@6bd445e3d5cc526a",
+      "docs": "What a guest sends to book a room.",
+      "deprecated": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 13,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "roomId",
+          "wire": "roomId",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 14,
+            "col": 3
+          }
+        },
+        {
+          "name": "guests",
+          "wire": "guests",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": 1.0,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 15,
+            "col": 3
+          }
+        },
+        {
+          "name": "start",
+          "wire": "start",
+          "type": {
+            "scalar": "datetime"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 16,
+            "col": 3
+          }
+        },
+        {
+          "name": "end",
+          "wire": "end",
+          "type": {
+            "scalar": "datetime"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 17,
+            "col": 3
+          }
+        }
+      ],
+      "rules": [
+        {
+          "name": "endAfterStart",
+          "id": "veld:bookings/NewBooking.endAfterStart@ada6a4114a0970df",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "gt",
+                "l": {
+                  "t": {
+                    "scalar": "datetime"
+                  },
+                  "e": {
+                    "path": {
+                      "root": "self",
+                      "steps": [
+                        {
+                          "name": "end",
+                          "wire": "end",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "datetime"
+                  },
+                  "e": {
+                    "path": {
+                      "root": "self",
+                      "steps": [
+                        {
+                          "name": "start",
+                          "wire": "start",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": "The stay must end after it starts",
+          "reads": [
+            "end",
+            "start"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 19,
+            "col": 8
+          }
+        },
+        {
+          "name": "atMost30Days",
+          "id": "veld:bookings/NewBooking.atMost30Days@38d265b42b364d76",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "le",
+                "l": {
+                  "t": "duration",
+                  "e": {
+                    "bin": {
+                      "op": "sub",
+                      "l": {
+                        "t": {
+                          "scalar": "datetime"
+                        },
+                        "e": {
+                          "path": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "end",
+                                "wire": "end",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "datetime"
+                        },
+                        "e": {
+                          "path": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "start",
+                                "wire": "start",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "r": {
+                  "t": "duration",
+                  "e": {
+                    "call": {
+                      "f": "days",
+                      "args": [
+                        {
+                          "t": {
+                            "scalar": "int"
+                          },
+                          "e": {
+                            "lit": {
+                              "int": 30
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": "A stay is at most 30 days",
+          "reads": [
+            "end",
+            "start"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 21,
+            "col": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "package": 0,
+      "module": "bookings",
+      "name": "Payment",
+      "qualified": "bookings:bookings.Payment",
+      "sig": "veld:bookings/Payment@1a76d5654086b976",
+      "docs": "What a guest sends to pay.",
+      "deprecated": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 51,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "amount",
+          "wire": "amount",
+          "type": {
+            "scalar": "decimal"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 52,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "package": 0,
+      "module": "bookings",
+      "name": "Room",
+      "qualified": "bookings:bookings.Room",
+      "sig": "veld:bookings/Room@d7929fb7dd94f159",
+      "docs": "A room of the hotel.",
+      "deprecated": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 2,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "id",
+          "wire": "id",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 3,
+            "col": 3
+          }
+        },
+        {
+          "name": "name",
+          "wire": "name",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": 1,
+            "max_len": 80,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 4,
+            "col": 3
+          }
+        },
+        {
+          "name": "capacity",
+          "wire": "capacity",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": 1.0,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": "How many guests the room sleeps.",
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 6,
+            "col": 3
+          }
+        },
+        {
+          "name": "closed",
+          "wire": "closed",
+          "type": {
+            "scalar": "bool"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 7,
+            "col": 3
+          }
+        },
+        {
+          "name": "nightly",
+          "wire": "nightly",
+          "type": {
+            "scalar": "decimal"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": 0.0,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": "The price of one night.",
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 9,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "package": 0,
+      "module": "bookings",
+      "name": "RoomClosed",
+      "qualified": "bookings:bookings.RoomClosed",
+      "sig": "veld:bookings/RoomClosed@b03ac78ebe1d9787",
+      "docs": "The room is closed for bookings.",
+      "deprecated": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 90,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 409,
+      "parent": null,
+      "fields": []
+    },
+    {
+      "id": 6,
+      "package": 0,
+      "module": "bookings",
+      "name": "RoomFull",
+      "qualified": "bookings:bookings.RoomFull",
+      "sig": "veld:bookings/RoomFull@c32f6fc9e1e474cb",
+      "docs": "The room cannot sleep that many guests.",
+      "deprecated": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 87,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 409,
+      "parent": null,
+      "fields": [
+        {
+          "name": "capacity",
+          "wire": "capacity",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 87,
+            "col": 22
+          }
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "package": 0,
+      "module": "bookings",
+      "name": "Status",
+      "qualified": "bookings:bookings.Status",
+      "sig": "veld:bookings/Status@81deecc42aef5157",
+      "docs": "Where a booking is in its life. `flow` lists the legal moves. A `final` state has no way out.",
+      "deprecated": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 26,
+        "col": 6
+      },
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "pending",
+          "wire": "pending",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "paid",
+          "wire": "paid",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "checkedIn",
+          "wire": "checkedIn",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "cancelled",
+          "wire": "cancelled",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "refunded",
+          "wire": "refunded",
+          "docs": null,
+          "deprecated": null
+        }
+      ],
+      "flows": [
+        {
+          "from": "pending",
+          "to": "paid"
+        },
+        {
+          "from": "paid",
+          "to": "checkedIn"
+        },
+        {
+          "from": "pending",
+          "to": "cancelled"
+        },
+        {
+          "from": "paid",
+          "to": "cancelled"
+        },
+        {
+          "from": "paid",
+          "to": "refunded"
+        }
+      ],
+      "finals": [
+        "checkedIn",
+        "cancelled",
+        "refunded"
+      ]
+    },
+    {
+      "id": 8,
+      "package": 0,
+      "module": "bookings",
+      "name": "User",
+      "qualified": "bookings:bookings.User",
+      "sig": "veld:bookings/User@0fa7835f0691f48a",
+      "docs": "Whoever calls the API. The auth hook turns a bearer token into one of these.",
+      "deprecated": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 56,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "id",
+          "wire": "id",
+          "type": {
+            "scalar": "uuid"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 57,
+            "col": 3
+          }
+        },
+        {
+          "name": "name",
+          "wire": "name",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 58,
+            "col": 3
+          }
+        },
+        {
+          "name": "roles",
+          "wire": "roles",
+          "type": {
+            "list": {
+              "scalar": "string"
+            }
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 59,
+            "col": 3
+          }
+        },
+        {
+          "name": "suspended",
+          "wire": "suspended",
+          "type": {
+            "scalar": "bool"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 60,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "package": 1,
+      "module": "prelude",
+      "name": "Forbidden",
+      "qualified": "veld:prelude.Forbidden",
+      "sig": "veld:veld/Forbidden@95d9a9217df05eac",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 3,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 403,
+      "parent": null,
+      "fields": [
+        {
+          "name": "message",
+          "wire": "message",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 3,
+            "col": 29
+          }
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "package": 1,
+      "module": "prelude",
+      "name": "Internal",
+      "qualified": "veld:prelude.Internal",
+      "sig": "veld:veld/Internal@c2b1f6bb355266e7",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 8,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 500,
+      "parent": null,
+      "fields": [
+        {
+          "name": "message",
+          "wire": "message",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 8,
+            "col": 29
+          }
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "package": 1,
+      "module": "prelude",
+      "name": "InvalidTransition",
+      "qualified": "veld:prelude.InvalidTransition",
+      "sig": "veld:veld/InvalidTransition@29c70142526d0750",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 10,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 409,
+      "parent": null,
+      "fields": [
+        {
+          "name": "field",
+          "wire": "field",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 10,
+            "col": 31
+          }
+        },
+        {
+          "name": "from",
+          "wire": "from",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 10,
+            "col": 46
+          }
+        },
+        {
+          "name": "to",
+          "wire": "to",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 10,
+            "col": 60
+          }
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "package": 1,
+      "module": "prelude",
+      "name": "NotFound",
+      "qualified": "veld:prelude.NotFound",
+      "sig": "veld:veld/NotFound@a0eaf7a3323dce7c",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 4,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 404,
+      "parent": null,
+      "fields": [
+        {
+          "name": "resource",
+          "wire": "resource",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 4,
+            "col": 29
+          }
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "package": 1,
+      "module": "prelude",
+      "name": "Unauthorized",
+      "qualified": "veld:prelude.Unauthorized",
+      "sig": "veld:veld/Unauthorized@ee241dccf5c82e14",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 2,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 401,
+      "parent": null,
+      "fields": [
+        {
+          "name": "message",
+          "wire": "message",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 2,
+            "col": 29
+          }
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "package": 1,
+      "module": "prelude",
+      "name": "ValidationError",
+      "qualified": "veld:prelude.ValidationError",
+      "sig": "veld:veld/ValidationError@7836aff24d914bea",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 6,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 422,
+      "parent": null,
+      "fields": [
+        {
+          "name": "issues",
+          "wire": "issues",
+          "type": {
+            "list": {
+              "decl": 15
+            }
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 6,
+            "col": 29
+          }
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "package": 1,
+      "module": "prelude",
+      "name": "ValidationIssue",
+      "qualified": "veld:prelude.ValidationIssue",
+      "sig": "veld:veld/ValidationIssue@253beeea259ebf75",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "prelude.veld",
+        "line": 9,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "path",
+          "wire": "path",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 9,
+            "col": 29
+          }
+        },
+        {
+          "name": "code",
+          "wire": "code",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 9,
+            "col": 43
+          }
+        },
+        {
+          "name": "message",
+          "wire": "message",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "prelude.veld",
+            "line": 9,
+            "col": 57
+          }
+        }
+      ]
+    }
+  ],
+  "services": [
+    {
+      "id": 0,
+      "package": 0,
+      "name": "Bookings",
+      "prefix": "/bookings",
+      "base_url": null,
+      "docs": "Hotel bookings. Every endpoint needs a bearer token unless it says `@auth(none)`.",
+      "auth": {
+        "kind": "bearer",
+        "header": null
+      },
+      "middleware": [],
+      "endpoints": [
+        {
+          "name": "listRooms",
+          "method": "GET",
+          "path": "/bookings/rooms",
+          "sig": "veld:bookings/Bookings.listRooms@e8e6c5a96f228768",
+          "docs": "The rooms of the hotel. Anyone may look.",
+          "deprecated": null,
+          "auth": {
+            "kind": "none",
+            "header": null
+          },
+          "middleware": [],
+          "params": [],
+          "success": {
+            "status": 200,
+            "type": {
+              "list": {
+                "decl": 4
+              }
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 500,
+              "decl": 10
+            }
+          ],
+          "origin": {
+            "file": "bookings.veld",
+            "line": 102,
+            "col": 16
+          }
+        },
+        {
+          "name": "whoAmI",
+          "method": "GET",
+          "path": "/bookings/me",
+          "sig": "veld:bookings/Bookings.whoAmI@c169647bd368610f",
+          "docs": "The caller, as the server knows them. The web app asks it once after sign-in.",
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [],
+          "success": {
+            "status": 200,
+            "type": {
+              "decl": 8
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 13
+            },
+            {
+              "status": 500,
+              "decl": 10
+            }
+          ],
+          "origin": {
+            "file": "bookings.veld",
+            "line": 105,
+            "col": 13
+          }
+        },
+        {
+          "name": "createBooking",
+          "method": "POST",
+          "path": "/bookings",
+          "sig": "veld:bookings/Bookings.createBooking@44ec6880646a5a6f",
+          "docs": "Books a room for the caller. The room is loaded once, before any rule runs.",
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "body",
+              "binding": "body",
+              "header": null,
+              "type": {
+                "decl": 2
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 201,
+            "type": {
+              "decl": 1
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 13
+            },
+            {
+              "status": 403,
+              "decl": 9
+            },
+            {
+              "status": 404,
+              "decl": 12
+            },
+            {
+              "status": 409,
+              "decl": 5
+            },
+            {
+              "status": 409,
+              "decl": 6
+            },
+            {
+              "status": 422,
+              "decl": 14
+            },
+            {
+              "status": 500,
+              "decl": 10
+            }
+          ],
+          "rules": {
+            "facts": [
+              {
+                "name": "room",
+                "type": {
+                  "decl": 4
+                },
+                "optional": false,
+                "key": {
+                  "t": {
+                    "scalar": "uuid"
+                  },
+                  "e": {
+                    "path": {
+                      "root": {
+                        "param": "body"
+                      },
+                      "steps": [
+                        {
+                          "name": "roomId",
+                          "wire": "roomId",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                },
+                "origin": {
+                  "file": "bookings.veld",
+                  "line": 109,
+                  "col": 10
+                }
+              }
+            ],
+            "requires": [
+              {
+                "name": null,
+                "id": "veld:bookings/Bookings.createBooking.require@55aa9d5be5846f0f",
+                "expr": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "not": {
+                      "t": {
+                        "scalar": "bool"
+                      },
+                      "e": {
+                        "path": {
+                          "root": {
+                            "fact": "room"
+                          },
+                          "steps": [
+                            {
+                              "name": "closed",
+                              "wire": "closed",
+                              "optional": false
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                },
+                "message": null,
+                "reads": [],
+                "else": {
+                  "decl": 5,
+                  "status": 409,
+                  "fields": []
+                },
+                "docs": null,
+                "origin": {
+                  "file": "bookings.veld",
+                  "line": 111,
+                  "col": 5
+                }
+              },
+              {
+                "name": null,
+                "id": "veld:bookings/Bookings.createBooking.require@d2fe5f8bdc51048f",
+                "expr": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "le",
+                      "l": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "path": {
+                            "root": {
+                              "param": "body"
+                            },
+                            "steps": [
+                              {
+                                "name": "guests",
+                                "wire": "guests",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "path": {
+                            "root": {
+                              "fact": "room"
+                            },
+                            "steps": [
+                              {
+                                "name": "capacity",
+                                "wire": "capacity",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "message": null,
+                "reads": [
+                  "body"
+                ],
+                "else": {
+                  "decl": 6,
+                  "status": 409,
+                  "fields": [
+                    {
+                      "name": "capacity",
+                      "wire": "capacity",
+                      "value": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "path": {
+                            "root": {
+                              "fact": "room"
+                            },
+                            "steps": [
+                              {
+                                "name": "capacity",
+                                "wire": "capacity",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  ]
+                },
+                "docs": null,
+                "origin": {
+                  "file": "bookings.veld",
+                  "line": 112,
+                  "col": 5
+                }
+              },
+              {
+                "name": "notInPast",
+                "id": "veld:bookings/Bookings.createBooking.notInPast@8504bb958894cb24",
+                "expr": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "ge",
+                      "l": {
+                        "t": {
+                          "scalar": "datetime"
+                        },
+                        "e": {
+                          "path": {
+                            "root": {
+                              "param": "body"
+                            },
+                            "steps": [
+                              {
+                                "name": "start",
+                                "wire": "start",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "datetime"
+                        },
+                        "e": {
+                          "now": true
+                        }
+                      }
+                    }
+                  }
+                },
+                "message": "A booking cannot start in the past",
+                "reads": [
+                  "body"
+                ],
+                "else": null,
+                "docs": null,
+                "origin": {
+                  "file": "bookings.veld",
+                  "line": 113,
+                  "col": 13
+                }
+              }
+            ],
+            "ensures": [
+              {
+                "name": "keepsRoom",
+                "id": "veld:bookings/Bookings.createBooking.keepsRoom@de7756ee913c16fa",
+                "expr": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "eq",
+                      "l": {
+                        "t": {
+                          "scalar": "uuid"
+                        },
+                        "e": {
+                          "path": {
+                            "root": "result",
+                            "steps": [
+                              {
+                                "name": "roomId",
+                                "wire": "roomId",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "uuid"
+                        },
+                        "e": {
+                          "path": {
+                            "root": {
+                              "param": "body"
+                            },
+                            "steps": [
+                              {
+                                "name": "roomId",
+                                "wire": "roomId",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "message": null,
+                "reads": [
+                  "body"
+                ],
+                "docs": null,
+                "origin": {
+                  "file": "bookings.veld",
+                  "line": 115,
+                  "col": 12
+                }
+              },
+              {
+                "name": "keepsGuests",
+                "id": "veld:bookings/Bookings.createBooking.keepsGuests@d19c2cf512759819",
+                "expr": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "eq",
+                      "l": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "path": {
+                            "root": "result",
+                            "steps": [
+                              {
+                                "name": "guests",
+                                "wire": "guests",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "path": {
+                            "root": {
+                              "param": "body"
+                            },
+                            "steps": [
+                              {
+                                "name": "guests",
+                                "wire": "guests",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "message": null,
+                "reads": [
+                  "body"
+                ],
+                "docs": null,
+                "origin": {
+                  "file": "bookings.veld",
+                  "line": 116,
+                  "col": 12
+                }
+              },
+              {
+                "name": "belongsToCaller",
+                "id": "veld:bookings/Bookings.createBooking.belongsToCaller@aae47f516ef34673",
+                "expr": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "eq",
+                      "l": {
+                        "t": {
+                          "scalar": "uuid"
+                        },
+                        "e": {
+                          "path": {
+                            "root": "result",
+                            "steps": [
+                              {
+                                "name": "guestId",
+                                "wire": "guestId",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "uuid"
+                        },
+                        "e": {
+                          "path": {
+                            "root": "principal",
+                            "steps": [
+                              {
+                                "name": "id",
+                                "wire": "id",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "message": null,
+                "reads": [],
+                "docs": null,
+                "origin": {
+                  "file": "bookings.veld",
+                  "line": 117,
+                  "col": 12
+                }
+              },
+              {
+                "name": "startsPending",
+                "id": "veld:bookings/Bookings.createBooking.startsPending@73e9664b81ba354b",
+                "expr": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "eq",
+                      "l": {
+                        "t": {
+                          "decl": 7
+                        },
+                        "e": {
+                          "path": {
+                            "root": "result",
+                            "steps": [
+                              {
+                                "name": "status",
+                                "wire": "status",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "decl": 7
+                        },
+                        "e": {
+                          "lit": {
+                            "enum": {
+                              "decl": 7,
+                              "name": "pending",
+                              "wire": "pending"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "message": null,
+                "reads": [],
+                "docs": null,
+                "origin": {
+                  "file": "bookings.veld",
+                  "line": 118,
+                  "col": 12
+                }
+              }
+            ],
+            "allows": [
+              {
+                "policy": 1,
+                "args": [
+                  {
+                    "t": {
+                      "decl": 8
+                    },
+                    "e": {
+                      "path": {
+                        "root": "principal",
+                        "steps": []
+                      }
+                    }
+                  }
+                ],
+                "reads": [],
+                "origin": {
+                  "file": "bookings.veld",
+                  "line": 110,
+                  "col": 5
+                }
+              }
+            ]
+          },
+          "origin": {
+            "file": "bookings.veld",
+            "line": 108,
+            "col": 12
+          }
+        },
+        {
+          "name": "listBookings",
+          "method": "GET",
+          "path": "/bookings",
+          "sig": "veld:bookings/Bookings.listBookings@11b3f83724f22f18",
+          "docs": "The bookings the caller may manage: their own, or all of them for the staff.",
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [],
+          "success": {
+            "status": 200,
+            "type": {
+              "list": {
+                "decl": 1
+              }
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 13
+            },
+            {
+              "status": 500,
+              "decl": 10
+            }
+          ],
+          "origin": {
+            "file": "bookings.veld",
+            "line": 122,
+            "col": 11
+          }
+        },
+        {
+          "name": "getBooking",
+          "method": "GET",
+          "path": "/bookings/{id}",
+          "sig": "veld:bookings/Bookings.getBooking@ece8c67556b3abf4",
+          "docs": "Returns one booking.",
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "id",
+              "binding": "path",
+              "header": null,
+              "type": {
+                "scalar": "uuid"
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 200,
+            "type": {
+              "decl": 1
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 13
+            },
+            {
+              "status": 403,
+              "decl": 9
+            },
+            {
+              "status": 404,
+              "decl": 12
+            },
+            {
+              "status": 422,
+              "decl": 14
+            },
+            {
+              "status": 500,
+              "decl": 10
+            }
+          ],
+          "rules": {
+            "facts": [
+              {
+                "name": "booking",
+                "type": {
+                  "decl": 1
+                },
+                "optional": false,
+                "key": {
+                  "t": {
+                    "scalar": "uuid"
+                  },
+                  "e": {
+                    "path": {
+                      "root": {
+                        "param": "id"
+                      },
+                      "steps": []
+                    }
+                  }
+                },
+                "origin": {
+                  "file": "bookings.veld",
+                  "line": 126,
+                  "col": 10
+                }
+              }
+            ],
+            "requires": [],
+            "ensures": [],
+            "allows": [
+              {
+                "policy": 0,
+                "args": [
+                  {
+                    "t": {
+                      "decl": 8
+                    },
+                    "e": {
+                      "path": {
+                        "root": "principal",
+                        "steps": []
+                      }
+                    }
+                  },
+                  {
+                    "t": {
+                      "decl": 1
+                    },
+                    "e": {
+                      "path": {
+                        "root": {
+                          "fact": "booking"
+                        },
+                        "steps": []
+                      }
+                    }
+                  }
+                ],
+                "reads": [],
+                "origin": {
+                  "file": "bookings.veld",
+                  "line": 127,
+                  "col": 5
+                }
+              }
+            ]
+          },
+          "origin": {
+            "file": "bookings.veld",
+            "line": 125,
+            "col": 15
+          }
+        },
+        {
+          "name": "payBooking",
+          "method": "POST",
+          "path": "/bookings/{id}/pay",
+          "sig": "veld:bookings/Bookings.payBooking@13a1fe6a454db92f",
+          "docs": "Pays for a booking. The amount must be the price.",
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "id",
+              "binding": "path",
+              "header": null,
+              "type": {
+                "scalar": "uuid"
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            },
+            {
+              "name": "body",
+              "binding": "body",
+              "header": null,
+              "type": {
+                "decl": 3
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 200,
+            "type": {
+              "decl": 1
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 13
+            },
+            {
+              "status": 403,
+              "decl": 9
+            },
+            {
+              "status": 404,
+              "decl": 12
+            },
+            {
+              "status": 409,
+              "decl": 11
+            },
+            {
+              "status": 422,
+              "decl": 0
+            },
+            {
+              "status": 422,
+              "decl": 14
+            },
+            {
+              "status": 500,
+              "decl": 10
+            }
+          ],
+          "rules": {
+            "facts": [
+              {
+                "name": "booking",
+                "type": {
+                  "decl": 1
+                },
+                "optional": false,
+                "key": {
+                  "t": {
+                    "scalar": "uuid"
+                  },
+                  "e": {
+                    "path": {
+                      "root": {
+                        "param": "id"
+                      },
+                      "steps": []
+                    }
+                  }
+                },
+                "origin": {
+                  "file": "bookings.veld",
+                  "line": 132,
+                  "col": 10
+                }
+              }
+            ],
+            "requires": [
+              {
+                "name": null,
+                "id": "veld:bookings/Bookings.payBooking.require@5c86e0546e903830",
+                "expr": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "eq",
+                      "l": {
+                        "t": {
+                          "scalar": "decimal"
+                        },
+                        "e": {
+                          "path": {
+                            "root": {
+                              "param": "body"
+                            },
+                            "steps": [
+                              {
+                                "name": "amount",
+                                "wire": "amount",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "decimal"
+                        },
+                        "e": {
+                          "path": {
+                            "root": {
+                              "fact": "booking"
+                            },
+                            "steps": [
+                              {
+                                "name": "total",
+                                "wire": "total",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "message": null,
+                "reads": [
+                  "body"
+                ],
+                "else": {
+                  "decl": 0,
+                  "status": 422,
+                  "fields": [
+                    {
+                      "name": "expected",
+                      "wire": "expected",
+                      "value": {
+                        "t": {
+                          "scalar": "decimal"
+                        },
+                        "e": {
+                          "path": {
+                            "root": {
+                              "fact": "booking"
+                            },
+                            "steps": [
+                              {
+                                "name": "total",
+                                "wire": "total",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  ]
+                },
+                "docs": null,
+                "origin": {
+                  "file": "bookings.veld",
+                  "line": 135,
+                  "col": 5
+                }
+              }
+            ],
+            "ensures": [],
+            "transition": {
+              "id": "veld:bookings/Bookings.payBooking.transition@fa1bdff2b848a5a0",
+              "fact": "booking",
+              "steps": [
+                {
+                  "name": "status",
+                  "wire": "status",
+                  "optional": false
+                }
+              ],
+              "decl": 7,
+              "from": [
+                "pending"
+              ],
+              "to": "paid",
+              "origin": {
+                "file": "bookings.veld",
+                "line": 134,
+                "col": 5
+              }
+            },
+            "allows": [
+              {
+                "policy": 0,
+                "args": [
+                  {
+                    "t": {
+                      "decl": 8
+                    },
+                    "e": {
+                      "path": {
+                        "root": "principal",
+                        "steps": []
+                      }
+                    }
+                  },
+                  {
+                    "t": {
+                      "decl": 1
+                    },
+                    "e": {
+                      "path": {
+                        "root": {
+                          "fact": "booking"
+                        },
+                        "steps": []
+                      }
+                    }
+                  }
+                ],
+                "reads": [],
+                "origin": {
+                  "file": "bookings.veld",
+                  "line": 133,
+                  "col": 5
+                }
+              }
+            ]
+          },
+          "origin": {
+            "file": "bookings.veld",
+            "line": 131,
+            "col": 20
+          }
+        },
+        {
+          "name": "cancelBooking",
+          "method": "POST",
+          "path": "/bookings/{id}/cancel",
+          "sig": "veld:bookings/Bookings.cancelBooking@5ac58a20c1116a7e",
+          "docs": "Cancels a booking that has not been used.",
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "id",
+              "binding": "path",
+              "header": null,
+              "type": {
+                "scalar": "uuid"
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 200,
+            "type": {
+              "decl": 1
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 13
+            },
+            {
+              "status": 403,
+              "decl": 9
+            },
+            {
+              "status": 404,
+              "decl": 12
+            },
+            {
+              "status": 409,
+              "decl": 11
+            },
+            {
+              "status": 422,
+              "decl": 14
+            },
+            {
+              "status": 500,
+              "decl": 10
+            }
+          ],
+          "rules": {
+            "facts": [
+              {
+                "name": "booking",
+                "type": {
+                  "decl": 1
+                },
+                "optional": false,
+                "key": {
+                  "t": {
+                    "scalar": "uuid"
+                  },
+                  "e": {
+                    "path": {
+                      "root": {
+                        "param": "id"
+                      },
+                      "steps": []
+                    }
+                  }
+                },
+                "origin": {
+                  "file": "bookings.veld",
+                  "line": 140,
+                  "col": 10
+                }
+              }
+            ],
+            "requires": [],
+            "ensures": [],
+            "transition": {
+              "id": "veld:bookings/Bookings.cancelBooking.transition@23d1baa22b2d2906",
+              "fact": "booking",
+              "steps": [
+                {
+                  "name": "status",
+                  "wire": "status",
+                  "optional": false
+                }
+              ],
+              "decl": 7,
+              "from": [
+                "pending",
+                "paid"
+              ],
+              "to": "cancelled",
+              "origin": {
+                "file": "bookings.veld",
+                "line": 142,
+                "col": 5
+              }
+            },
+            "allows": [
+              {
+                "policy": 0,
+                "args": [
+                  {
+                    "t": {
+                      "decl": 8
+                    },
+                    "e": {
+                      "path": {
+                        "root": "principal",
+                        "steps": []
+                      }
+                    }
+                  },
+                  {
+                    "t": {
+                      "decl": 1
+                    },
+                    "e": {
+                      "path": {
+                        "root": {
+                          "fact": "booking"
+                        },
+                        "steps": []
+                      }
+                    }
+                  }
+                ],
+                "reads": [],
+                "origin": {
+                  "file": "bookings.veld",
+                  "line": 141,
+                  "col": 5
+                }
+              }
+            ]
+          },
+          "origin": {
+            "file": "bookings.veld",
+            "line": 139,
+            "col": 23
+          }
+        },
+        {
+          "name": "checkIn",
+          "method": "POST",
+          "path": "/bookings/{id}/check-in",
+          "sig": "veld:bookings/Bookings.checkIn@0b7eec98e5f13f0c",
+          "docs": "The guest arrives.",
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "id",
+              "binding": "path",
+              "header": null,
+              "type": {
+                "scalar": "uuid"
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 200,
+            "type": {
+              "decl": 1
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 13
+            },
+            {
+              "status": 403,
+              "decl": 9
+            },
+            {
+              "status": 404,
+              "decl": 12
+            },
+            {
+              "status": 409,
+              "decl": 11
+            },
+            {
+              "status": 422,
+              "decl": 14
+            },
+            {
+              "status": 500,
+              "decl": 10
+            }
+          ],
+          "rules": {
+            "facts": [
+              {
+                "name": "booking",
+                "type": {
+                  "decl": 1
+                },
+                "optional": false,
+                "key": {
+                  "t": {
+                    "scalar": "uuid"
+                  },
+                  "e": {
+                    "path": {
+                      "root": {
+                        "param": "id"
+                      },
+                      "steps": []
+                    }
+                  }
+                },
+                "origin": {
+                  "file": "bookings.veld",
+                  "line": 147,
+                  "col": 10
+                }
+              }
+            ],
+            "requires": [],
+            "ensures": [],
+            "transition": {
+              "id": "veld:bookings/Bookings.checkIn.transition@2bc4327af9f4724b",
+              "fact": "booking",
+              "steps": [
+                {
+                  "name": "status",
+                  "wire": "status",
+                  "optional": false
+                }
+              ],
+              "decl": 7,
+              "from": [
+                "paid"
+              ],
+              "to": "checkedIn",
+              "origin": {
+                "file": "bookings.veld",
+                "line": 149,
+                "col": 5
+              }
+            },
+            "allows": [
+              {
+                "policy": 0,
+                "args": [
+                  {
+                    "t": {
+                      "decl": 8
+                    },
+                    "e": {
+                      "path": {
+                        "root": "principal",
+                        "steps": []
+                      }
+                    }
+                  },
+                  {
+                    "t": {
+                      "decl": 1
+                    },
+                    "e": {
+                      "path": {
+                        "root": {
+                          "fact": "booking"
+                        },
+                        "steps": []
+                      }
+                    }
+                  }
+                ],
+                "reads": [],
+                "origin": {
+                  "file": "bookings.veld",
+                  "line": 148,
+                  "col": 5
+                }
+              }
+            ]
+          },
+          "origin": {
+            "file": "bookings.veld",
+            "line": 146,
+            "col": 25
+          }
+        },
+        {
+          "name": "refundBooking",
+          "method": "POST",
+          "path": "/bookings/{id}/refund",
+          "sig": "veld:bookings/Bookings.refundBooking@e60463e702f57c9e",
+          "docs": "Gives the money back. Only the staff may.",
+          "deprecated": null,
+          "auth": {
+            "kind": "bearer",
+            "header": null
+          },
+          "middleware": [],
+          "params": [
+            {
+              "name": "id",
+              "binding": "path",
+              "header": null,
+              "type": {
+                "scalar": "uuid"
+              },
+              "optional": false,
+              "stream": false,
+              "constraints": {
+                "min": null,
+                "max": null,
+                "min_len": null,
+                "max_len": null,
+                "pattern": null,
+                "format": null
+              }
+            }
+          ],
+          "success": {
+            "status": 200,
+            "type": {
+              "decl": 1
+            },
+            "stream": false
+          },
+          "errors": [
+            {
+              "status": 401,
+              "decl": 13
+            },
+            {
+              "status": 403,
+              "decl": 9
+            },
+            {
+              "status": 404,
+              "decl": 12
+            },
+            {
+              "status": 409,
+              "decl": 11
+            },
+            {
+              "status": 422,
+              "decl": 14
+            },
+            {
+              "status": 500,
+              "decl": 10
+            }
+          ],
+          "rules": {
+            "facts": [
+              {
+                "name": "booking",
+                "type": {
+                  "decl": 1
+                },
+                "optional": false,
+                "key": {
+                  "t": {
+                    "scalar": "uuid"
+                  },
+                  "e": {
+                    "path": {
+                      "root": {
+                        "param": "id"
+                      },
+                      "steps": []
+                    }
+                  }
+                },
+                "origin": {
+                  "file": "bookings.veld",
+                  "line": 154,
+                  "col": 10
+                }
+              }
+            ],
+            "requires": [],
+            "ensures": [],
+            "transition": {
+              "id": "veld:bookings/Bookings.refundBooking.transition@34b8cc4e5dd9b04b",
+              "fact": "booking",
+              "steps": [
+                {
+                  "name": "status",
+                  "wire": "status",
+                  "optional": false
+                }
+              ],
+              "decl": 7,
+              "from": [
+                "paid"
+              ],
+              "to": "refunded",
+              "origin": {
+                "file": "bookings.veld",
+                "line": 156,
+                "col": 5
+              }
+            },
+            "allows": [
+              {
+                "policy": 2,
+                "args": [
+                  {
+                    "t": {
+                      "decl": 8
+                    },
+                    "e": {
+                      "path": {
+                        "root": "principal",
+                        "steps": []
+                      }
+                    }
+                  }
+                ],
+                "reads": [],
+                "origin": {
+                  "file": "bookings.veld",
+                  "line": 155,
+                  "col": 5
+                }
+              }
+            ]
+          },
+          "origin": {
+            "file": "bookings.veld",
+            "line": 153,
+            "col": 23
+          }
+        }
+      ],
+      "facts": [
+        {
+          "name": "booking",
+          "type": {
+            "decl": 1
+          },
+          "key": {
+            "scalar": "uuid"
+          },
+          "optional": false
+        },
+        {
+          "name": "room",
+          "type": {
+            "decl": 4
+          },
+          "key": {
+            "scalar": "uuid"
+          },
+          "optional": false
+        }
+      ],
+      "rules_digest": "cad7f1bdf1d52964",
+      "principal": {
+        "decl": 8,
+        "name": "user"
+      },
+      "origin": {
+        "file": "bookings.veld",
+        "line": 99,
+        "col": 9
+      }
+    }
+  ],
+  "consumes": {},
+  "examples": [
+    {
+      "name": "a booking cannot start in the past",
+      "package": 0,
+      "service": 0,
+      "endpoint": "createBooking",
+      "givens": [
+        {
+          "fact": "room",
+          "value": {
+            "object": [
+              {
+                "name": "capacity",
+                "wire": "capacity",
+                "value": {
+                  "json": 2
+                }
+              },
+              {
+                "name": "closed",
+                "wire": "closed",
+                "value": {
+                  "json": false
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": null,
+      "now": "2026-06-01T00:00:00Z",
+      "args": [
+        {
+          "param": "body",
+          "value": {
+            "object": [
+              {
+                "name": "roomId",
+                "wire": "roomId",
+                "value": {
+                  "ref": {
+                    "given": "room",
+                    "path": [
+                      "id"
+                    ]
+                  }
+                }
+              },
+              {
+                "name": "guests",
+                "wire": "guests",
+                "value": {
+                  "json": 1
+                }
+              },
+              {
+                "name": "start",
+                "wire": "start",
+                "value": {
+                  "json": "2026-05-01T00:00:00Z"
+                }
+              },
+              {
+                "name": "end",
+                "wire": "end",
+                "value": {
+                  "json": "2026-05-03T00:00:00Z"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "error": {
+          "decl": 14,
+          "pattern": null
+        }
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 210,
+        "col": 1
+      }
+    },
+    {
+      "name": "a booking that was just made can be paid (the default status is pending)",
+      "package": 0,
+      "service": 0,
+      "endpoint": "payBooking",
+      "givens": [
+        {
+          "fact": "booking",
+          "value": {
+            "object": [
+              {
+                "name": "guestId",
+                "wire": "guestId",
+                "value": {
+                  "json": "00000000-0000-4000-8000-0000000000aa"
+                }
+              },
+              {
+                "name": "total",
+                "wire": "total",
+                "value": {
+                  "json": "179.00"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": {
+        "object": [
+          {
+            "name": "id",
+            "wire": "id",
+            "value": {
+              "json": "00000000-0000-4000-8000-0000000000aa"
+            }
+          },
+          {
+            "name": "roles",
+            "wire": "roles",
+            "value": {
+              "list": []
+            }
+          },
+          {
+            "name": "suspended",
+            "wire": "suspended",
+            "value": {
+              "json": false
+            }
+          }
+        ]
+      },
+      "now": null,
+      "args": [
+        {
+          "param": "id",
+          "value": {
+            "ref": {
+              "given": "booking",
+              "path": [
+                "id"
+              ]
+            }
+          }
+        },
+        {
+          "param": "body",
+          "value": {
+            "object": [
+              {
+                "name": "amount",
+                "wire": "amount",
+                "value": {
+                  "json": "179.00"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "ok": null
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 329,
+        "col": 1
+      }
+    },
+    {
+      "name": "a caller can ask who they are",
+      "package": 0,
+      "service": 0,
+      "endpoint": "whoAmI",
+      "givens": [],
+      "principal": {
+        "object": [
+          {
+            "name": "id",
+            "wire": "id",
+            "value": {
+              "json": "00000000-0000-4000-8000-0000000000aa"
+            }
+          },
+          {
+            "name": "name",
+            "wire": "name",
+            "value": {
+              "json": "Ann"
+            }
+          },
+          {
+            "name": "roles",
+            "wire": "roles",
+            "value": {
+              "list": []
+            }
+          },
+          {
+            "name": "suspended",
+            "wire": "suspended",
+            "value": {
+              "json": false
+            }
+          }
+        ]
+      },
+      "now": null,
+      "args": [],
+      "returns": null,
+      "outcome": {
+        "ok": null
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 280,
+        "col": 1
+      }
+    },
+    {
+      "name": "a checked-in booking cannot be cancelled",
+      "package": 0,
+      "service": 0,
+      "endpoint": "cancelBooking",
+      "givens": [
+        {
+          "fact": "booking",
+          "value": {
+            "object": [
+              {
+                "name": "guestId",
+                "wire": "guestId",
+                "value": {
+                  "json": "00000000-0000-4000-8000-0000000000aa"
+                }
+              },
+              {
+                "name": "status",
+                "wire": "status",
+                "value": {
+                  "json": "checkedIn"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": {
+        "object": [
+          {
+            "name": "id",
+            "wire": "id",
+            "value": {
+              "json": "00000000-0000-4000-8000-0000000000aa"
+            }
+          },
+          {
+            "name": "roles",
+            "wire": "roles",
+            "value": {
+              "list": []
+            }
+          },
+          {
+            "name": "suspended",
+            "wire": "suspended",
+            "value": {
+              "json": false
+            }
+          }
+        ]
+      },
+      "now": null,
+      "args": [
+        {
+          "param": "id",
+          "value": {
+            "ref": {
+              "given": "booking",
+              "path": [
+                "id"
+              ]
+            }
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "error": {
+          "decl": 11,
+          "pattern": {
+            "object": [
+              {
+                "name": "field",
+                "wire": "field",
+                "value": {
+                  "json": "status"
+                }
+              },
+              {
+                "name": "from",
+                "wire": "from",
+                "value": {
+                  "json": "checkedIn"
+                }
+              },
+              {
+                "name": "to",
+                "wire": "to",
+                "value": {
+                  "json": "cancelled"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 402,
+        "col": 1
+      }
+    },
+    {
+      "name": "a closed room is refused, whatever the party",
+      "package": 0,
+      "service": 0,
+      "endpoint": "createBooking",
+      "givens": [
+        {
+          "fact": "room",
+          "value": {
+            "object": [
+              {
+                "name": "capacity",
+                "wire": "capacity",
+                "value": {
+                  "json": 2
+                }
+              },
+              {
+                "name": "closed",
+                "wire": "closed",
+                "value": {
+                  "json": true
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": null,
+      "now": "2026-06-01T00:00:00Z",
+      "args": [
+        {
+          "param": "body",
+          "value": {
+            "object": [
+              {
+                "name": "roomId",
+                "wire": "roomId",
+                "value": {
+                  "ref": {
+                    "given": "room",
+                    "path": [
+                      "id"
+                    ]
+                  }
+                }
+              },
+              {
+                "name": "guests",
+                "wire": "guests",
+                "value": {
+                  "json": 5
+                }
+              },
+              {
+                "name": "start",
+                "wire": "start",
+                "value": {
+                  "json": "2026-06-10T00:00:00Z"
+                }
+              },
+              {
+                "name": "end",
+                "wire": "end",
+                "value": {
+                  "json": "2026-06-12T00:00:00Z"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "error": {
+          "decl": 5,
+          "pattern": null
+        }
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 183,
+        "col": 1
+      }
+    },
+    {
+      "name": "a final state has no way out",
+      "package": 0,
+      "service": 0,
+      "endpoint": "cancelBooking",
+      "givens": [
+        {
+          "fact": "booking",
+          "value": {
+            "object": [
+              {
+                "name": "guestId",
+                "wire": "guestId",
+                "value": {
+                  "json": "00000000-0000-4000-8000-0000000000aa"
+                }
+              },
+              {
+                "name": "status",
+                "wire": "status",
+                "value": {
+                  "json": "refunded"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": {
+        "object": [
+          {
+            "name": "id",
+            "wire": "id",
+            "value": {
+              "json": "00000000-0000-4000-8000-0000000000aa"
+            }
+          },
+          {
+            "name": "roles",
+            "wire": "roles",
+            "value": {
+              "list": []
+            }
+          },
+          {
+            "name": "suspended",
+            "wire": "suspended",
+            "value": {
+              "json": false
+            }
+          }
+        ]
+      },
+      "now": null,
+      "args": [
+        {
+          "param": "id",
+          "value": {
+            "ref": {
+              "given": "booking",
+              "path": [
+                "id"
+              ]
+            }
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "error": {
+          "decl": 11,
+          "pattern": {
+            "object": [
+              {
+                "name": "from",
+                "wire": "from",
+                "value": {
+                  "json": "refunded"
+                }
+              },
+              {
+                "name": "to",
+                "wire": "to",
+                "value": {
+                  "json": "cancelled"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 408,
+        "col": 1
+      }
+    },
+    {
+      "name": "a guest cannot refund their own booking",
+      "package": 0,
+      "service": 0,
+      "endpoint": "refundBooking",
+      "givens": [
+        {
+          "fact": "booking",
+          "value": {
+            "object": [
+              {
+                "name": "guestId",
+                "wire": "guestId",
+                "value": {
+                  "json": "00000000-0000-4000-8000-0000000000aa"
+                }
+              },
+              {
+                "name": "status",
+                "wire": "status",
+                "value": {
+                  "json": "paid"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": {
+        "object": [
+          {
+            "name": "id",
+            "wire": "id",
+            "value": {
+              "json": "00000000-0000-4000-8000-0000000000aa"
+            }
+          },
+          {
+            "name": "roles",
+            "wire": "roles",
+            "value": {
+              "list": []
+            }
+          },
+          {
+            "name": "suspended",
+            "wire": "suspended",
+            "value": {
+              "json": false
+            }
+          }
+        ]
+      },
+      "now": null,
+      "args": [
+        {
+          "param": "id",
+          "value": {
+            "ref": {
+              "given": "booking",
+              "path": [
+                "id"
+              ]
+            }
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "error": {
+          "decl": 9,
+          "pattern": {
+            "object": [
+              {
+                "name": "message",
+                "wire": "message",
+                "value": {
+                  "json": "not permitted"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 432,
+        "col": 1
+      }
+    },
+    {
+      "name": "a legal move with the wrong amount is refused by require",
+      "package": 0,
+      "service": 0,
+      "endpoint": "payBooking",
+      "givens": [
+        {
+          "fact": "booking",
+          "value": {
+            "object": [
+              {
+                "name": "guestId",
+                "wire": "guestId",
+                "value": {
+                  "json": "00000000-0000-4000-8000-0000000000aa"
+                }
+              },
+              {
+                "name": "status",
+                "wire": "status",
+                "value": {
+                  "json": "pending"
+                }
+              },
+              {
+                "name": "total",
+                "wire": "total",
+                "value": {
+                  "json": "179.00"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": {
+        "object": [
+          {
+            "name": "id",
+            "wire": "id",
+            "value": {
+              "json": "00000000-0000-4000-8000-0000000000aa"
+            }
+          },
+          {
+            "name": "roles",
+            "wire": "roles",
+            "value": {
+              "list": []
+            }
+          },
+          {
+            "name": "suspended",
+            "wire": "suspended",
+            "value": {
+              "json": false
+            }
+          }
+        ]
+      },
+      "now": null,
+      "args": [
+        {
+          "param": "id",
+          "value": {
+            "ref": {
+              "given": "booking",
+              "path": [
+                "id"
+              ]
+            }
+          }
+        },
+        {
+          "param": "body",
+          "value": {
+            "object": [
+              {
+                "name": "amount",
+                "wire": "amount",
+                "value": {
+                  "json": "1.00"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "error": {
+          "decl": 0,
+          "pattern": {
+            "object": [
+              {
+                "name": "expected",
+                "wire": "expected",
+                "value": {
+                  "json": "179"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 360,
+        "col": 1
+      }
+    },
+    {
+      "name": "a missing booking is not found before the policy is asked",
+      "package": 0,
+      "service": 0,
+      "endpoint": "getBooking",
+      "givens": [
+        {
+          "fact": "booking",
+          "value": null
+        }
+      ],
+      "principal": {
+        "object": [
+          {
+            "name": "id",
+            "wire": "id",
+            "value": {
+              "json": "00000000-0000-4000-8000-0000000000bb"
+            }
+          },
+          {
+            "name": "roles",
+            "wire": "roles",
+            "value": {
+              "list": []
+            }
+          },
+          {
+            "name": "suspended",
+            "wire": "suspended",
+            "value": {
+              "json": false
+            }
+          }
+        ]
+      },
+      "now": null,
+      "args": [
+        {
+          "param": "id",
+          "value": {
+            "json": "00000000-0000-4000-8000-0000000000f0"
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "error": {
+          "decl": 12,
+          "pattern": {
+            "object": [
+              {
+                "name": "resource",
+                "wire": "resource",
+                "value": {
+                  "json": "booking"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 297,
+        "col": 1
+      }
+    },
+    {
+      "name": "a missing booking is not found before the transition is looked at",
+      "package": 0,
+      "service": 0,
+      "endpoint": "payBooking",
+      "givens": [
+        {
+          "fact": "booking",
+          "value": null
+        }
+      ],
+      "principal": {
+        "object": [
+          {
+            "name": "id",
+            "wire": "id",
+            "value": {
+              "json": "00000000-0000-4000-8000-0000000000aa"
+            }
+          },
+          {
+            "name": "roles",
+            "wire": "roles",
+            "value": {
+              "list": []
+            }
+          },
+          {
+            "name": "suspended",
+            "wire": "suspended",
+            "value": {
+              "json": false
+            }
+          }
+        ]
+      },
+      "now": null,
+      "args": [
+        {
+          "param": "id",
+          "value": {
+            "json": "00000000-0000-4000-8000-0000000000f0"
+          }
+        },
+        {
+          "param": "body",
+          "value": {
+            "object": [
+              {
+                "name": "amount",
+                "wire": "amount",
+                "value": {
+                  "json": "1.00"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "error": {
+          "decl": 12,
+          "pattern": {
+            "object": [
+              {
+                "name": "resource",
+                "wire": "resource",
+                "value": {
+                  "json": "booking"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 366,
+        "col": 1
+      }
+    },
+    {
+      "name": "a paid booking can be cancelled by the staff",
+      "package": 0,
+      "service": 0,
+      "endpoint": "cancelBooking",
+      "givens": [
+        {
+          "fact": "booking",
+          "value": {
+            "object": [
+              {
+                "name": "guestId",
+                "wire": "guestId",
+                "value": {
+                  "json": "00000000-0000-4000-8000-0000000000aa"
+                }
+              },
+              {
+                "name": "status",
+                "wire": "status",
+                "value": {
+                  "json": "paid"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": {
+        "object": [
+          {
+            "name": "id",
+            "wire": "id",
+            "value": {
+              "json": "00000000-0000-4000-8000-0000000000cc"
+            }
+          },
+          {
+            "name": "roles",
+            "wire": "roles",
+            "value": {
+              "list": [
+                {
+                  "json": "staff"
+                }
+              ]
+            }
+          },
+          {
+            "name": "suspended",
+            "wire": "suspended",
+            "value": {
+              "json": false
+            }
+          }
+        ]
+      },
+      "now": null,
+      "args": [
+        {
+          "param": "id",
+          "value": {
+            "ref": {
+              "given": "booking",
+              "path": [
+                "id"
+              ]
+            }
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "ok": null
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 396,
+        "col": 1
+      }
+    },
+    {
+      "name": "a paid booking can check in",
+      "package": 0,
+      "service": 0,
+      "endpoint": "checkIn",
+      "givens": [
+        {
+          "fact": "booking",
+          "value": {
+            "object": [
+              {
+                "name": "guestId",
+                "wire": "guestId",
+                "value": {
+                  "json": "00000000-0000-4000-8000-0000000000aa"
+                }
+              },
+              {
+                "name": "status",
+                "wire": "status",
+                "value": {
+                  "json": "paid"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": {
+        "object": [
+          {
+            "name": "id",
+            "wire": "id",
+            "value": {
+              "json": "00000000-0000-4000-8000-0000000000aa"
+            }
+          },
+          {
+            "name": "roles",
+            "wire": "roles",
+            "value": {
+              "list": []
+            }
+          },
+          {
+            "name": "suspended",
+            "wire": "suspended",
+            "value": {
+              "json": false
+            }
+          }
+        ]
+      },
+      "now": null,
+      "args": [
+        {
+          "param": "id",
+          "value": {
+            "ref": {
+              "given": "booking",
+              "path": [
+                "id"
+              ]
+            }
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "ok": null
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 414,
+        "col": 1
+      }
+    },
+    {
+      "name": "a paid booking cannot be paid again",
+      "package": 0,
+      "service": 0,
+      "endpoint": "payBooking",
+      "givens": [
+        {
+          "fact": "booking",
+          "value": {
+            "object": [
+              {
+                "name": "guestId",
+                "wire": "guestId",
+                "value": {
+                  "json": "00000000-0000-4000-8000-0000000000aa"
+                }
+              },
+              {
+                "name": "status",
+                "wire": "status",
+                "value": {
+                  "json": "paid"
+                }
+              },
+              {
+                "name": "total",
+                "wire": "total",
+                "value": {
+                  "json": "179.00"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": {
+        "object": [
+          {
+            "name": "id",
+            "wire": "id",
+            "value": {
+              "json": "00000000-0000-4000-8000-0000000000aa"
+            }
+          },
+          {
+            "name": "roles",
+            "wire": "roles",
+            "value": {
+              "list": []
+            }
+          },
+          {
+            "name": "suspended",
+            "wire": "suspended",
+            "value": {
+              "json": false
+            }
+          }
+        ]
+      },
+      "now": null,
+      "args": [
+        {
+          "param": "id",
+          "value": {
+            "ref": {
+              "given": "booking",
+              "path": [
+                "id"
+              ]
+            }
+          }
+        },
+        {
+          "param": "body",
+          "value": {
+            "object": [
+              {
+                "name": "amount",
+                "wire": "amount",
+                "value": {
+                  "json": "179.00"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "error": {
+          "decl": 11,
+          "pattern": {
+            "object": [
+              {
+                "name": "field",
+                "wire": "field",
+                "value": {
+                  "json": "status"
+                }
+              },
+              {
+                "name": "from",
+                "wire": "from",
+                "value": {
+                  "json": "paid"
+                }
+              },
+              {
+                "name": "to",
+                "wire": "to",
+                "value": {
+                  "json": "paid"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 335,
+        "col": 1
+      }
+    },
+    {
+      "name": "a pending booking can be cancelled",
+      "package": 0,
+      "service": 0,
+      "endpoint": "cancelBooking",
+      "givens": [
+        {
+          "fact": "booking",
+          "value": {
+            "object": [
+              {
+                "name": "guestId",
+                "wire": "guestId",
+                "value": {
+                  "json": "00000000-0000-4000-8000-0000000000aa"
+                }
+              },
+              {
+                "name": "status",
+                "wire": "status",
+                "value": {
+                  "json": "pending"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": {
+        "object": [
+          {
+            "name": "id",
+            "wire": "id",
+            "value": {
+              "json": "00000000-0000-4000-8000-0000000000aa"
+            }
+          },
+          {
+            "name": "roles",
+            "wire": "roles",
+            "value": {
+              "list": []
+            }
+          },
+          {
+            "name": "suspended",
+            "wire": "suspended",
+            "value": {
+              "json": false
+            }
+          }
+        ]
+      },
+      "now": null,
+      "args": [
+        {
+          "param": "id",
+          "value": {
+            "ref": {
+              "given": "booking",
+              "path": [
+                "id"
+              ]
+            }
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "ok": null
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 390,
+        "col": 1
+      }
+    },
+    {
+      "name": "a pending booking cannot check in",
+      "package": 0,
+      "service": 0,
+      "endpoint": "checkIn",
+      "givens": [
+        {
+          "fact": "booking",
+          "value": {
+            "object": [
+              {
+                "name": "guestId",
+                "wire": "guestId",
+                "value": {
+                  "json": "00000000-0000-4000-8000-0000000000aa"
+                }
+              },
+              {
+                "name": "status",
+                "wire": "status",
+                "value": {
+                  "json": "pending"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": {
+        "object": [
+          {
+            "name": "id",
+            "wire": "id",
+            "value": {
+              "json": "00000000-0000-4000-8000-0000000000aa"
+            }
+          },
+          {
+            "name": "roles",
+            "wire": "roles",
+            "value": {
+              "list": []
+            }
+          },
+          {
+            "name": "suspended",
+            "wire": "suspended",
+            "value": {
+              "json": false
+            }
+          }
+        ]
+      },
+      "now": null,
+      "args": [
+        {
+          "param": "id",
+          "value": {
+            "ref": {
+              "given": "booking",
+              "path": [
+                "id"
+              ]
+            }
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "error": {
+          "decl": 11,
+          "pattern": {
+            "object": [
+              {
+                "name": "from",
+                "wire": "from",
+                "value": {
+                  "json": "pending"
+                }
+              },
+              {
+                "name": "to",
+                "wire": "to",
+                "value": {
+                  "json": "checkedIn"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 420,
+        "col": 1
+      }
+    },
+    {
+      "name": "a pending booking is paid by its guest",
+      "package": 0,
+      "service": 0,
+      "endpoint": "payBooking",
+      "givens": [
+        {
+          "fact": "booking",
+          "value": {
+            "object": [
+              {
+                "name": "guestId",
+                "wire": "guestId",
+                "value": {
+                  "json": "00000000-0000-4000-8000-0000000000aa"
+                }
+              },
+              {
+                "name": "status",
+                "wire": "status",
+                "value": {
+                  "json": "pending"
+                }
+              },
+              {
+                "name": "total",
+                "wire": "total",
+                "value": {
+                  "json": "179.00"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": {
+        "object": [
+          {
+            "name": "id",
+            "wire": "id",
+            "value": {
+              "json": "00000000-0000-4000-8000-0000000000aa"
+            }
+          },
+          {
+            "name": "roles",
+            "wire": "roles",
+            "value": {
+              "list": []
+            }
+          },
+          {
+            "name": "suspended",
+            "wire": "suspended",
+            "value": {
+              "json": false
+            }
+          }
+        ]
+      },
+      "now": null,
+      "args": [
+        {
+          "param": "id",
+          "value": {
+            "ref": {
+              "given": "booking",
+              "path": [
+                "id"
+              ]
+            }
+          }
+        },
+        {
+          "param": "body",
+          "value": {
+            "object": [
+              {
+                "name": "amount",
+                "wire": "amount",
+                "value": {
+                  "json": "179.00"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "ok": null
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 323,
+        "col": 1
+      }
+    },
+    {
+      "name": "a result in the target state passes",
+      "package": 0,
+      "service": 0,
+      "endpoint": "payBooking",
+      "givens": [
+        {
+          "fact": "booking",
+          "value": {
+            "object": [
+              {
+                "name": "guestId",
+                "wire": "guestId",
+                "value": {
+                  "json": "00000000-0000-4000-8000-0000000000aa"
+                }
+              },
+              {
+                "name": "status",
+                "wire": "status",
+                "value": {
+                  "json": "pending"
+                }
+              },
+              {
+                "name": "total",
+                "wire": "total",
+                "value": {
+                  "json": "179.00"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": {
+        "object": [
+          {
+            "name": "id",
+            "wire": "id",
+            "value": {
+              "json": "00000000-0000-4000-8000-0000000000aa"
+            }
+          },
+          {
+            "name": "roles",
+            "wire": "roles",
+            "value": {
+              "list": []
+            }
+          },
+          {
+            "name": "suspended",
+            "wire": "suspended",
+            "value": {
+              "json": false
+            }
+          }
+        ]
+      },
+      "now": null,
+      "args": [
+        {
+          "param": "id",
+          "value": {
+            "ref": {
+              "given": "booking",
+              "path": [
+                "id"
+              ]
+            }
+          }
+        },
+        {
+          "param": "body",
+          "value": {
+            "object": [
+              {
+                "name": "amount",
+                "wire": "amount",
+                "value": {
+                  "json": "179.00"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "returns": {
+        "object": [
+          {
+            "name": "status",
+            "wire": "status",
+            "value": {
+              "json": "paid"
+            }
+          },
+          {
+            "name": "total",
+            "wire": "total",
+            "value": {
+              "json": "179.00"
+            }
+          }
+        ]
+      },
+      "outcome": {
+        "ok": null
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 380,
+        "col": 1
+      }
+    },
+    {
+      "name": "a room that sleeps two refuses three guests",
+      "package": 0,
+      "service": 0,
+      "endpoint": "createBooking",
+      "givens": [
+        {
+          "fact": "room",
+          "value": {
+            "object": [
+              {
+                "name": "capacity",
+                "wire": "capacity",
+                "value": {
+                  "json": 2
+                }
+              },
+              {
+                "name": "closed",
+                "wire": "closed",
+                "value": {
+                  "json": false
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": null,
+      "now": "2026-06-01T00:00:00Z",
+      "args": [
+        {
+          "param": "body",
+          "value": {
+            "object": [
+              {
+                "name": "roomId",
+                "wire": "roomId",
+                "value": {
+                  "ref": {
+                    "given": "room",
+                    "path": [
+                      "id"
+                    ]
+                  }
+                }
+              },
+              {
+                "name": "guests",
+                "wire": "guests",
+                "value": {
+                  "json": 3
+                }
+              },
+              {
+                "name": "start",
+                "wire": "start",
+                "value": {
+                  "json": "2026-06-10T00:00:00Z"
+                }
+              },
+              {
+                "name": "end",
+                "wire": "end",
+                "value": {
+                  "json": "2026-06-12T00:00:00Z"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "error": {
+          "decl": 6,
+          "pattern": {
+            "object": [
+              {
+                "name": "capacity",
+                "wire": "capacity",
+                "value": {
+                  "json": 2
+                }
+              }
+            ]
+          }
+        }
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 174,
+        "col": 1
+      }
+    },
+    {
+      "name": "a stay cannot end before it starts",
+      "package": 0,
+      "service": 0,
+      "endpoint": "createBooking",
+      "givens": [
+        {
+          "fact": "room",
+          "value": {
+            "object": [
+              {
+                "name": "capacity",
+                "wire": "capacity",
+                "value": {
+                  "json": 2
+                }
+              },
+              {
+                "name": "closed",
+                "wire": "closed",
+                "value": {
+                  "json": false
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": null,
+      "now": "2026-06-01T00:00:00Z",
+      "args": [
+        {
+          "param": "body",
+          "value": {
+            "object": [
+              {
+                "name": "roomId",
+                "wire": "roomId",
+                "value": {
+                  "ref": {
+                    "given": "room",
+                    "path": [
+                      "id"
+                    ]
+                  }
+                }
+              },
+              {
+                "name": "guests",
+                "wire": "guests",
+                "value": {
+                  "json": 1
+                }
+              },
+              {
+                "name": "start",
+                "wire": "start",
+                "value": {
+                  "json": "2026-06-12T00:00:00Z"
+                }
+              },
+              {
+                "name": "end",
+                "wire": "end",
+                "value": {
+                  "json": "2026-06-10T00:00:00Z"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "error": {
+          "decl": 14,
+          "pattern": null
+        }
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 192,
+        "col": 1
+      }
+    },
+    {
+      "name": "a stay is at most 30 days",
+      "package": 0,
+      "service": 0,
+      "endpoint": "createBooking",
+      "givens": [
+        {
+          "fact": "room",
+          "value": {
+            "object": [
+              {
+                "name": "capacity",
+                "wire": "capacity",
+                "value": {
+                  "json": 2
+                }
+              },
+              {
+                "name": "closed",
+                "wire": "closed",
+                "value": {
+                  "json": false
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": null,
+      "now": "2026-06-01T00:00:00Z",
+      "args": [
+        {
+          "param": "body",
+          "value": {
+            "object": [
+              {
+                "name": "roomId",
+                "wire": "roomId",
+                "value": {
+                  "ref": {
+                    "given": "room",
+                    "path": [
+                      "id"
+                    ]
+                  }
+                }
+              },
+              {
+                "name": "guests",
+                "wire": "guests",
+                "value": {
+                  "json": 1
+                }
+              },
+              {
+                "name": "start",
+                "wire": "start",
+                "value": {
+                  "json": "2026-06-10T00:00:00Z"
+                }
+              },
+              {
+                "name": "end",
+                "wire": "end",
+                "value": {
+                  "json": "2026-08-10T00:00:00Z"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "error": {
+          "decl": 14,
+          "pattern": null
+        }
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 201,
+        "col": 1
+      }
+    },
+    {
+      "name": "a stranger may not pay",
+      "package": 0,
+      "service": 0,
+      "endpoint": "payBooking",
+      "givens": [
+        {
+          "fact": "booking",
+          "value": {
+            "object": [
+              {
+                "name": "guestId",
+                "wire": "guestId",
+                "value": {
+                  "json": "00000000-0000-4000-8000-0000000000aa"
+                }
+              },
+              {
+                "name": "total",
+                "wire": "total",
+                "value": {
+                  "json": "179.00"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": {
+        "object": [
+          {
+            "name": "id",
+            "wire": "id",
+            "value": {
+              "json": "00000000-0000-4000-8000-0000000000bb"
+            }
+          },
+          {
+            "name": "roles",
+            "wire": "roles",
+            "value": {
+              "list": []
+            }
+          },
+          {
+            "name": "suspended",
+            "wire": "suspended",
+            "value": {
+              "json": false
+            }
+          }
+        ]
+      },
+      "now": null,
+      "args": [
+        {
+          "param": "id",
+          "value": {
+            "ref": {
+              "given": "booking",
+              "path": [
+                "id"
+              ]
+            }
+          }
+        },
+        {
+          "param": "body",
+          "value": {
+            "object": [
+              {
+                "name": "amount",
+                "wire": "amount",
+                "value": {
+                  "json": "179.00"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "error": {
+          "decl": 9,
+          "pattern": {
+            "object": [
+              {
+                "name": "message",
+                "wire": "message",
+                "value": {
+                  "json": "not permitted"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 342,
+        "col": 1
+      }
+    },
+    {
+      "name": "a suspended account cannot book",
+      "package": 0,
+      "service": 0,
+      "endpoint": "createBooking",
+      "givens": [
+        {
+          "fact": "room",
+          "value": {
+            "object": [
+              {
+                "name": "capacity",
+                "wire": "capacity",
+                "value": {
+                  "json": 2
+                }
+              },
+              {
+                "name": "closed",
+                "wire": "closed",
+                "value": {
+                  "json": false
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": {
+        "object": [
+          {
+            "name": "id",
+            "wire": "id",
+            "value": {
+              "json": "00000000-0000-4000-8000-0000000000ee"
+            }
+          },
+          {
+            "name": "roles",
+            "wire": "roles",
+            "value": {
+              "list": []
+            }
+          },
+          {
+            "name": "suspended",
+            "wire": "suspended",
+            "value": {
+              "json": true
+            }
+          }
+        ]
+      },
+      "now": "2026-06-01T00:00:00Z",
+      "args": [
+        {
+          "param": "body",
+          "value": {
+            "object": [
+              {
+                "name": "roomId",
+                "wire": "roomId",
+                "value": {
+                  "ref": {
+                    "given": "room",
+                    "path": [
+                      "id"
+                    ]
+                  }
+                }
+              },
+              {
+                "name": "guests",
+                "wire": "guests",
+                "value": {
+                  "json": 1
+                }
+              },
+              {
+                "name": "start",
+                "wire": "start",
+                "value": {
+                  "json": "2026-06-10T00:00:00Z"
+                }
+              },
+              {
+                "name": "end",
+                "wire": "end",
+                "value": {
+                  "json": "2026-06-12T00:00:00Z"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "error": {
+          "decl": 9,
+          "pattern": {
+            "object": [
+              {
+                "name": "message",
+                "wire": "message",
+                "value": {
+                  "json": "A suspended account cannot book"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 242,
+        "col": 1
+      }
+    },
+    {
+      "name": "a suspended guest cannot even see their own booking",
+      "package": 0,
+      "service": 0,
+      "endpoint": "getBooking",
+      "givens": [
+        {
+          "fact": "booking",
+          "value": {
+            "object": [
+              {
+                "name": "guestId",
+                "wire": "guestId",
+                "value": {
+                  "json": "00000000-0000-4000-8000-0000000000ee"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": {
+        "object": [
+          {
+            "name": "id",
+            "wire": "id",
+            "value": {
+              "json": "00000000-0000-4000-8000-0000000000ee"
+            }
+          },
+          {
+            "name": "roles",
+            "wire": "roles",
+            "value": {
+              "list": []
+            }
+          },
+          {
+            "name": "suspended",
+            "wire": "suspended",
+            "value": {
+              "json": true
+            }
+          }
+        ]
+      },
+      "now": null,
+      "args": [
+        {
+          "param": "id",
+          "value": {
+            "ref": {
+              "given": "booking",
+              "path": [
+                "id"
+              ]
+            }
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "error": {
+          "decl": 9,
+          "pattern": {
+            "object": [
+              {
+                "name": "message",
+                "wire": "message",
+                "value": {
+                  "json": "A suspended account cannot manage bookings"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 309,
+        "col": 1
+      }
+    },
+    {
+      "name": "a valid booking is accepted",
+      "package": 0,
+      "service": 0,
+      "endpoint": "createBooking",
+      "givens": [
+        {
+          "fact": "room",
+          "value": {
+            "object": [
+              {
+                "name": "capacity",
+                "wire": "capacity",
+                "value": {
+                  "json": 2
+                }
+              },
+              {
+                "name": "closed",
+                "wire": "closed",
+                "value": {
+                  "json": false
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": null,
+      "now": "2026-06-01T00:00:00Z",
+      "args": [
+        {
+          "param": "body",
+          "value": {
+            "object": [
+              {
+                "name": "roomId",
+                "wire": "roomId",
+                "value": {
+                  "ref": {
+                    "given": "room",
+                    "path": [
+                      "id"
+                    ]
+                  }
+                }
+              },
+              {
+                "name": "guests",
+                "wire": "guests",
+                "value": {
+                  "json": 2
+                }
+              },
+              {
+                "name": "start",
+                "wire": "start",
+                "value": {
+                  "json": "2026-06-10T00:00:00Z"
+                }
+              },
+              {
+                "name": "end",
+                "wire": "end",
+                "value": {
+                  "json": "2026-06-12T00:00:00Z"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "ok": null
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 165,
+        "col": 1
+      }
+    },
+    {
+      "name": "an unknown room is not found",
+      "package": 0,
+      "service": 0,
+      "endpoint": "createBooking",
+      "givens": [
+        {
+          "fact": "room",
+          "value": null
+        }
+      ],
+      "principal": null,
+      "now": "2026-06-01T00:00:00Z",
+      "args": [
+        {
+          "param": "body",
+          "value": {
+            "object": [
+              {
+                "name": "guests",
+                "wire": "guests",
+                "value": {
+                  "json": 1
+                }
+              },
+              {
+                "name": "start",
+                "wire": "start",
+                "value": {
+                  "json": "2026-06-10T00:00:00Z"
+                }
+              },
+              {
+                "name": "end",
+                "wire": "end",
+                "value": {
+                  "json": "2026-06-12T00:00:00Z"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "error": {
+          "decl": 12,
+          "pattern": {
+            "object": [
+              {
+                "name": "resource",
+                "wire": "resource",
+                "value": {
+                  "json": "room"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 219,
+        "col": 1
+      }
+    },
+    {
+      "name": "another guest does not see it",
+      "package": 0,
+      "service": 0,
+      "endpoint": "getBooking",
+      "givens": [
+        {
+          "fact": "booking",
+          "value": {
+            "object": [
+              {
+                "name": "guestId",
+                "wire": "guestId",
+                "value": {
+                  "json": "00000000-0000-4000-8000-0000000000aa"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": {
+        "object": [
+          {
+            "name": "id",
+            "wire": "id",
+            "value": {
+              "json": "00000000-0000-4000-8000-0000000000bb"
+            }
+          },
+          {
+            "name": "roles",
+            "wire": "roles",
+            "value": {
+              "list": []
+            }
+          },
+          {
+            "name": "suspended",
+            "wire": "suspended",
+            "value": {
+              "json": false
+            }
+          }
+        ]
+      },
+      "now": null,
+      "args": [
+        {
+          "param": "id",
+          "value": {
+            "ref": {
+              "given": "booking",
+              "path": [
+                "id"
+              ]
+            }
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "error": {
+          "decl": 9,
+          "pattern": {
+            "object": [
+              {
+                "name": "message",
+                "wire": "message",
+                "value": {
+                  "json": "not permitted"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 291,
+        "col": 1
+      }
+    },
+    {
+      "name": "anyone may look at the rooms",
+      "package": 0,
+      "service": 0,
+      "endpoint": "listRooms",
+      "givens": [],
+      "principal": null,
+      "now": null,
+      "args": [],
+      "returns": null,
+      "outcome": {
+        "ok": null
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 276,
+        "col": 1
+      }
+    },
+    {
+      "name": "forbid beats permit: suspended staff is refused too",
+      "package": 0,
+      "service": 0,
+      "endpoint": "getBooking",
+      "givens": [
+        {
+          "fact": "booking",
+          "value": {
+            "object": [
+              {
+                "name": "guestId",
+                "wire": "guestId",
+                "value": {
+                  "json": "00000000-0000-4000-8000-0000000000aa"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": {
+        "object": [
+          {
+            "name": "id",
+            "wire": "id",
+            "value": {
+              "json": "00000000-0000-4000-8000-0000000000cc"
+            }
+          },
+          {
+            "name": "roles",
+            "wire": "roles",
+            "value": {
+              "list": [
+                {
+                  "json": "staff"
+                }
+              ]
+            }
+          },
+          {
+            "name": "suspended",
+            "wire": "suspended",
+            "value": {
+              "json": true
+            }
+          }
+        ]
+      },
+      "now": null,
+      "args": [
+        {
+          "param": "id",
+          "value": {
+            "ref": {
+              "given": "booking",
+              "path": [
+                "id"
+              ]
+            }
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "error": {
+          "decl": 9,
+          "pattern": {
+            "object": [
+              {
+                "name": "message",
+                "wire": "message",
+                "value": {
+                  "json": "A suspended account cannot manage bookings"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 315,
+        "col": 1
+      }
+    },
+    {
+      "name": "only a paid booking can be refunded",
+      "package": 0,
+      "service": 0,
+      "endpoint": "refundBooking",
+      "givens": [
+        {
+          "fact": "booking",
+          "value": {
+            "object": [
+              {
+                "name": "guestId",
+                "wire": "guestId",
+                "value": {
+                  "json": "00000000-0000-4000-8000-0000000000aa"
+                }
+              },
+              {
+                "name": "status",
+                "wire": "status",
+                "value": {
+                  "json": "pending"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": {
+        "object": [
+          {
+            "name": "id",
+            "wire": "id",
+            "value": {
+              "json": "00000000-0000-4000-8000-0000000000cc"
+            }
+          },
+          {
+            "name": "roles",
+            "wire": "roles",
+            "value": {
+              "list": [
+                {
+                  "json": "staff"
+                }
+              ]
+            }
+          },
+          {
+            "name": "suspended",
+            "wire": "suspended",
+            "value": {
+              "json": false
+            }
+          }
+        ]
+      },
+      "now": null,
+      "args": [
+        {
+          "param": "id",
+          "value": {
+            "ref": {
+              "given": "booking",
+              "path": [
+                "id"
+              ]
+            }
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "error": {
+          "decl": 11,
+          "pattern": {
+            "object": [
+              {
+                "name": "from",
+                "wire": "from",
+                "value": {
+                  "json": "pending"
+                }
+              },
+              {
+                "name": "to",
+                "wire": "to",
+                "value": {
+                  "json": "refunded"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 438,
+        "col": 1
+      }
+    },
+    {
+      "name": "the guest sees their own booking",
+      "package": 0,
+      "service": 0,
+      "endpoint": "getBooking",
+      "givens": [
+        {
+          "fact": "booking",
+          "value": {
+            "object": [
+              {
+                "name": "guestId",
+                "wire": "guestId",
+                "value": {
+                  "json": "00000000-0000-4000-8000-0000000000aa"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": {
+        "object": [
+          {
+            "name": "id",
+            "wire": "id",
+            "value": {
+              "json": "00000000-0000-4000-8000-0000000000aa"
+            }
+          },
+          {
+            "name": "roles",
+            "wire": "roles",
+            "value": {
+              "list": []
+            }
+          },
+          {
+            "name": "suspended",
+            "wire": "suspended",
+            "value": {
+              "json": false
+            }
+          }
+        ]
+      },
+      "now": null,
+      "args": [
+        {
+          "param": "id",
+          "value": {
+            "ref": {
+              "given": "booking",
+              "path": [
+                "id"
+              ]
+            }
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "ok": null
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 285,
+        "col": 1
+      }
+    },
+    {
+      "name": "the handler must keep the guests of the request",
+      "package": 0,
+      "service": 0,
+      "endpoint": "createBooking",
+      "givens": [
+        {
+          "fact": "room",
+          "value": {
+            "object": [
+              {
+                "name": "capacity",
+                "wire": "capacity",
+                "value": {
+                  "json": 4
+                }
+              },
+              {
+                "name": "closed",
+                "wire": "closed",
+                "value": {
+                  "json": false
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": {
+        "object": [
+          {
+            "name": "id",
+            "wire": "id",
+            "value": {
+              "json": "00000000-0000-4000-8000-0000000000aa"
+            }
+          },
+          {
+            "name": "roles",
+            "wire": "roles",
+            "value": {
+              "list": []
+            }
+          },
+          {
+            "name": "suspended",
+            "wire": "suspended",
+            "value": {
+              "json": false
+            }
+          }
+        ]
+      },
+      "now": "2026-06-01T00:00:00Z",
+      "args": [
+        {
+          "param": "body",
+          "value": {
+            "object": [
+              {
+                "name": "roomId",
+                "wire": "roomId",
+                "value": {
+                  "ref": {
+                    "given": "room",
+                    "path": [
+                      "id"
+                    ]
+                  }
+                }
+              },
+              {
+                "name": "guests",
+                "wire": "guests",
+                "value": {
+                  "json": 2
+                }
+              },
+              {
+                "name": "start",
+                "wire": "start",
+                "value": {
+                  "json": "2026-06-10T00:00:00Z"
+                }
+              },
+              {
+                "name": "end",
+                "wire": "end",
+                "value": {
+                  "json": "2026-06-12T00:00:00Z"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "returns": {
+        "object": [
+          {
+            "name": "roomId",
+            "wire": "roomId",
+            "value": {
+              "ref": {
+                "given": "room",
+                "path": [
+                  "id"
+                ]
+              }
+            }
+          },
+          {
+            "name": "guests",
+            "wire": "guests",
+            "value": {
+              "json": 3
+            }
+          },
+          {
+            "name": "guestId",
+            "wire": "guestId",
+            "value": {
+              "json": "00000000-0000-4000-8000-0000000000aa"
+            }
+          }
+        ]
+      },
+      "outcome": {
+        "error": {
+          "decl": 10,
+          "pattern": null
+        }
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 228,
+        "col": 1
+      }
+    },
+    {
+      "name": "the handler must move the booking to paid",
+      "package": 0,
+      "service": 0,
+      "endpoint": "payBooking",
+      "givens": [
+        {
+          "fact": "booking",
+          "value": {
+            "object": [
+              {
+                "name": "guestId",
+                "wire": "guestId",
+                "value": {
+                  "json": "00000000-0000-4000-8000-0000000000aa"
+                }
+              },
+              {
+                "name": "status",
+                "wire": "status",
+                "value": {
+                  "json": "pending"
+                }
+              },
+              {
+                "name": "total",
+                "wire": "total",
+                "value": {
+                  "json": "179.00"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": {
+        "object": [
+          {
+            "name": "id",
+            "wire": "id",
+            "value": {
+              "json": "00000000-0000-4000-8000-0000000000aa"
+            }
+          },
+          {
+            "name": "roles",
+            "wire": "roles",
+            "value": {
+              "list": []
+            }
+          },
+          {
+            "name": "suspended",
+            "wire": "suspended",
+            "value": {
+              "json": false
+            }
+          }
+        ]
+      },
+      "now": null,
+      "args": [
+        {
+          "param": "id",
+          "value": {
+            "ref": {
+              "given": "booking",
+              "path": [
+                "id"
+              ]
+            }
+          }
+        },
+        {
+          "param": "body",
+          "value": {
+            "object": [
+              {
+                "name": "amount",
+                "wire": "amount",
+                "value": {
+                  "json": "179.00"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "returns": {
+        "object": [
+          {
+            "name": "status",
+            "wire": "status",
+            "value": {
+              "json": "pending"
+            }
+          },
+          {
+            "name": "total",
+            "wire": "total",
+            "value": {
+              "json": "179.00"
+            }
+          }
+        ]
+      },
+      "outcome": {
+        "error": {
+          "decl": 10,
+          "pattern": null
+        }
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 372,
+        "col": 1
+      }
+    },
+    {
+      "name": "the new booking must belong to the caller",
+      "package": 0,
+      "service": 0,
+      "endpoint": "createBooking",
+      "givens": [
+        {
+          "fact": "room",
+          "value": {
+            "object": [
+              {
+                "name": "capacity",
+                "wire": "capacity",
+                "value": {
+                  "json": 2
+                }
+              },
+              {
+                "name": "closed",
+                "wire": "closed",
+                "value": {
+                  "json": false
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": {
+        "object": [
+          {
+            "name": "id",
+            "wire": "id",
+            "value": {
+              "json": "00000000-0000-4000-8000-0000000000aa"
+            }
+          },
+          {
+            "name": "roles",
+            "wire": "roles",
+            "value": {
+              "list": []
+            }
+          },
+          {
+            "name": "suspended",
+            "wire": "suspended",
+            "value": {
+              "json": false
+            }
+          }
+        ]
+      },
+      "now": "2026-06-01T00:00:00Z",
+      "args": [
+        {
+          "param": "body",
+          "value": {
+            "object": [
+              {
+                "name": "roomId",
+                "wire": "roomId",
+                "value": {
+                  "ref": {
+                    "given": "room",
+                    "path": [
+                      "id"
+                    ]
+                  }
+                }
+              },
+              {
+                "name": "guests",
+                "wire": "guests",
+                "value": {
+                  "json": 1
+                }
+              },
+              {
+                "name": "start",
+                "wire": "start",
+                "value": {
+                  "json": "2026-06-10T00:00:00Z"
+                }
+              },
+              {
+                "name": "end",
+                "wire": "end",
+                "value": {
+                  "json": "2026-06-12T00:00:00Z"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "returns": {
+        "object": [
+          {
+            "name": "roomId",
+            "wire": "roomId",
+            "value": {
+              "ref": {
+                "given": "room",
+                "path": [
+                  "id"
+                ]
+              }
+            }
+          },
+          {
+            "name": "guests",
+            "wire": "guests",
+            "value": {
+              "json": 1
+            }
+          },
+          {
+            "name": "guestId",
+            "wire": "guestId",
+            "value": {
+              "json": "00000000-0000-4000-8000-0000000000bb"
+            }
+          }
+        ]
+      },
+      "outcome": {
+        "error": {
+          "decl": 10,
+          "pattern": null
+        }
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 262,
+        "col": 1
+      }
+    },
+    {
+      "name": "the policy is asked before the room is checked",
+      "package": 0,
+      "service": 0,
+      "endpoint": "createBooking",
+      "givens": [
+        {
+          "fact": "room",
+          "value": {
+            "object": [
+              {
+                "name": "capacity",
+                "wire": "capacity",
+                "value": {
+                  "json": 2
+                }
+              },
+              {
+                "name": "closed",
+                "wire": "closed",
+                "value": {
+                  "json": true
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": {
+        "object": [
+          {
+            "name": "id",
+            "wire": "id",
+            "value": {
+              "json": "00000000-0000-4000-8000-0000000000ee"
+            }
+          },
+          {
+            "name": "roles",
+            "wire": "roles",
+            "value": {
+              "list": []
+            }
+          },
+          {
+            "name": "suspended",
+            "wire": "suspended",
+            "value": {
+              "json": true
+            }
+          }
+        ]
+      },
+      "now": "2026-06-01T00:00:00Z",
+      "args": [
+        {
+          "param": "body",
+          "value": {
+            "object": [
+              {
+                "name": "roomId",
+                "wire": "roomId",
+                "value": {
+                  "ref": {
+                    "given": "room",
+                    "path": [
+                      "id"
+                    ]
+                  }
+                }
+              },
+              {
+                "name": "guests",
+                "wire": "guests",
+                "value": {
+                  "json": 1
+                }
+              },
+              {
+                "name": "start",
+                "wire": "start",
+                "value": {
+                  "json": "2026-06-10T00:00:00Z"
+                }
+              },
+              {
+                "name": "end",
+                "wire": "end",
+                "value": {
+                  "json": "2026-06-12T00:00:00Z"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "error": {
+          "decl": 9,
+          "pattern": null
+        }
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 252,
+        "col": 1
+      }
+    },
+    {
+      "name": "the policy is asked before the transition",
+      "package": 0,
+      "service": 0,
+      "endpoint": "payBooking",
+      "givens": [
+        {
+          "fact": "booking",
+          "value": {
+            "object": [
+              {
+                "name": "guestId",
+                "wire": "guestId",
+                "value": {
+                  "json": "00000000-0000-4000-8000-0000000000aa"
+                }
+              },
+              {
+                "name": "status",
+                "wire": "status",
+                "value": {
+                  "json": "cancelled"
+                }
+              },
+              {
+                "name": "total",
+                "wire": "total",
+                "value": {
+                  "json": "179.00"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": {
+        "object": [
+          {
+            "name": "id",
+            "wire": "id",
+            "value": {
+              "json": "00000000-0000-4000-8000-0000000000bb"
+            }
+          },
+          {
+            "name": "roles",
+            "wire": "roles",
+            "value": {
+              "list": []
+            }
+          },
+          {
+            "name": "suspended",
+            "wire": "suspended",
+            "value": {
+              "json": false
+            }
+          }
+        ]
+      },
+      "now": null,
+      "args": [
+        {
+          "param": "id",
+          "value": {
+            "ref": {
+              "given": "booking",
+              "path": [
+                "id"
+              ]
+            }
+          }
+        },
+        {
+          "param": "body",
+          "value": {
+            "object": [
+              {
+                "name": "amount",
+                "wire": "amount",
+                "value": {
+                  "json": "179.00"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "error": {
+          "decl": 9,
+          "pattern": null
+        }
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 348,
+        "col": 1
+      }
+    },
+    {
+      "name": "the staff refunds a paid booking",
+      "package": 0,
+      "service": 0,
+      "endpoint": "refundBooking",
+      "givens": [
+        {
+          "fact": "booking",
+          "value": {
+            "object": [
+              {
+                "name": "guestId",
+                "wire": "guestId",
+                "value": {
+                  "json": "00000000-0000-4000-8000-0000000000aa"
+                }
+              },
+              {
+                "name": "status",
+                "wire": "status",
+                "value": {
+                  "json": "paid"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": {
+        "object": [
+          {
+            "name": "id",
+            "wire": "id",
+            "value": {
+              "json": "00000000-0000-4000-8000-0000000000cc"
+            }
+          },
+          {
+            "name": "roles",
+            "wire": "roles",
+            "value": {
+              "list": [
+                {
+                  "json": "staff"
+                }
+              ]
+            }
+          },
+          {
+            "name": "suspended",
+            "wire": "suspended",
+            "value": {
+              "json": false
+            }
+          }
+        ]
+      },
+      "now": null,
+      "args": [
+        {
+          "param": "id",
+          "value": {
+            "ref": {
+              "given": "booking",
+              "path": [
+                "id"
+              ]
+            }
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "ok": null
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 426,
+        "col": 1
+      }
+    },
+    {
+      "name": "the staff sees every booking",
+      "package": 0,
+      "service": 0,
+      "endpoint": "getBooking",
+      "givens": [
+        {
+          "fact": "booking",
+          "value": {
+            "object": [
+              {
+                "name": "guestId",
+                "wire": "guestId",
+                "value": {
+                  "json": "00000000-0000-4000-8000-0000000000aa"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": {
+        "object": [
+          {
+            "name": "id",
+            "wire": "id",
+            "value": {
+              "json": "00000000-0000-4000-8000-0000000000cc"
+            }
+          },
+          {
+            "name": "roles",
+            "wire": "roles",
+            "value": {
+              "list": [
+                {
+                  "json": "staff"
+                }
+              ]
+            }
+          },
+          {
+            "name": "suspended",
+            "wire": "suspended",
+            "value": {
+              "json": false
+            }
+          }
+        ]
+      },
+      "now": null,
+      "args": [
+        {
+          "param": "id",
+          "value": {
+            "ref": {
+              "given": "booking",
+              "path": [
+                "id"
+              ]
+            }
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "ok": null
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 303,
+        "col": 1
+      }
+    },
+    {
+      "name": "the transition is checked before the amount",
+      "package": 0,
+      "service": 0,
+      "endpoint": "payBooking",
+      "givens": [
+        {
+          "fact": "booking",
+          "value": {
+            "object": [
+              {
+                "name": "guestId",
+                "wire": "guestId",
+                "value": {
+                  "json": "00000000-0000-4000-8000-0000000000aa"
+                }
+              },
+              {
+                "name": "status",
+                "wire": "status",
+                "value": {
+                  "json": "cancelled"
+                }
+              },
+              {
+                "name": "total",
+                "wire": "total",
+                "value": {
+                  "json": "179.00"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "principal": {
+        "object": [
+          {
+            "name": "id",
+            "wire": "id",
+            "value": {
+              "json": "00000000-0000-4000-8000-0000000000aa"
+            }
+          },
+          {
+            "name": "roles",
+            "wire": "roles",
+            "value": {
+              "list": []
+            }
+          },
+          {
+            "name": "suspended",
+            "wire": "suspended",
+            "value": {
+              "json": false
+            }
+          }
+        ]
+      },
+      "now": null,
+      "args": [
+        {
+          "param": "id",
+          "value": {
+            "ref": {
+              "given": "booking",
+              "path": [
+                "id"
+              ]
+            }
+          }
+        },
+        {
+          "param": "body",
+          "value": {
+            "object": [
+              {
+                "name": "amount",
+                "wire": "amount",
+                "value": {
+                  "json": "1.00"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "returns": null,
+      "outcome": {
+        "error": {
+          "decl": 11,
+          "pattern": {
+            "object": [
+              {
+                "name": "from",
+                "wire": "from",
+                "value": {
+                  "json": "cancelled"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "docs": null,
+      "origin": {
+        "file": "bookings.veld",
+        "line": 354,
+        "col": 1
+      }
+    }
+  ],
+  "policies": [
+    {
+      "name": "ManageBooking",
+      "package": 0,
+      "module": "bookings",
+      "qualified": "bookings:bookings.ManageBooking",
+      "id": "veld:bookings/ManageBooking@b1d93a883d8c3b6f",
+      "params": [
+        {
+          "name": "user",
+          "type": {
+            "decl": 8
+          }
+        },
+        {
+          "name": "booking",
+          "type": {
+            "decl": 1
+          }
+        }
+      ],
+      "clauses": [
+        {
+          "effect": "permit",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "eq",
+                "l": {
+                  "t": {
+                    "scalar": "uuid"
+                  },
+                  "e": {
+                    "path": {
+                      "root": {
+                        "param": "booking"
+                      },
+                      "steps": [
+                        {
+                          "name": "guestId",
+                          "wire": "guestId",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "uuid"
+                  },
+                  "e": {
+                    "path": {
+                      "root": {
+                        "param": "user"
+                      },
+                      "steps": [
+                        {
+                          "name": "id",
+                          "wire": "id",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 68,
+            "col": 3
+          }
+        },
+        {
+          "effect": "permit",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "in",
+                "l": {
+                  "t": {
+                    "scalar": "string"
+                  },
+                  "e": {
+                    "lit": {
+                      "string": "staff"
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "list": {
+                      "scalar": "string"
+                    }
+                  },
+                  "e": {
+                    "path": {
+                      "root": {
+                        "param": "user"
+                      },
+                      "steps": [
+                        {
+                          "name": "roles",
+                          "wire": "roles",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 69,
+            "col": 3
+          }
+        },
+        {
+          "effect": "forbid",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "path": {
+                "root": {
+                  "param": "user"
+                },
+                "steps": [
+                  {
+                    "name": "suspended",
+                    "wire": "suspended",
+                    "optional": false
+                  }
+                ]
+              }
+            }
+          },
+          "message": "A suspended account cannot manage bookings",
+          "origin": {
+            "file": "bookings.veld",
+            "line": 70,
+            "col": 3
+          }
+        }
+      ],
+      "docs": "May this caller manage this booking? The guest who made it, and the staff. A suspended account never.",
+      "origin": {
+        "file": "bookings.veld",
+        "line": 67,
+        "col": 8
+      }
+    },
+    {
+      "name": "MayBook",
+      "package": 0,
+      "module": "bookings",
+      "qualified": "bookings:bookings.MayBook",
+      "id": "veld:bookings/MayBook@f816976abbbcc5bc",
+      "params": [
+        {
+          "name": "user",
+          "type": {
+            "decl": 8
+          }
+        }
+      ],
+      "clauses": [
+        {
+          "effect": "permit",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "lit": {
+                "bool": true
+              }
+            }
+          },
+          "message": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 76,
+            "col": 3
+          }
+        },
+        {
+          "effect": "forbid",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "path": {
+                "root": {
+                  "param": "user"
+                },
+                "steps": [
+                  {
+                    "name": "suspended",
+                    "wire": "suspended",
+                    "optional": false
+                  }
+                ]
+              }
+            }
+          },
+          "message": "A suspended account cannot book",
+          "origin": {
+            "file": "bookings.veld",
+            "line": 77,
+            "col": 3
+          }
+        }
+      ],
+      "docs": "May this caller make a booking? Anyone who is not suspended.",
+      "origin": {
+        "file": "bookings.veld",
+        "line": 75,
+        "col": 8
+      }
+    },
+    {
+      "name": "StaffOnly",
+      "package": 0,
+      "module": "bookings",
+      "qualified": "bookings:bookings.StaffOnly",
+      "id": "veld:bookings/StaffOnly@0341a0b4dc792898",
+      "params": [
+        {
+          "name": "user",
+          "type": {
+            "decl": 8
+          }
+        }
+      ],
+      "clauses": [
+        {
+          "effect": "permit",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "in",
+                "l": {
+                  "t": {
+                    "scalar": "string"
+                  },
+                  "e": {
+                    "lit": {
+                      "string": "staff"
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "list": {
+                      "scalar": "string"
+                    }
+                  },
+                  "e": {
+                    "path": {
+                      "root": {
+                        "param": "user"
+                      },
+                      "steps": [
+                        {
+                          "name": "roles",
+                          "wire": "roles",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "origin": {
+            "file": "bookings.veld",
+            "line": 83,
+            "col": 3
+          }
+        }
+      ],
+      "docs": "Only the staff of the hotel.",
+      "origin": {
+        "file": "bookings.veld",
+        "line": 82,
+        "col": 8
+      }
+    }
+  ]
+}

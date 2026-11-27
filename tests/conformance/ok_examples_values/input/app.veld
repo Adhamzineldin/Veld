@@ -1,0 +1,100 @@
+// Examples (spec/rules.md section 12): every value form, `given` with a value and with `absent`,
+// a read from a given, `at`, `returns`, `ok` and an error outcome, with and without a pattern.
+
+enum Status { pending, paid = "PAID" }
+
+model Room {
+  id: uuid
+  capacity: int
+  closed: bool
+  owner?: string
+  price: decimal
+  nights: long
+  ratio: float
+  tags: string[]
+  meta: json
+  status: Status
+  extras: Map<string, int>
+}
+
+model NewBooking {
+  roomId: uuid
+  guests: int
+  start: datetime
+  day: date
+}
+
+model Booking {
+  id: uuid
+  status: Status
+}
+
+model Card { number: string }
+model Bank { iban: string }
+union Payment { card: Card, bank: Bank }
+model Pay {
+  method: Payment
+  history: Page<Card>
+}
+
+error RoomFull 409 { capacity: int }
+
+service Bookings at "/bookings" {
+  post "/" createBooking(body: NewBooking) -> 201 Booking | RoomFull {
+    fact room: Room = body.roomId
+    fact other?: Room
+    require body.guests <= room.capacity else RoomFull { capacity: room.capacity }
+  }
+
+  get "/{id}" findBooking(id: uuid) -> 200 Booking
+
+  delete "/{id}" removeBooking(id: uuid) -> 204
+}
+
+service Payments at "/payments" {
+  post "/" pay(body: Pay) -> 201 Pay
+  get "/ping" ping() -> 204
+}
+
+/// Every value form in one example.
+example "all the forms" {
+  given room = {
+    id: "00000000-0000-4000-8000-0000000000AA", capacity: 2, closed: false, price: 12.50,
+    nights: 9007199254740993, ratio: 1, tags: ["a", "b"], meta: { k: [1, "x", true, 2.5] },
+    status: .paid, extras: { one: 1 }
+  }
+  at "2026-03-01T09:00:00Z"
+  createBooking(body: { roomId: room.id, guests: 3, start: "2026-03-02T00:00:00+02:00", day: "2026-03-02" })
+    returns { id: room.id, status: .pending }
+    -> RoomFull { capacity: 2 }
+}
+
+example "a missing room is not found" {
+  given room = absent
+  createBooking(body: { guests: 1 }) -> NotFound
+}
+
+example "nothing is required" {
+  given room = {}
+  Bookings.createBooking() -> ok
+}
+
+example "ok with a pattern" {
+  findBooking(id: "00000000-0000-4000-8000-000000000001") -> ok { status: .pending }
+}
+
+example "no body" {
+  removeBooking(id: "00000000-0000-4000-8000-000000000001") -> ok
+}
+
+example "union and page values" {
+  pay(body: {
+    method: { kind: "card", number: "4" },
+    history: { items: [{ number: "1" }], total: 1, page: 1, size: 20 }
+  }) -> ok
+}
+
+example "negative numbers" {
+  given room = { capacity: -1 }
+  createBooking(body: { guests: -2 }) -> ok
+}

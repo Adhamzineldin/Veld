@@ -4,22 +4,34 @@
 //! Services are sorted by (package, name). Prelude declarations are included
 //! only when referenced, and package `veld` is listed only when it is used.
 
+mod endpoint;
+mod events;
+mod examples;
+mod policy;
+mod rules;
+mod saga;
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::diagnostics::{FileId, SourceMap, Span};
-use crate::semantic::Program;
 use crate::semantic::{DKind, DeclInfo, REndpoint, RField, ServiceInfo};
+use crate::semantic::{Program, RKeyStore, ROutcome, RSagaAnswer};
 use crate::signature;
 use crate::syntax::ast::doc_text;
 use veld_ir::{
-    Decl, DeclId, DeclKind, Endpoint, Enum, ErrorDecl, ErrorResponse, Field, Ir, Model, Origin,
-    Package, PackageId, Param, Service, ServiceId, Success, Type, Union, UnionArm, Variant,
+    ChannelId, Decl, DeclId, DeclKind, Endpoint, Enum, ErrorDecl, ErrorResponse, Event, Field,
+    Flow, Ir, Model, Origin, Package, PackageId, Param, PolicyId, Service, ServiceId, Success,
+    Type, Union, UnionArm, Variant,
 };
 
 struct Lowerer<'p, 'a> {
     prog: &'p Program<'a>,
     sources: &'p SourceMap,
     decl_map: Vec<Option<DeclId>>,
+    /// Policy index in the program -> index in `Ir.policies`.
+    policy_map: Vec<Option<PolicyId>>,
+    /// Channel index in the program -> index in `Ir.channels`.
+    channel_map: Vec<Option<ChannelId>>,
     pkg_map: Vec<Option<PackageId>>,
     file_rel: BTreeMap<FileId, &'p str>,
 }
@@ -36,11 +48,19 @@ pub fn lower(
         prog,
         sources,
         decl_map: vec![None; prog.decls.len()],
+        policy_map: vec![None; prog.policies.len()],
+        channel_map: vec![None; prog.channels.len()],
         pkg_map: vec![None; prog.packages.len()],
         file_rel: prog.modules.iter().map(|m| (m.file, m.rel_path)).collect(),
     };
     for (new, &old) in included.iter().enumerate() {
         lw.decl_map[old] = Some(DeclId(u32::try_from(new).unwrap_or(u32::MAX)));
+    }
+    for (new, old) in lw.policy_order().into_iter().enumerate() {
+        lw.policy_map[old] = Some(PolicyId(u32::try_from(new).unwrap_or(u32::MAX)));
+    }
+    for (new, old) in lw.channel_order().into_iter().enumerate() {
+        lw.channel_map[old] = Some(ChannelId(u32::try_from(new).unwrap_or(u32::MAX)));
     }
     let packages = lw.packages(&included);
     let mut decls: Vec<Decl> = included.iter().map(|&i| lw.decl(i)).collect();
@@ -48,14 +68,24 @@ pub fn lower(
     for (d, s) in decls.iter_mut().zip(sigs) {
         d.sig = s;
     }
+    signature::rule_ids(&mut decls, &packages);
+    signature::derived_ids(&mut decls, &packages);
+    signature::tenant_ids(&mut decls, &packages);
     let services = lw.services(&decls);
-    Ir {
+    let policies = lw.policies(&decls);
+    let mut ir = Ir {
         ir_version: veld_ir::IR_VERSION.to_string(),
         packages,
         decls,
         services,
         consumes: lw.consumes(consumes),
-    }
+        examples: lw.examples(),
+        policies,
+        channels: lw.channels(),
+    };
+    signature::fill_rules_digests(&mut ir);
+    signature::fill_event_digests(&mut ir);
+    ir
 }
 
 /// Indices of declarations to emit, sorted by qualified name.
@@ -72,6 +102,27 @@ fn included_decls(prog: &Program<'_>) -> Vec<usize> {
         for e in &s.endpoints {
             stack.extend(endpoint_refs(e));
         }
+    }
+    for ex in &prog.examples {
+        if let ROutcome::Error(decl, _) = &ex.outcome {
+            stack.push(*decl);
+        }
+        if let Some(RKeyStore::Stored(ROutcome::Error(decl, _))) = ex.key.as_ref().map(|k| &k.store)
+        {
+            stack.push(*decl);
+        }
+        for (_, a) in ex
+            .saga
+            .iter()
+            .flat_map(|s| s.steps.iter().chain(s.undos.iter()))
+        {
+            if let RSagaAnswer::Answer(ROutcome::Error(decl, _)) = a {
+                stack.push(*decl);
+            }
+        }
+    }
+    for p in prog.policies.iter().filter_map(|p| p.res.as_ref()) {
+        stack.extend(p.params.iter().flat_map(|x| type_refs(&x.ty)));
     }
     while let Some(i) = stack.pop() {
         if prog.is_prelude(i) && set.insert(i) {
@@ -101,6 +152,11 @@ fn endpoint_refs(e: &REndpoint) -> Vec<usize> {
     let mut out: Vec<usize> = e.params.iter().flat_map(|p| type_refs(&p.ty)).collect();
     out.extend(e.success_ty.iter().flat_map(type_refs));
     out.extend(e.errors.iter().map(|(_, d)| *d));
+    out.extend(e.rules.facts.iter().flat_map(|f| {
+        type_refs(&f.ty)
+            .into_iter()
+            .chain(f.key_ty.iter().flat_map(type_refs))
+    }));
     out
 }
 
@@ -159,6 +215,8 @@ impl Lowerer<'_, '_> {
                     id,
                     name: self.prog.packages[old].name.clone(),
                     kind: self.prog.packages[old].kind,
+                    messages: std::collections::BTreeMap::new(),
+                    messages_dir: None,
                 }
             })
             .collect()
@@ -172,7 +230,20 @@ impl Lowerer<'_, '_> {
             .unwrap_or(PackageId(u32::MAX))
     }
 
-    fn field(&self, f: &RField, module: usize) -> Field {
+    fn field(&self, f: &RField, old: usize) -> Field {
+        let module = self.prog.decls[old].module;
+        let writer = f.inherited_from.unwrap_or(old);
+        let derived = f
+            .derived
+            .then(|| self.prog.decls[writer].res.own_derived.get(&f.name))
+            .flatten()
+            .map(|r| self.remap_expr(&r.expr));
+        let own_visible = f
+            .visible
+            .then(|| self.prog.decls[writer].res.own_visible.get(&f.name))
+            .flatten();
+        let visible = own_visible.map(|r| self.remap_expr(&r.expr));
+        let visible_principal = own_visible.map(|r| self.decl_id(r.principal));
         Field {
             name: f.name.clone(),
             wire: f.wire.clone(),
@@ -180,6 +251,17 @@ impl Lowerer<'_, '_> {
             optional: f.optional,
             default: f.default.clone(),
             readonly: f.readonly,
+            version: f.version,
+            // The id needs every declaration in place: `signature::derived_ids` fills it.
+            derived_id: derived.as_ref().map(|_| String::new()),
+            derived,
+            pii: f.pii,
+            secret: f.secret,
+            visible,
+            visible_principal,
+            tenant: f.tenant,
+            // The id needs every declaration in place: `signature::tenant_ids` fills it.
+            tenant_id: f.tenant.then(String::new),
             inherited_from: f.inherited_from.map(|d| self.decl_id(d)),
             constraints: f.constraints.clone(),
             example: f.example.clone(),
@@ -189,26 +271,48 @@ impl Lowerer<'_, '_> {
         }
     }
 
+    /// `@retain` of a model, with its `since` field by wire name. The checks of the compiler have
+    /// seen that the field exists.
+    fn retain_of(&self, old: usize) -> Option<veld_ir::retention::Retain> {
+        let d = &self.prog.decls[old];
+        let r = d.res.retain.as_ref()?;
+        let since = d.res.fields.iter().find(|f| f.name == r.since)?;
+        Some(veld_ir::retention::Retain {
+            after_ms: r.after_ms,
+            since: since.wire.clone(),
+            then: r.then,
+        })
+    }
+
     fn decl(&self, old: usize) -> Decl {
         let d = &self.prog.decls[old];
         let fields = || {
             d.res
                 .fields
                 .iter()
-                .map(|f| self.field(f, d.module))
+                .map(|f| self.field(f, old))
                 .collect::<Vec<_>>()
         };
         let kind = match d.kind {
             DKind::Model => DeclKind::Model(Model {
                 parent: d.res.parent.map(|p| self.decl_id(p)),
                 fields: fields(),
+                rules: self.rules_of(old),
+                retain: self.retain_of(old),
             }),
             DKind::Error => DeclKind::Error(ErrorDecl {
                 default_status: d.res.default_status,
                 fields: Model {
                     parent: None,
                     fields: fields(),
+                    rules: self.rules_of(old),
+                    retain: None,
                 },
+            }),
+            DKind::Event => DeclKind::Event(Event {
+                fields: fields(),
+                rules: self.rules_of(old),
+                rules_digest: None,
             }),
             DKind::Enum => DeclKind::Enum(Enum {
                 variants: d
@@ -222,6 +326,24 @@ impl Lowerer<'_, '_> {
                         deprecated: v.deprecated.clone(),
                     })
                     .collect(),
+                flows: d
+                    .res
+                    .machine
+                    .flows
+                    .iter()
+                    .map(|f| Flow {
+                        flag: f.flag.clone(),
+                        from: f.from.clone(),
+                        to: f.to.clone(),
+                        after_ms: f.after_ms.map(|ms| ms.to_string()),
+                        emits: f
+                            .emits
+                            .as_ref()
+                            .and_then(|e| e.event)
+                            .map(|e| self.decl_id(e)),
+                    })
+                    .collect(),
+                finals: d.res.machine.finals.clone(),
             }),
             DKind::Union => DeclKind::Union(Union {
                 discriminator: d.res.discriminator.clone(),
@@ -258,16 +380,22 @@ impl Lowerer<'_, '_> {
         }
     }
 
-    fn services(&self, decls: &[Decl]) -> Vec<Service> {
-        let mut order: Vec<&ServiceInfo> = self.prog.services.iter().collect();
-        order.sort_by(|a, b| {
+    /// Indices into `prog.services`, in IR order: by package name, then service name.
+    fn service_order(&self) -> Vec<usize> {
+        let mut order: Vec<usize> = (0..self.prog.services.len()).collect();
+        order.sort_by(|&a, &b| {
+            let (a, b) = (&self.prog.services[a], &self.prog.services[b]);
             (&self.prog.packages[a.pkg].name, &a.name)
                 .cmp(&(&self.prog.packages[b.pkg].name, &b.name))
         });
         order
+    }
+
+    fn services(&self, decls: &[Decl]) -> Vec<Service> {
+        self.service_order()
             .into_iter()
             .enumerate()
-            .map(|(i, s)| self.service(i, s, decls))
+            .map(|(i, s)| self.service(i, &self.prog.services[s], decls))
             .collect()
     }
 
@@ -287,6 +415,11 @@ impl Lowerer<'_, '_> {
                 .iter()
                 .map(|e| self.endpoint(e, s, &pkg.name, decls))
                 .collect(),
+            facts: self.service_facts(s),
+            rules_digest: None,
+            principal: self.service_principal(s),
+            publishes: self.service_publishes(s),
+            subscriptions: self.service_subscriptions(s),
             origin: self.origin(s.span, s.module),
         }
     }
@@ -304,6 +437,19 @@ impl Lowerer<'_, '_> {
             (a.status, &decls[a.decl.index()].sig).cmp(&(b.status, &decls[b.decl.index()].sig))
         });
         Endpoint {
+            audited: e.audited,
+            limit: e.limit,
+            timeout_ms: e.timeout_ms.map(|ms| ms.to_string()),
+            slo: e.slo.as_ref().map(|s| {
+                let text = |v: Option<i64>| v.map(|ms| ms.to_string());
+                veld_ir::Slo {
+                    p50_ms: text(s.p50),
+                    p90_ms: text(s.p90),
+                    p95_ms: text(s.p95),
+                    p99_ms: text(s.p99),
+                    errors: s.errors.clone(),
+                }
+            }),
             name: e.name.clone(),
             method: e.method,
             path: e.path.clone(),
@@ -331,6 +477,14 @@ impl Lowerer<'_, '_> {
                 stream: e.success_stream,
             },
             errors,
+            rules: self.endpoint_rules(e, s, pkg, decls),
+            idempotency: e.idempotent.as_ref().map(|i| veld_ir::Idempotency {
+                header: i.header.clone(),
+                required: i.required,
+                caller: e.auth.kind != veld_ir::AuthKind::None,
+                origin: self.origin(i.span, s.module),
+            }),
+            saga: e.saga.as_ref().map(|g| self.saga(g, s)),
             origin: self.origin(e.span, s.module),
         }
     }

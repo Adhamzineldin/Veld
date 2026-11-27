@@ -1,0 +1,15 @@
+[package]
+name = "timed-examples"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "timed-serve"
+path = "src/main.rs"
+
+[dependencies]
+bookings-server = { path = "../server" }
+axum = "0.8"
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time"] }

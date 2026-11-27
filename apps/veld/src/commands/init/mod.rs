@@ -4,6 +4,7 @@
 //! a flag, so CI never needs a TTY. It never overwrites anything.
 
 mod answers;
+mod config;
 mod detect;
 mod flow;
 mod render;
@@ -240,7 +241,7 @@ fn plain_init(ui: &Ui, dir: &Path, args: &InitArgs, answers: &Answers) -> Result
 /// The commands to run next, with what each does.
 fn steps(a: &Answers, done: Done) -> Vec<(String, String)> {
     let contracts = if a.is_workspace() {
-        "contracts/<service>/"
+        "services/<service>/contracts/"
     } else if a.template == Template::Crud {
         "contracts/"
     } else {

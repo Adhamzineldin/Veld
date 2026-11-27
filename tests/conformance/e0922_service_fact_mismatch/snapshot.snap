@@ -1,0 +1,36 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0922]: fact `room` differs from the fact of the same name in `a`: one loader serves both, so type, key type and optionality must match
+ --> app/app.veld:12:10
+   |
+12 |     fact room: Booking = body.id
+   |          ^^^^
+ --> app/app.veld:9:10
+  |
+9 |     fact room: Room = body.id
+  |          ---- first declared here
+
+error[E0922]: fact `room` differs from the fact of the same name in `a`: one loader serves both, so type, key type and optionality must match
+ --> app/app.veld:15:10
+   |
+15 |     fact room: Room = body.guests
+   |          ^^^^
+ --> app/app.veld:9:10
+  |
+9 |     fact room: Room = body.id
+  |          ---- first declared here
+
+error[E0922]: fact `room` differs from the fact of the same name in `a`: one loader serves both, so type, key type and optionality must match
+ --> app/app.veld:18:10
+   |
+18 |     fact room?: Room = body.id
+   |          ^^^^
+ --> app/app.veld:9:10
+  |
+9 |     fact room: Room = body.id
+  |          ---- first declared here
+
+== ir ==
+(no IR: compilation failed)

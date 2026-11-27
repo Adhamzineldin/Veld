@@ -1539,8 +1539,11 @@ dependencies = [
  "veld-lsp",
  "veld-plugin-host",
  "veld-project",
+ "veld-prove",
  "veld-registry-client",
+ "veld-rules",
  "veld-test-support",
+ "veld-testing",
  "veld-tools",
 ]
 
@@ -1562,6 +1565,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "toml",
  "veld-ir",
 ]
 
@@ -1590,7 +1594,9 @@ dependencies = [
  "veld-emit-typescript",
  "veld-ir",
  "veld-project",
+ "veld-rules",
  "veld-test-support",
+ "veld-testing",
 ]
 
 [[package]]
@@ -1607,6 +1613,9 @@ dependencies = [
  "veld-emit-typescript",
  "veld-ir",
  "veld-project",
+ "veld-rules",
+ "veld-test-support",
+ "veld-testing",
 ]
 
 [[package]]
@@ -1623,7 +1632,9 @@ dependencies = [
  "veld-emit-node",
  "veld-emit-typescript",
  "veld-ir",
+ "veld-rules",
  "veld-test-support",
+ "veld-testing",
 ]
 
 [[package]]
@@ -1690,6 +1701,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "veld-prove"
+version = "2.0.0-beta.1"
+dependencies = [
+ "serde_json",
+ "thiserror",
+ "veld-compiler",
+ "veld-ir",
+ "veld-rules",
+]
+
+[[package]]
 name = "veld-registry-client"
 version = "2.0.0-beta.1"
 dependencies = [
@@ -1710,8 +1732,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "veld-rules"
+version = "2.0.0-beta.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror",
+ "veld-codegen",
+ "veld-compiler",
+ "veld-ir",
+]
+
+[[package]]
 name = "veld-test-support"
 version = "2.0.0-beta.1"
+
+[[package]]
+name = "veld-testing"
+version = "2.0.0-beta.1"
+dependencies = [
+ "serde_json",
+ "thiserror",
+ "ureq",
+ "veld-compiler",
+ "veld-ir",
+ "veld-rules",
+]
 
 [[package]]
 name = "veld-tools"
@@ -1725,6 +1772,7 @@ dependencies = [
  "veld-codegen",
  "veld-compiler",
  "veld-ir",
+ "veld-rules",
  "veld-test-support",
 ]
 

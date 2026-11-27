@@ -1,0 +1,26 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0950]: no endpoint `lst` in this package
+ --> app/app.veld:16:3
+   |
+16 |   lst() -> ok
+   |   ^^^
+  = help: did you mean `list`?
+
+error[E0950]: endpoint `list` is ambiguous: Bookings.list, Rooms.list
+ --> app/app.veld:20:3
+   |
+20 |   list() -> ok
+   |   ^^^^
+  = help: write `Service.endpoint`
+
+error[E0950]: no service `Beds` in this package
+ --> app/app.veld:24:3
+   |
+24 |   Beds.list() -> ok
+   |   ^^^^
+
+== ir ==
+(no IR: compilation failed)

@@ -70,8 +70,14 @@ pub trait Transport: Send + Sync + 'static {
     // @if sse
     /// Sends one request and returns as soon as the headers are there.
     fn open(&self, req: HttpRequest) -> impl Future<Output = Result<HttpStream, Error>> + Send;
+    // @end
+    // @if sleep
 
     /// Waits; used between reconnect attempts.
+    // @if limits_client
+    ///
+    /// A call that a limit refused is sent again after it too.
+    // @end
     fn sleep(&self, d: Duration) -> impl Future<Output = ()> + Send;
     // @end
 
@@ -145,11 +151,15 @@ impl fmt::Debug for SseOptions {
 // @end
 
 type Supplier<T> = Arc<dyn Fn() -> T + Send + Sync>;
+// @if limits_client
+type Sleeper = Arc<dyn Fn(Duration) -> std::pin::Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
+// @end
 
 /// Options of a generated client.
 #[derive(Clone)]
 pub struct ClientOptions {
-    /// The server's base URL. Else `VELD_<SERVICE>_URL`, else the contract's `base-url`.
+    /// The server's base URL: required. A client built without it fails with
+    /// [`Error::Transport`]. `runtime_config::clients` sets it from the runtime config.
     pub base_url: Option<String>,
     /// Headers sent with every request.
     pub headers: Vec<(String, String)>,
@@ -162,6 +172,24 @@ pub struct ClientOptions {
     pub validate: Option<bool>,
     /// The timeout of one request (default 30 s).
     pub timeout: Duration,
+    // @if timeouts
+    /// Whether the caller set `timeout`: when not, an endpoint with a deadline uses it.
+    timeout_set: bool,
+    // @end
+    // @if limits_client
+    /// Wait and send again, once, when an endpoint that may be repeated is answered `429` with
+    /// `retryAfter` (default `true`; `spec/platform.md` section 5).
+    pub retry_on_limit: bool,
+    sleeper: Option<Sleeper>,
+    // @end
+    // #if rules
+    /// Check the invariants of a request body and of a `query` object before sending (default
+    /// `true`). A violation is a local `ValidationError`; nothing is sent.
+    pub check_rules: bool,
+    /// Called once for every rules digest a server sends that is not this client's own, with
+    /// the service, the client's digest and the server's (`spec/rules.md` section 9.7).
+    pub on_contract_mismatch: Option<Arc<dyn Fn(&ContractMismatch) + Send + Sync>>,
+    // #endif
     // @if sse
     /// Reconnect policy of streams (default: none).
     pub reconnect: Option<Reconnect>,
@@ -179,6 +207,17 @@ impl Default for ClientOptions {
             api_key: None,
             validate: None,
             timeout: Duration::from_secs(30),
+            // @if timeouts
+            timeout_set: false,
+            // @end
+            // @if limits_client
+            retry_on_limit: true,
+            sleeper: None,
+            // @end
+            // #if rules
+            check_rules: true,
+            on_contract_mismatch: None,
+            // #endif
             // @if sse
             reconnect: None,
             // @end
@@ -199,6 +238,28 @@ impl ClientOptions {
         Self::default()
     }
 
+    // @if limits_client
+    /// Turns the wait on `429 TooManyRequests` on or off (on by default): with it off the typed
+    /// error is raised at once.
+    #[must_use]
+    pub fn retry_on_limit(mut self, on: bool) -> Self {
+        self.retry_on_limit = on;
+        self
+    }
+
+    /// How the client waits before it sends a limited call again (default: the transport's sleep).
+    /// A test passes one that returns at once.
+    #[must_use]
+    pub fn sleeper<F, Fut>(mut self, sleep: F) -> Self
+    where
+        F: Fn(Duration) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
+        self.sleeper = Some(Arc::new(move |d| Box::pin(sleep(d))));
+        self
+    }
+
+    // @end
     /// Sets the base URL.
     #[must_use]
     pub fn base_url(mut self, url: impl Into<String>) -> Self {
@@ -252,8 +313,27 @@ impl ClientOptions {
     #[must_use]
     pub fn timeout(mut self, d: Duration) -> Self {
         self.timeout = d;
+        // @if timeouts
+        self.timeout_set = true;
+        // @end
         self
     }
+    // #if rules
+
+    /// Switches the local check of invariants on or off. Off, the server decides alone.
+    #[must_use]
+    pub fn check_rules(mut self, on: bool) -> Self {
+        self.check_rules = on;
+        self
+    }
+
+    /// Calls `f` once for every rules digest a server sends that is not this client's own.
+    #[must_use]
+    pub fn on_contract_mismatch(mut self, f: impl Fn(&ContractMismatch) + Send + Sync + 'static) -> Self {
+        self.on_contract_mismatch = Some(Arc::new(f));
+        self
+    }
+    // #endif
 
     // @if sse
     /// Reconnects streams after connection failures.
@@ -287,6 +367,15 @@ fn push_query(query: &mut Vec<(String, String)>, key: &str, wire: &Value) {
     }
 }
 
+// @if limits_client
+/// The wait a `429` asks for: the numeric `retryAfter` of its data, in seconds.
+fn retry_after(body: &[u8]) -> Option<Duration> {
+    let doc: Value = serde_json::from_slice(body).ok()?;
+    let seconds = doc.get("data")?.get("retryAfter")?.as_f64()?;
+    Duration::try_from_secs_f64(seconds).ok()
+}
+
+// @end
 /// The part of a client that does not depend on the contract.
 pub struct Core<T: Transport> {
     transport: Arc<T>,
@@ -294,7 +383,38 @@ pub struct Core<T: Transport> {
     options: ClientOptions,
     std: StdSigs,
     validate: bool,
+    // #if rules
+    digest: Option<Arc<Digest>>,
+    // #endif
 }
+// #if rules
+
+/// A server whose rules are not the ones this client was generated from (`spec/rules.md` 9.7).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContractMismatch {
+    pub service: String,
+    /// The digest this client was generated with.
+    pub client_digest: String,
+    /// The digest the server sent.
+    pub server_digest: String,
+}
+
+/// The digest a client knows and what it has seen of the server's.
+#[derive(Debug)]
+struct Digest {
+    service: &'static str,
+    own: &'static str,
+    seen: std::sync::Mutex<Seen>,
+}
+
+#[derive(Debug, Default)]
+struct Seen {
+    /// The digest of the last response; `None` before the first one or when it had no header.
+    last: Option<String>,
+    /// The other digests the callback has been told about.
+    told: Vec<String>,
+}
+// #endif
 
 impl<T: Transport> Clone for Core<T> {
     fn clone(&self) -> Self {
@@ -304,6 +424,9 @@ impl<T: Transport> Clone for Core<T> {
             options: self.options.clone(),
             std: self.std,
             validate: self.validate,
+            // #if rules
+            digest: self.digest.clone(),
+            // #endif
         }
     }
 }
@@ -320,15 +443,13 @@ struct Built {
 }
 
 impl<T: Transport> Core<T> {
-    /// Resolves the base URL: `options.base_url`, else the environment variable `env`, else
-    /// `default_base` (the contract's `base-url`).
+    /// Takes the base URL from `options.base_url`: there is no other source (no environment
+    /// variable, no URL compiled into the client).
     ///
     /// # Errors
-    /// [`Error::Transport`] when none of the three is set.
+    /// [`Error::Transport`] when `options.base_url` is not set.
     pub fn new(
         transport: T,
-        env: &str,
-        default_base: Option<&str>,
         std: StdSigs,
         validate_default: bool,
         options: ClientOptions,
@@ -337,12 +458,61 @@ impl<T: Transport> Core<T> {
             .base_url
             .clone()
             .filter(|b| !b.is_empty())
-            .or_else(|| std::env::var(env).ok().filter(|b| !b.is_empty()))
-            .or_else(|| default_base.map(str::to_string))
-            .ok_or_else(|| Error::Transport(format!("no base URL: pass `base_url`, set {env} or give the contract a base-url")))?;
+            .ok_or_else(|| Error::Transport("no base URL: pass `base_url` in the client options".to_string()))?;
         let validate = options.validate.unwrap_or(validate_default);
+        // #if !rules
         Ok(Core { transport: Arc::new(transport), base: base.trim_end_matches('/').to_string(), options, std, validate })
+        // #endif
+        // #if rules
+        Ok(Core { transport: Arc::new(transport), base: base.trim_end_matches('/').to_string(), options, std, validate, digest: None })
+        // #endif
     }
+    // #if rules
+
+    /// Gives the client the rules digest of its service: the local checks run only while the
+    /// server answers with the same one (`spec/rules.md` section 9.7).
+    #[must_use]
+    pub fn with_digest(mut self, service: &'static str, own: &'static str) -> Self {
+        self.digest = Some(Arc::new(Digest { service, own, seen: std::sync::Mutex::new(Seen::default()) }));
+        self
+    }
+
+    /// Whether the local checks may reject a request: only while the last response carried this
+    /// client's own digest. Before the first response, or when the header was missing, the server
+    /// decides.
+    fn local_checks(&self) -> bool {
+        match &self.digest {
+            None => true,
+            Some(d) => {
+                let seen = d.seen.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+                seen.last.as_deref() == Some(d.own)
+            }
+        }
+    }
+
+    /// Remembers the digest of a response. A digest that is not this client's own stops the local
+    /// checks and, the first time it is seen, reaches `on_contract_mismatch`.
+    fn observe(&self, headers: &[(String, String)]) {
+        let Some(d) = &self.digest else {
+            return;
+        };
+        let sent = headers.iter().find(|(k, _)| k.eq_ignore_ascii_case("veld-rules")).map(|(_, v)| v.trim().to_string());
+        let news = {
+            let mut seen = d.seen.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            seen.last.clone_from(&sent);
+            match &sent {
+                Some(s) if s != d.own && !seen.told.contains(s) => {
+                    seen.told.push(s.clone());
+                    sent.clone()
+                }
+                Some(_) | None => None,
+            }
+        };
+        if let (Some(server_digest), Some(f)) = (news, &self.options.on_contract_mismatch) {
+            f(&ContractMismatch { service: d.service.to_string(), client_digest: d.own.to_string(), server_digest });
+        }
+    }
+    // #endif
 
     /// The transport.
     #[must_use]
@@ -360,8 +530,27 @@ impl<T: Transport> Core<T> {
             op: Some(ep.sig.to_string()),
             data,
             schema: spec.map(|s| s.schema),
+            // #if rules
+            rulings: super::rules::Rulings::boxed(Vec::new(), true),
+            // #endif
         })
     }
+    // #if rules
+
+    /// The local `ValidationError` of rule violations: one issue each, plus the violations.
+    fn rule_error(&self, ep: &EndpointSpec, violations: Vec<super::rules::Violation>) -> Error {
+        let spec = ep.errors.iter().find(|e| e.sig == self.std.validation);
+        Error::Problem(Problem {
+            sig: self.std.validation.to_string(),
+            title: spec.map_or("ValidationError", |s| s.name).to_string(),
+            status: 422,
+            op: Some(ep.sig.to_string()),
+            data: super::rules::rejection_data(&violations),
+            schema: spec.map(|s| s.schema),
+            rulings: super::rules::Rulings::boxed(violations, true),
+        })
+    }
+    // #endif
 
     fn auth_headers(&self, ep: &EndpointSpec, out: &mut Vec<(String, String)>) {
         let Some(auth) = &ep.auth else {
@@ -395,6 +584,9 @@ impl<T: Transport> Core<T> {
         let mut headers: Vec<(String, String)> = Vec::new();
         let mut body: Option<Value> = None;
         let mut issues = Vec::new();
+        // #if rules
+        let mut violations = Vec::new();
+        // #endif
         for p in ep.params.iter().filter(|p| !p.stream) {
             let Some(typed) = args.get(p.name).filter(|v| !v.is_null()) else {
                 if !p.optional && self.validate {
@@ -406,6 +598,11 @@ impl<T: Transport> Core<T> {
             if self.validate {
                 issues.extend(p.schema.validate(&wire, &p.location(), true));
             }
+            // #if rules
+            if self.validate && self.options.check_rules && self.local_checks() && issues.is_empty() && matches!(p.binding, Binding::Body | Binding::QueryObject) {
+                violations.extend(super::rules::check_wire(p.schema, &wire, &p.location(), super::rules::Mode::Request));
+            }
+            // #endif
             match p.binding {
                 Binding::Path => path = path.replace(&format!("{{{}}}", p.name), &pct_encode(&scalar_text(&wire))),
                 Binding::Query => push_query(&mut query, p.name, &wire),
@@ -421,6 +618,11 @@ impl<T: Transport> Core<T> {
         if !issues.is_empty() {
             return Err(self.validation_error(ep, &issues));
         }
+        // #if rules
+        if !violations.is_empty() {
+            return Err(self.rule_error(ep, violations));
+        }
+        // #endif
         query.sort_by(|a, b| a.0.cmp(&b.0));
         let mut url = format!("{}{path}", self.base);
         if !query.is_empty() {
@@ -439,8 +641,20 @@ impl<T: Transport> Core<T> {
         if body.is_some() {
             all.push(("content-type".into(), "application/json".into()));
         }
+        // @if timeouts
+        // A caller that set no timeout gets the deadline of the endpoint (`spec/platform.md` section 12).
+        let timeout = match ep.timeout_ms {
+            Some(ms) if !self.options.timeout_set => Duration::from_millis(ms),
+            Some(_) | None => self.options.timeout,
+        };
+        // @end
         Ok(Built {
+            // @if timeouts
+            request: HttpRequest { method: ep.method.to_string(), url, headers: all, body, timeout },
+            // @end
+            // @if !timeouts
             request: HttpRequest { method: ep.method.to_string(), url, headers: all, body, timeout: self.options.timeout },
+            // @end
         })
     }
 
@@ -461,6 +675,9 @@ impl<T: Transport> Core<T> {
             op: problem.op.or_else(|| Some(ep.sig.to_string())),
             data,
             schema: Some(spec.schema),
+            // #if rules
+            rulings: problem.rulings,
+            // #endif
         })
     }
 
@@ -472,9 +689,46 @@ impl<T: Transport> Core<T> {
         Ok(Some(schema.from_wire(&wire, false)))
     }
 
+    // @if limits_client
+    /// Sends the request; an endpoint that may be repeated (a `get`, an `@idempotent` call) that is
+    /// answered `429` with a numeric `retryAfter` waits that long and sends the same request again,
+    /// once, inside the budget of the call's timeout (`spec/platform.md` section 5). Any other
+    /// answer, a second `429` and a wait that does not fit raise the typed error as before.
+    async fn send_limited(&self, ep: &EndpointSpec, request: HttpRequest) -> Result<HttpResponse, Error> {
+        if !(ep.retry_on_limit && self.options.retry_on_limit) {
+            return self.transport.send(request).await;
+        }
+        let (started, budget) = (std::time::Instant::now(), request.timeout);
+        let resp = self.transport.send(request.clone()).await?;
+        let wait = (resp.status == 429)
+            .then(|| retry_after(&resp.body))
+            .flatten()
+            .filter(|w| *w < budget.saturating_sub(started.elapsed()));
+        let Some(wait) = wait else {
+            return Ok(resp);
+        };
+        let left = budget.saturating_sub(started.elapsed());
+        match &self.options.sleeper {
+            Some(sleep) => sleep(wait).await,
+            None => self.transport.sleep(wait).await,
+        }
+        let mut again = request;
+        again.timeout = left.saturating_sub(wait);
+        self.transport.send(again).await
+    }
+
+    // @end
     async fn exchange(&self, ep: &EndpointSpec, req: &Value) -> Result<Option<Value>, Error> {
         let built = self.build(ep, req, "application/json")?;
+        // @if !limits_client
         let resp = self.transport.send(built.request).await?;
+        // @end
+        // @if limits_client
+        let resp = self.send_limited(ep, built.request).await?;
+        // @end
+        // #if rules
+        self.observe(&resp.headers);
+        // #endif
         if (200..300).contains(&resp.status) {
             Self::decode_success(ep, &resp.body)
         } else {
@@ -548,6 +802,9 @@ struct Connection {
 /// Opens one connection. A non-2xx response is the typed error of the call.
 async fn connect<T: Transport>(core: Core<T>, ep: &'static EndpointSpec, request: HttpRequest) -> Result<Connection, Error> {
     let resp = core.transport.open(request).await?;
+    // #if rules
+    core.observe(&resp.headers);
+    // #endif
     if (200..300).contains(&resp.status) {
         return Ok(Connection { body: resp.body, parser: SseParser::new(), pending: VecDeque::new() });
     }
@@ -858,7 +1115,23 @@ impl<T: Transport, In: DeserializeOwned, Out: Serialize> WsChannel<T, In, Out> {
                         return Err(self.core.validation_error(self.ep, &issues));
                     }
                 }
+                // #if rules
+                // A message is an input: it is checked like a request body, before anything is written.
+                if self.core.validate && self.core.options.check_rules && self.core.local_checks() {
+                    let wire = schema.to_wire(&typed, false, false);
+                    let violations = super::rules::check_wire(schema, &wire, "message", super::rules::Mode::Request);
+                    if !violations.is_empty() {
+                        return Err(self.core.rule_error(self.ep, violations));
+                    }
+                }
+                // #endif
+                // @if !derived
                 String::from_utf8_lossy(&schema.canonical_typed(&typed)).into_owned()
+                // @end
+                // @if derived
+                // A message carries no derived value: the server computes it.
+                String::from_utf8_lossy(&super::canonical::canonical_bytes(&schema.without_derived(&schema.to_wire(&typed, false, true)))).into_owned()
+                // @end
             }
             None => super::canonical::canonical(&typed),
         };

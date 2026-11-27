@@ -105,6 +105,19 @@ pub struct Field {
     /// The default as JSON text, applied when the field is absent.
     pub default: Option<&'static str>,
     pub readonly: bool,
+    // #if derived
+    /// The field is derived (`spec/rules.md` section 17.2): the server computes it, nobody supplies it.
+    pub derived: bool,
+    // #endif
+    // #if tenant_fields
+    /// The field is the tenant of its declaration (`spec/platform.md` section 3): the server sets it
+    /// from the caller, so a request may lack it (a member it carries is kept as received).
+    pub tenant: bool,
+    // #endif
+    // #if pii
+    /// The field is marked `@pii` or `@secret`: the audit log leaves its value out.
+    pub pii: bool,
+    // #endif
 }
 
 /// A model or an error.
@@ -113,6 +126,24 @@ pub struct ModelSchema {
     pub name: &'static str,
     pub sig: &'static str,
     pub fields: &'static [Field],
+    // #if rules
+    /// Evaluates the invariants of one object of this declaration (typed JSON form), if it has any.
+    pub invariants: Option<fn(&Value, super::rules::Mode, &str, &mut Vec<super::rules::Violation>)>,
+    // #endif
+    // #if derived
+    /// Computes the derived fields of one object of this declaration (typed JSON form), if it has any.
+    pub derive: Option<fn(&mut Value, super::rules::Mode, &str, &mut Vec<super::rules::Violation>)>,
+    // #endif
+    // #if tenancy
+    /// The `@tenant` field of the declaration, own or inherited (`spec/platform.md` section 3).
+    pub tenant: Option<super::platform::TenantMark>,
+    // #endif
+    // #if visibility
+    /// The wire names of the `@visible` fields of one wire record of this declaration that the
+    /// caller may not see at the clock reading (milliseconds), if it has any such field
+    /// (`spec/platform.md` section 2).
+    pub show: Option<fn(&Value, Option<&super::server::Principal>, i64) -> Vec<&'static str>>,
+    // #endif
 }
 
 /// A discriminated union.
@@ -166,6 +197,11 @@ struct Opts {
     request: bool,
     /// Canonical mode: datetimes are UTC and uuids lower case.
     normalize: bool,
+    /// With `normalize`: the idempotency fingerprint form. A datetime has its fraction as `.fff`,
+    /// cut at the millisecond, and only when the milliseconds are not zero (the form of the
+    /// events); the derived fields the server computed are kept, which a request that is sent
+    /// leaves out.
+    millis: bool,
 }
 
 const LONG: Schema = Schema::Scalar(Scalar::Long, Rules::NONE);
@@ -204,14 +240,22 @@ impl Schema {
     /// reads `long` and `bytes`. The value must be valid ([`Schema::validate`]).
     #[must_use]
     pub fn from_wire(&self, wire: &Value, request: bool) -> Value {
-        self.map(wire, Opts { dir: Dir::From, request, normalize: false })
+        self.map(wire, Opts { dir: Dir::From, request, normalize: false, millis: false })
     }
 
     /// Typed form to wire form: applies defaults, writes `long` as a string and `bytes` as base64.
     /// `request` leaves read-only fields out; `normalize` is the canonical form.
     #[must_use]
     pub fn to_wire(&self, typed: &Value, request: bool, normalize: bool) -> Value {
-        self.map(typed, Opts { dir: Dir::To, request, normalize })
+        self.map(typed, Opts { dir: Dir::To, request, normalize, millis: false })
+    }
+
+    /// The wire form of a request as the server understands it, for the idempotency fingerprint
+    /// (`spec/rules.md` section 11.10): defaults applied, read-only fields left out, uuids in
+    /// lower case, datetimes in UTC with `Z` and the fraction `.fff` only when it is not zero.
+    #[must_use]
+    pub fn to_wire_fingerprint(&self, typed: &Value) -> Value {
+        self.map(typed, Opts { dir: Dir::To, request: true, normalize: true, millis: true })
     }
 
     /// RFC 8785 bytes of a typed value: defaults applied, UTC datetimes, lower case uuids.
@@ -235,8 +279,9 @@ impl Schema {
                 None => v.clone(),
             },
             Schema::Map(of, _) => match v.as_object() {
+                // `null` is a value only of a `json` map; for any other value it is absent.
                 Some(m) => Value::Object(
-                    m.iter().filter(|(_, x)| !x.is_null()).map(|(k, x)| (k.clone(), of.map(x, o))).collect(),
+                    m.iter().filter(|(_, x)| is_json(of) || !x.is_null()).map(|(k, x)| (k.clone(), of.map(x, o))).collect(),
                 ),
                 None => v.clone(),
             },
@@ -245,6 +290,51 @@ impl Schema {
             Schema::Union(u) => map_union(u, v, o),
         }
     }
+
+    // @if derived
+
+    /// A wire value without its derived members, at every depth: what a caller sent for a derived
+    /// field is dropped before the value is validated, whatever it is (`spec/rules.md` section 17.2).
+    #[must_use]
+    pub fn without_derived(&self, wire: &Value) -> Value {
+        match (self, wire) {
+            (Schema::List(of, _), Value::Array(a)) => Value::Array(a.iter().map(|x| of.without_derived(x)).collect()),
+            (Schema::Map(of, _), Value::Object(m)) => {
+                Value::Object(m.iter().map(|(k, x)| (k.clone(), of.without_derived(x))).collect())
+            }
+            (Schema::Page(of), Value::Object(m)) => {
+                let mut out = m.clone();
+                if let Some(items) = m.get("items") {
+                    out.insert("items".into(), Schema::List(of, Rules::NONE).without_derived(items));
+                }
+                Value::Object(out)
+            }
+            (Schema::Model(model), Value::Object(obj)) => {
+                let mut out = Map::new();
+                for (k, x) in obj {
+                    match model.fields.iter().find(|f| f.wire == k) {
+                        Some(f) if f.derived => {}
+                        Some(f) => {
+                            out.insert(k.clone(), f.schema.without_derived(x));
+                        }
+                        None => {
+                            out.insert(k.clone(), x.clone());
+                        }
+                    }
+                }
+                Value::Object(out)
+            }
+            (Schema::Union(u), Value::Object(_)) => {
+                let label = wire.get(u.discriminator).and_then(Value::as_str);
+                match label.and_then(|l| u.arms.iter().find(|(name, _)| *name == l)) {
+                    Some((_, arm)) => arm.without_derived(wire),
+                    None => wire.clone(),
+                }
+            }
+            _ => wire.clone(),
+        }
+    }
+    // @end
 
     /// The issues of a wire value (empty when it is valid). `path` names the root (`body`,
     /// `query.limit`, `$`); `request` lets read-only fields be absent.
@@ -278,7 +368,7 @@ fn map_scalar(k: Scalar, v: &Value, o: Opts) -> Value {
         }
         (Scalar::Uuid, Dir::To, Value::String(s)) if o.normalize => Value::String(s.to_lowercase()),
         (Scalar::Datetime, Dir::To, Value::String(s)) if o.normalize => {
-            Value::String(normalize_datetime(s).unwrap_or_else(|| s.clone()))
+            Value::String(normalize_datetime(s, o.millis).unwrap_or_else(|| s.clone()))
         }
         _ => v.clone(),
     }
@@ -297,6 +387,55 @@ fn map_page(of: &'static Schema, v: &Value, o: Opts) -> Value {
     Value::Object(out)
 }
 
+/// How deep a placeholder for a required read-only field may nest.
+const PLACEHOLDER_DEPTH: usize = 6;
+
+/// A value of the shape of `schema` that stands for an absent required field.
+pub(crate) fn placeholder(schema: &Schema, depth: usize) -> Value {
+    match schema {
+        Schema::Scalar(k, _) => match k {
+            Scalar::String | Scalar::Bytes => Value::String(String::new()),
+            Scalar::Int | Scalar::Float => Value::from(0),
+            Scalar::Long | Scalar::Decimal => Value::String("0".into()),
+            Scalar::Bool => Value::Bool(false),
+            Scalar::Date => Value::String("1970-01-01".into()),
+            Scalar::Datetime => Value::String("1970-01-01T00:00:00Z".into()),
+            Scalar::Time => Value::String("00:00:00".into()),
+            Scalar::Uuid => Value::String("00000000-0000-0000-0000-000000000000".into()),
+            Scalar::Json => Value::Null,
+        },
+        Schema::Enum(variants) => variants.first().map_or(Value::Null, |v| Value::String((*v).to_string())),
+        Schema::List(..) => Value::Array(Vec::new()),
+        Schema::Map(..) => Value::Object(Map::new()),
+        Schema::Page(_) => serde_json::json!({ "items": [], "total": "0", "page": 0, "size": 0 }),
+        Schema::Model(m) if depth < PLACEHOLDER_DEPTH => Value::Object(required_fields(m.fields, depth + 1)),
+        Schema::Union(u) if depth < PLACEHOLDER_DEPTH => match u.arms.first() {
+            Some((label, arm)) => match placeholder(arm, depth + 1) {
+                Value::Object(mut o) => {
+                    o.insert(u.discriminator.to_string(), Value::String((*label).to_string()));
+                    Value::Object(o)
+                }
+                other => other,
+            },
+            None => Value::Null,
+        },
+        Schema::Model(_) | Schema::Union(_) => Value::Null,
+    }
+}
+
+fn required_fields(fields: &[Field], depth: usize) -> Map<String, Value> {
+    fields
+        .iter()
+        .filter(|f| !f.optional && f.default.is_none())
+        .map(|f| (f.wire.to_string(), placeholder(f.schema, depth)))
+        .collect()
+}
+
+/// Whether the schema is `json`, the one type whose value may be `null` (`spec/language.md` section 5.3).
+fn is_json(s: &Schema) -> bool {
+    matches!(s, Schema::Scalar(Scalar::Json, _))
+}
+
 fn map_model(m: &ModelSchema, v: &Value, o: Opts) -> Value {
     let Some(obj) = v.as_object() else {
         return v.clone();
@@ -304,9 +443,45 @@ fn map_model(m: &ModelSchema, v: &Value, o: Opts) -> Value {
     let mut out = Map::new();
     for f in m.fields {
         if o.request && f.readonly {
+            // A request carries no read-only field, but the typed struct needs one: a required
+            // field gets a placeholder of its shape (`spec/language.md` section 7).
+            if o.dir == Dir::From && !f.optional && f.default.is_none() {
+                let wire = placeholder(f.schema, 0);
+                out.insert(f.wire.to_string(), f.schema.map(&wire, Opts { request: false, ..o }));
+            }
             continue;
         }
-        let mut x = obj.get(f.wire).filter(|x| !x.is_null()).cloned();
+        // @if tenant_fields
+        if o.request && f.tenant {
+            // The server sets the tenant from the caller: what a client sends and the fingerprint
+            // leave it out; a member that a request carries is kept as received, and the typed
+            // struct gets a placeholder when it has none.
+            if o.dir == Dir::To {
+                continue;
+            }
+            if !obj.contains_key(f.wire) && !f.optional && f.default.is_none() {
+                let wire = placeholder(f.schema, 0);
+                out.insert(f.wire.to_string(), f.schema.map(&wire, Opts { request: false, ..o }));
+                continue;
+            }
+        }
+        // @end
+        // @if derived
+        if f.derived {
+            // Nobody supplies a derived value: a request leaves it out of what is sent (the
+            // fingerprint keeps what the server computed); a value read stands in for itself or,
+            // when absent, for a placeholder of its shape, which the server replaces.
+            if o.dir == Dir::To && o.request && !o.millis {
+                continue;
+            }
+            if o.dir == Dir::From && !obj.contains_key(f.wire) {
+                let wire = placeholder(f.schema, 0);
+                out.insert(f.wire.to_string(), f.schema.map(&wire, Opts { request: false, ..o }));
+                continue;
+            }
+        }
+        // @end
+        let mut x = obj.get(f.wire).filter(|x| is_json(f.schema) || !x.is_null()).cloned();
         if x.is_none() {
             x = f.default.and_then(|d| serde_json::from_str(d).ok());
         }
@@ -404,10 +579,24 @@ fn check_model(m: &ModelSchema, v: &Value, path: &str, request: bool, out: &mut 
         let at = format!("{path}.{}", f.wire);
         match obj.get(f.wire) {
             None => {
+                // @if tenant_fields
+                if request && f.tenant {
+                    continue;
+                }
+                // @end
+                // @if !derived
                 if !f.optional && f.default.is_none() && !(request && f.readonly) {
+                // @end
+                // @if derived
+                if !f.optional && f.default.is_none() && !(request && f.readonly) && !f.derived {
+                // @end
                     push(out, &at, "required", "is required".into());
                 }
             }
+            // @if derived
+            // A derived value is not constrained: nobody supplies it.
+            Some(_) if f.derived => {}
+            // @end
             Some(x) => check(f.schema, x, &at, request, out),
         }
     }
@@ -651,8 +840,9 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
     (y, m, d)
 }
 
-/// The canonical form of a datetime: UTC, `Z`, no trailing zeros in the fraction.
-fn normalize_datetime(s: &str) -> Option<String> {
+/// The canonical form of a datetime: UTC, `Z`, no trailing zeros in the fraction; with `millis`
+/// the fraction is cut at the millisecond and written `.fff` or left out when it is zero.
+fn normalize_datetime(s: &str, millis: bool) -> Option<String> {
     let dt = parse_datetime(s)?;
     let local = days_from_civil(dt.y, dt.mo, dt.d) * 86_400
         + i64::from(dt.h) * 3600
@@ -661,9 +851,14 @@ fn normalize_datetime(s: &str) -> Option<String> {
     let utc = local - dt.offset_min * 60;
     let (y, mo, d) = civil_from_days(utc.div_euclid(86_400));
     let rem = utc.rem_euclid(86_400);
-    let frac: String = if dt.zulu { dt.frac.to_string() } else { dt.frac.chars().take(3).collect() };
-    let frac = frac.trim_end_matches('0');
-    let frac = if frac.is_empty() { String::new() } else { format!(".{frac}") };
+    let frac = if millis {
+        let ms = format!("{:0<3}", dt.frac.chars().take(3).collect::<String>());
+        if ms == "000" { String::new() } else { format!(".{ms}") }
+    } else {
+        let kept: String = if dt.zulu { dt.frac.to_string() } else { dt.frac.chars().take(3).collect() };
+        let kept = kept.trim_end_matches('0');
+        if kept.is_empty() { String::new() } else { format!(".{kept}") }
+    };
     Some(format!("{y:04}-{mo:02}-{d:02}T{:02}:{:02}:{:02}{frac}Z", rem / 3600, rem % 3600 / 60, rem % 60))
 }
 
@@ -719,10 +914,16 @@ mod tests {
 
     #[test]
     fn datetimes_normalise_to_utc() {
-        assert_eq!(normalize_datetime("2024-05-01T12:00:00+02:00").as_deref(), Some("2024-05-01T10:00:00Z"));
-        assert_eq!(normalize_datetime("2024-05-01T10:00:00.500Z").as_deref(), Some("2024-05-01T10:00:00.5Z"));
-        assert_eq!(normalize_datetime("2024-12-31T23:30:00-01:00").as_deref(), Some("2025-01-01T00:30:00Z"));
-        assert!(normalize_datetime("2024-13-01T00:00:00Z").is_none());
+        assert_eq!(normalize_datetime("2024-05-01T12:00:00+02:00", false).as_deref(), Some("2024-05-01T10:00:00Z"));
+        assert_eq!(normalize_datetime("2024-05-01T10:00:00.500Z", false).as_deref(), Some("2024-05-01T10:00:00.5Z"));
+        assert_eq!(normalize_datetime("2024-12-31T23:30:00-01:00", false).as_deref(), Some("2025-01-01T00:30:00Z"));
+        assert!(normalize_datetime("2024-13-01T00:00:00Z", false).is_none());
+        // The fingerprint form: `.fff` only when the milliseconds are not zero, cut at the millisecond.
+        assert_eq!(normalize_datetime("2026-06-10T12:00:00.250Z", true).as_deref(), Some("2026-06-10T12:00:00.250Z"));
+        assert_eq!(normalize_datetime("2026-06-10T12:00:00.25Z", true).as_deref(), Some("2026-06-10T12:00:00.250Z"));
+        assert_eq!(normalize_datetime("2026-06-10T12:00:00.000Z", true).as_deref(), Some("2026-06-10T12:00:00Z"));
+        assert_eq!(normalize_datetime("2026-06-10T14:00:00+02:00", true).as_deref(), Some("2026-06-10T12:00:00Z"));
+        assert_eq!(normalize_datetime("2026-06-10T12:00:00.1239Z", true).as_deref(), Some("2026-06-10T12:00:00.123Z"));
     }
 
     #[test]

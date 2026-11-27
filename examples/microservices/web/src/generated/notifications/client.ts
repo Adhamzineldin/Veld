@@ -88,10 +88,8 @@ const notificationsUpdatePreferencesOp: veld.EndpointSpec = {
 export class NotificationsClient {
   readonly #core: veld.ClientCore;
 
-  constructor(opts: veld.ClientOptions = {}) {
+  constructor(opts: veld.ClientOptions) {
     this.#core = new veld.ClientCore(opts, {
-      envVar: 'VELD_NOTIFICATIONS_URL',
-      baseUrl: 'http://notification-service:3005',
       validation: (issues) => new ValidationError({ issues }),
     });
   }

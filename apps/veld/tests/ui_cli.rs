@@ -63,8 +63,11 @@ fn init_flags_cover_every_guided_answer() {
         .success();
     let toml = std::fs::read_to_string(tmp.path().join("veld.toml")).unwrap();
     assert!(toml.contains("description = \"Shop APIs\""), "{toml}");
-    assert!(toml.contains("out = \"ui/generated\""), "{toml}");
-    assert!(toml.contains("java-client"), "{toml}");
+    // A target writes `out` relative to its member's directory.
+    let web = std::fs::read_to_string(tmp.path().join("web/veld.toml")).unwrap();
+    assert!(web.contains("out = \"../ui/generated\""), "{web}");
+    let java = std::fs::read_to_string(tmp.path().join("clients/java/veld.toml")).unwrap();
+    assert!(java.contains("java-client"), "{java}");
     veld(tmp.path()).arg("check").assert().success();
 }
 

@@ -1,0 +1,18 @@
+// A timed edge that no `transition ... since` of the workspace takes is a warning: nothing can
+// ever make the move.
+
+enum Status {
+  pending, paid, cancelled
+  flow pending -> paid
+  flow pending -> cancelled after hours(24)
+  final paid, cancelled
+}
+
+model Booking { id: uuid, status: Status, pendingSince: datetime }
+
+service Bookings at "/bookings" {
+  post "/{id}/pay" pay(id: uuid) -> 204 {
+    fact booking: Booking = id
+    transition booking.status: pending -> paid
+  }
+}

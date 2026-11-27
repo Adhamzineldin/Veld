@@ -12,7 +12,7 @@ import { OrdersClient } from './copy_a/orders/client';
 import { createVeldPlugin, useCreateOrder, useGetOrder, useHealth, useOrdersClient } from './copy_a/orders/vue';
 import type { GetOrderRequest } from './copy_a/orders/client';
 import type { FetchInit } from './copy_a/runtime/veld';
-import { hooks, impl } from './roundtrip';
+import { hooks, impl, runtime } from './roundtrip';
 
 const USER_ID = '11111111-1111-4111-8111-111111111111';
 
@@ -42,7 +42,7 @@ async function until(label: string, cond: () => boolean): Promise<void> {
 
 async function main(): Promise<void> {
   const app = express();
-  app.use(srv.toExpress(srv.createOrdersHandler(impl, hooks)));
+  app.use(srv.toExpress(srv.createOrdersHandler(impl, hooks, runtime)));
   const server = http.createServer(app);
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;

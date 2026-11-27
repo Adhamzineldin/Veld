@@ -3,7 +3,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use veld_compiler::codes::LINT_RULES;
-use veld_ir::{Decl, DeclId, DeclKind, Ir, Literal, Origin, PackageKind, Service, ServiceId};
+use veld_ir::{
+    AuthKind, Decl, DeclId, DeclKind, Ir, Literal, Origin, PackageKind, Service, ServiceId,
+};
 
 use super::naming::{is_camel, is_pascal, is_variant_name, to_camel, to_pascal};
 use super::{LintIssue, LintLevel, is_linted};
@@ -32,7 +34,13 @@ impl Raw {
     }
 }
 
-fn push(out: &mut Vec<Raw>, rule: &'static str, subject: String, message: String, o: &Origin) {
+pub(super) fn push(
+    out: &mut Vec<Raw>,
+    rule: &'static str,
+    subject: String,
+    message: String,
+    o: &Origin,
+) {
     out.push(Raw {
         rule,
         subject,
@@ -57,16 +65,37 @@ pub(super) fn run(ir: &Ir, out: &mut Vec<Raw>) {
     empty_model(&user, out);
     empty_constants(&user, out);
     missing_description(&services, out);
+    auth_required(&services, out);
+    super::pii::run(ir, out);
+    super::moves::run(ir, &services, out);
     deprecations(&user, &services, out);
     naming(&user, &services, out);
     file_naming(ir, &user, &services, out);
 }
 
-/// Declarations used by an endpoint, a constant, an `extends` or another used declaration.
+/// Declarations used by an endpoint, a fact, a policy, the principal, a constant, an `extends` or
+/// another used declaration.
 fn used_decls(ir: &Ir) -> BTreeSet<DeclId> {
     let all: Vec<ServiceId> = ir.services.iter().map(|s| s.id).collect();
     let mut seen: BTreeSet<DeclId> = ir.reachable_decls(&all).into_iter().collect();
     let mut stack: Vec<DeclId> = Vec::new();
+    stack.extend(
+        ir.services
+            .iter()
+            .filter_map(|s| s.principal.as_ref().map(|p| p.decl)),
+    );
+    for p in ir.policies.iter().flat_map(|p| &p.params) {
+        p.ty.collect_decls(&mut stack);
+    }
+    // A fact is a use: the endpoint loads a value of that type and its rules read it.
+    for f in ir.services.iter().flat_map(|s| &s.facts) {
+        f.ty.collect_decls(&mut stack);
+        if let Some(key) = &f.key {
+            key.collect_decls(&mut stack);
+        }
+    }
+    // An event is used when a channel carries it (`spec/events.md` section 15).
+    stack.extend(ir.channels.iter().flat_map(|c| c.events.iter().copied()));
     for d in &ir.decls {
         if let DeclKind::Model(m) = &d.kind {
             stack.extend(m.parent);
@@ -86,7 +115,7 @@ fn used_decls(ir: &Ir) -> BTreeSet<DeclId> {
         match &d.kind {
             DeclKind::Model(m) => stack.extend(m.parent),
             DeclKind::Union(u) => stack.extend(u.arms.iter().map(|a| a.decl)),
-            DeclKind::Error(_) | DeclKind::Enum(_) | DeclKind::Const(_) => {}
+            DeclKind::Error(_) | DeclKind::Enum(_) | DeclKind::Const(_) | DeclKind::Event(_) => {}
         }
     }
     seen
@@ -99,15 +128,48 @@ fn kind_word(d: &Decl) -> &'static str {
         DeclKind::Enum(_) => "enum",
         DeclKind::Union(_) => "union",
         DeclKind::Const(_) => "const",
+        DeclKind::Event(_) => "event",
+    }
+}
+
+/// A channel is used when a service publishes to it or subscribes to it.
+fn unused_channels(ir: &Ir, out: &mut Vec<Raw>) {
+    let used: BTreeSet<usize> = ir
+        .services
+        .iter()
+        .flat_map(|s| {
+            s.published_channels()
+                .chain(s.subscriptions.iter().map(|x| x.channel))
+        })
+        .map(|c| c.0 as usize)
+        .collect();
+    for (i, c) in ir.channels.iter().enumerate() {
+        if ir.package(c.package).kind == PackageKind::Service && !used.contains(&i) {
+            push(
+                out,
+                "unused-model",
+                c.name.clone(),
+                format!(
+                    "channel `{}` is never published to or subscribed to by a service",
+                    c.name
+                ),
+                &c.origin,
+            );
+        }
     }
 }
 
 fn unused(ir: &Ir, user: &[&Decl], out: &mut Vec<Raw>) {
+    unused_channels(ir, out);
     let used = used_decls(ir);
     for d in user {
         let candidate = matches!(
             d.kind,
-            DeclKind::Model(_) | DeclKind::Error(_) | DeclKind::Enum(_) | DeclKind::Union(_)
+            DeclKind::Model(_)
+                | DeclKind::Error(_)
+                | DeclKind::Enum(_)
+                | DeclKind::Union(_)
+                | DeclKind::Event(_)
         );
         if candidate && ir.package(d.package).kind == PackageKind::Service && !used.contains(&d.id)
         {
@@ -128,7 +190,8 @@ fn unused(ir: &Ir, user: &[&Decl], out: &mut Vec<Raw>) {
 
 fn empty_service(services: &[&Service], out: &mut Vec<Raw>) {
     for s in services {
-        if s.endpoints.is_empty() {
+        // A `publishes` or `subscribes` line is content (`spec/events.md` section 5).
+        if s.endpoints.is_empty() && !s.uses_events() {
             push(
                 out,
                 "empty-service",
@@ -180,6 +243,27 @@ fn empty_constants(user: &[&Decl], out: &mut Vec<Raw>) {
                 format!("constant `{}` has an empty value", d.name),
                 &d.origin,
             );
+        }
+    }
+}
+
+/// `auth-required` (`spec/rules.md` section 11.6): an endpoint whose auth comes from neither its
+/// own `@auth` nor its service's should say `@auth(none)` if it is meant to be public.
+fn auth_required(services: &[&Service], out: &mut Vec<Raw>) {
+    for s in services {
+        for e in &s.endpoints {
+            if e.auth.kind == AuthKind::None && !e.auth.declared {
+                push(
+                    out,
+                    "auth-required",
+                    format!("{}.{}", s.name, e.name),
+                    format!(
+                        "endpoint `{}` has no `@auth` of its own or on service `{}`: write `@auth(none)` if it is meant to be public",
+                        e.name, s.name
+                    ),
+                    &e.origin,
+                );
+            }
         }
     }
 }

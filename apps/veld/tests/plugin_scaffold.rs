@@ -123,8 +123,8 @@ fn scaffolded_plugin_builds_passes_conformance_and_generates() {
         dir,
         "veld.toml",
         &format!(
-            "[project]\nname = \"hello\"\n\n[plugins.demo]\ncommand = \"node\"\nentry = \"demo/dist/main.js\"\nsha256 = \"{}\"\n\n\
-             [[targets]]\nname = \"demo\"\nrole = \"client\"\nemitter = \"plugin:demo\"\nout = \"gen/demo\"\n",
+            "[service]\nname = \"hello\"\n\n[plugins.demo]\ncommand = \"node\"\nentry = \"demo/dist/main.js\"\nsha256 = \"{}\"\n\n\
+             [client]\nname = \"demo\"\nemitter = \"plugin:demo\"\nout = \"gen/demo\"\n",
             sha256_of_file(&dir.join("demo/dist/main.js"))
         ),
     );

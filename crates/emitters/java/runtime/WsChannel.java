@@ -46,6 +46,9 @@ public final class WsChannel<In, Out> implements AutoCloseable {
   private volatile boolean connected;
   private volatile int failures;
   private volatile long openedAt;
+  // #if rules
+  private volatile boolean localRules;
+  // #endif
 
   WsChannel(
       EndpointSpec ep,
@@ -149,6 +152,13 @@ public final class WsChannel<In, Out> implements AutoCloseable {
     }
   }
 
+  // #if rules
+  /** Whether the invariants of a message are checked before it is sent (default off until set). */
+  void localRules(boolean value) {
+    this.localRules = value;
+  }
+
+  // #endif
   /**
    * Sends one message; it is validated first unless validation is switched off.
    *
@@ -171,6 +181,14 @@ public final class WsChannel<In, Out> implements AutoCloseable {
         throw err;
       }
     }
+    // #if rules
+    if (validate && localRules) {
+      RuleWalk.localMessageCheck(ep, outgoing, wire, validation);
+    }
+    // #endif
+    // #if derived
+    wire = Derive.strip(outgoing, wire);
+    // #endif
     String text = Wire.canonicalOf(outgoing, wire);
     synchronized (sendLock) {
       if (!connected) {

@@ -1,0 +1,17 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+assertion_line: 195
+---
+== diagnostics ==
+error[E1004]: topic `shop.paid` is already used by another channel
+ --> app/app.veld:7:9
+  |
+7 | channel Second { carries Paid }
+  |         ^^^^^^
+ --> app/app.veld:4:9
+  |
+4 | channel First { carries Paid }
+  |         ----- first used here
+
+== ir ==
+(no IR: compilation failed)

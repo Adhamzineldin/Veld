@@ -1,0 +1,59 @@
+// Every expression form of Phase 1, inheritance, a const and rules on an error.
+
+const MAX_GUESTS: int = 4
+const VIP: string = "vip"
+const RATE: decimal = 1.50
+const LIMIT: long = 5000000000
+
+enum Status { pending, paid, checkedIn = "CHECKED_IN" }
+
+model Item {
+  sku: string
+  qty: int
+  price: decimal
+}
+
+model Booking {
+  start: datetime
+  end: datetime
+  status: Status = .pending
+  paidAt?: datetime
+  guests: int
+  tier: string
+  items: Item[]
+  tags: string[]
+  limits: Map<string, int>
+  code: string
+  big: long
+  ratio: float
+  total: decimal
+  score: int
+
+  /// Shown under the date picker.
+  rule endAfterStart: end > start
+    message "A booking must end after it starts"
+  rule maxStay: end - start <= days(30) + hours(12) - minutes(30) + seconds(1) + ms(5)
+  rule paidHasTime: status in [.paid, .checkedIn] implies has(paidAt)
+  @deprecated("use fits")
+  rule oldFits: guests <= MAX_GUESTS || tier == VIP
+  rule fits: guests <= MAX_GUESTS || not (tier != VIP)
+  rule shaped: matches(code, "^[A-Z]{3}-\\d{4}$") && startsWith(code, "ABC") && endsWith(code, "9") && contains(code, "-")
+  rule sized: len(tags) < 3 && len(code) == 8 && len(limits) >= 0
+  rule keyed: "max" in limits && "gift" in tags
+  rule sums: sum(items, i => i.price * i.qty) == total && count(items, i => i.qty > 0) >= 1
+  rule quantified: all(items, i => i.qty > 0) && any(items, i => i.price > RATE)
+  rule arithmetic: (score + 1) * 2 - 3 / 1 % 5 == -score + 7
+  rule widened: score < big && score * ratio < 1.5 && big < LIMIT && score * total <= 100
+  rule negated: !(guests > 0) || guests == 1 && true
+  rule listed: score in [1, 2, 3] && not false
+}
+
+model Child extends Booking {
+  extra: int
+  rule extraPositive: extra > 0
+}
+
+error Rejected 422 {
+  reason: string
+  rule reasoned: len(reason) > 0
+}

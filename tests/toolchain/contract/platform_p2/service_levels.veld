@@ -1,0 +1,24 @@
+// Deadlines and service levels (spec/platform.md sections 12 and 13). `getRoom` and `build` have a
+// deadline; `build` is idempotent, so a request that hits its deadline must release its key.
+// `listRooms` has none. The service states a service level; `getRoom` replaces it with its own.
+model Room {
+  id: uuid
+  name: string
+}
+
+model Build {
+  name: string
+}
+
+@slo(p99: ms(300), errors: 0.1)
+service Rooms at "/rooms" {
+  @timeout(ms(200))
+  @slo(p50: ms(50), p99: ms(100))
+  get "/{id}" getRoom(id: uuid) -> Room | NotFound
+
+  get "/" listRooms() -> Room[]
+
+  @timeout(ms(200))
+  @idempotent
+  post "/" build(body: Build) -> 201 Room
+}

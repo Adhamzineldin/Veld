@@ -1,0 +1,164 @@
+// Derived fields at every place a server and a client meet a value (spec/rules.md section 17.2),
+// for the Rust harness `tests/toolchain/rust/derived-edges`: a request with a chain, a failing
+// expression and a read-only read, a fact, the principal, a declared error, a stream, an
+// idempotent endpoint and an event.
+
+model Line {
+  price: int
+  qty: int
+  total: int = price * qty
+}
+
+model Order {
+  id: uuid @readonly
+  serial: int @readonly
+  items: Line[]
+  discount: int = 0
+  subtotal: int = sum(items, i => i.total)
+  payable: int = subtotal - discount
+  share: int = 100 / len(items)
+  next: int = serial + 1
+  rule fits: payable >= 0
+  rule seen: next > 0
+}
+
+model Wallet {
+  id: uuid
+  balance: int
+  held: int
+  available: int = balance - held
+}
+
+model Gauge {
+  id: uuid
+  n: int
+  inverse: int = 100 / n
+}
+
+model Spend {
+  amount: int
+}
+
+model User {
+  id: uuid
+  base: int
+  limit: int = base * 2
+}
+
+principal User
+
+error TooMuch 422 {
+  needed: int
+  have: int
+  short: int = needed - have
+}
+
+// A derived field that has no value in a request (it reads a @readonly field), below the first
+// level of a rule and of derived fields of the declaration above it.
+model Part {
+  seq: int @readonly
+  next: int = seq + 1
+}
+
+model Kit {
+  parts: Part[]
+  rule allPositive: all(parts, p => p.next > 0)
+  bump: int = sum(parts, p => p.next) + 1
+  serials: int = sum(parts, p => p.seq) + 1
+}
+
+// Statements of an endpoint block that read a derived field of a request parameter without a
+// value: a `require`, an `ensure` and an `old(...)` skip, an `allow` denies.
+policy NextPositive(user: User, part: Part) {
+  permit when part.next > 0
+}
+
+model Cell {
+  seq: int @readonly
+  next: int = seq + 1
+  rule cellNext: next > 0
+}
+
+model Shelf {
+  page: Page<Cell>
+}
+
+model Me {
+  limit: int
+}
+
+model Tick {
+  n: int
+  twice: int = n * 2
+}
+
+@auth(bearer)
+service Shop at "/shop" {
+  post "/orders" place(body: Order) -> 201 Order
+
+  post "/spend/{id}" spend(id: uuid, body: Spend) -> 200 Wallet | TooMuch {
+    fact wallet: Wallet = id
+    require body.amount <= wallet.available else TooMuch { needed: body.amount, have: wallet.available }
+    require body.amount <= user.limit
+  }
+
+  post "/gauge/{id}" gauge(id: uuid) -> 204 {
+    fact gauge: Gauge = id
+  }
+
+  @idempotent
+  post "/lines" line(body: Line) -> 204
+
+  post "/kits" kit(body: Kit) -> 200 Kit
+
+  post "/parts" part(body: Part) -> 204 {
+    require body.next > 0
+  }
+
+  post "/many" many(body: Part[]) -> 204 {
+    require all(body, p => p.next > 0)
+  }
+
+  post "/gated" gated(body: Part) -> 204 {
+    allow NextPositive(user, body)
+  }
+
+  post "/checked" checked(body: Part) -> 200 Part {
+    ensure body.next > 0
+    ensure result.next < old(body.next)
+  }
+
+  // A derived field without a value inside the items of a Page, read by an invariant of the item.
+  post "/shelves" shelf(body: Shelf) -> 204
+
+  // No rule: the handler still sees the principal with its derived field.
+  post "/me" me() -> 200 Me
+}
+
+@auth(none)
+service Live at "/live" {
+  get "/feed" feed() -> stream Tick
+}
+
+event Paid {
+  order: uuid
+  amount: int
+  fee: int
+  net: int = amount - fee
+  percent: int = fee * 100 / amount
+  rule fine: net >= 0
+}
+
+channel Payments {
+  carries Paid
+}
+
+service Billing {
+  publishes Payments
+}
+
+service Receipts {
+  subscribes Payments as "receipts" {
+    on Paid -> record
+  }
+}

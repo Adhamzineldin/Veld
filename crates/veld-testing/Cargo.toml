@@ -1,0 +1,21 @@
+[package]
+name = "veld-testing"
+description = "Runs the examples of a Veld contract, offline and against a live test handler"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+veld-ir.workspace = true
+veld-rules.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+ureq.workspace = true
+
+[dev-dependencies]
+veld-compiler.workspace = true
+
+[lints]
+workspace = true

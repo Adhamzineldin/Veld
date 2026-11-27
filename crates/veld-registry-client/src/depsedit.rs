@@ -42,7 +42,7 @@ pub fn set_dependency(
 mod tests {
     use super::*;
 
-    const BASE: &str = "# my project\n[project]\nname = \"shop\" # the name\n\n[[targets]]\nrole = \"client\"\nemitter = \"typescript\"\nout = \"gen\"\n";
+    const BASE: &str = "# my project\n[service]\nname = \"shop\" # the name\n\n[client]\nemitter = \"typescript\"\nout = \"gen\"\n";
 
     #[test]
     fn adds_a_dependencies_table_and_preserves_everything_else() {

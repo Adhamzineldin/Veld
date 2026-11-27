@@ -89,30 +89,32 @@ export default function GettingStarted() {
           ]}
         />
         <P>That command writes the following.</P>
-        <CodeBlock title="veld.toml" lang="toml">{`[project]
+        <CodeBlock title="veld.toml" lang="toml">{`[service]
 name = "shop"
-contracts = "contracts"
 
-[[targets]]
+[server]
 name = "api"
-role = "server"
 emitter = "node"
 framework = "express"
-service = "shop"
 out = "generated/server"
 
-[[targets]]
+[client]
 name = "web"
-role = "client"
 emitter = "typescript"
 framework = "react"
 out = "generated/client"`}</CodeBlock>
+        <P>
+          One <code>veld.toml</code> with one <code>[service]</code> is a whole project. A larger project is a
+          workspace with a <code>veld.toml</code> per service or app (see Microservices).
+        </P>
       </Section>
 
       <Section id="first-contract" title="A first contract">
         <P>
           This is the contract of the <code>examples/hello</code> project: one model, one service, one
-          endpoint. <code>NotFound</code> is a prelude error, so it needs no declaration.
+          endpoint. <code>NotFound</code> is a prelude error, so it needs no declaration.{' '}
+          <code>@auth(none)</code> says the service is public: <code>veld check</code> warns about an
+          endpoint that does not say who may call it.
         </P>
         <CodeBlock title="contracts/hello.veld" lang="veld">{`/// A greeting for one person.
 model Greeting {
@@ -120,6 +122,7 @@ model Greeting {
 }
 
 /// Says hello.
+@auth(none)
 service Hello at "/hello" {
   /// Greets the person with the given name.
   get "/{name}" greet(name: string) -> Greeting | NotFound

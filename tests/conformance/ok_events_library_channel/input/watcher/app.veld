@@ -1,0 +1,9 @@
+// No service of the workspace publishes `Pings`, and that is fine: it comes from a library.
+
+use shared:events.{Pings, Ping}
+
+service Watcher {
+  subscribes Pings as "watcher" {
+    on Ping -> onPing
+  }
+}

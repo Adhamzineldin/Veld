@@ -26,12 +26,10 @@ emitters) and [`spec/targets/java.md`](../../spec/targets/java.md).
 ## Node server (`emitter = "node"`, `role = "server"`)
 
 ```toml
-[[targets]]
+[server]                     # in the veld.toml of the service `hello`
 name = "api"
-role = "server"
 emitter = "node"
 framework = "express"        # express | fastify | hono | node-http | nest
-service = "hello"
 out = "server/src/generated"
 ```
 
@@ -90,9 +88,8 @@ needs nothing extra.
 ## TypeScript client (`emitter = "typescript"`, `role = "client"`)
 
 ```toml
-[[targets]]
+[client]
 name = "web"
-role = "client"
 emitter = "typescript"
 framework = "react"          # react | vue | omit for the plain client
 out = "web/src/generated"
@@ -150,7 +147,7 @@ Both abort the request on unmount.
 ### Query options (`query-options = true`)
 
 ```toml
-[targets.options]
+[client.options]
 query-options = true
 ```
 
@@ -171,22 +168,20 @@ form.
 
 ### Skipping request validation (`validate = false`)
 
-`validate = false` in `[targets.options]` of a `node`, `typescript`, `java` or `rust` target skips run-time
+`validate = false` in `[server.options]` or `[client.options]` of a `node`, `typescript`, `java` or `rust` target skips run-time
 request validation by default; the types stay. The TypeScript client option `validate: true` and the
 Java `ClientOptions.builder().validate(true)` (Rust `ClientOptions::new().validate(true)`) switch the client check back on.
 
 ## Java (`emitter = "java"`, server and client)
 
 ```toml
-[[targets]]
+[server]                     # in the veld.toml of the service `transactions`
 name = "transactions-api"
-role = "server"
-service = "transactions"
 emitter = "java"
 framework = "jdk"            # jdk | spring (servers only)
-out = "backend/transaction-service/src/main/java"
+out = "src/main/java"
 
-[targets.options]
+[server.options]
 package = "com.nexusbank.transactions"
 java = "17"                  # "17" or "21"
 ```
@@ -241,14 +236,12 @@ Rust output is a complete Cargo crate. Point `out` at an empty folder and add it
 (`veld setup` is not needed: `members = ["generated/orders-server"]` or a `path` dependency is enough).
 
 ```toml
-[[targets]]
+[server]                     # in the veld.toml of the service `orders`
 name = "orders-api"
-role = "server"
 emitter = "rust"
-service = "orders"
-out = "services/orders/generated"
+out = "generated"
 
-[targets.options]
+[server.options]
 crate-name = "orders-api"    # default: <package>-<role>
 ```
 
@@ -313,6 +306,21 @@ Set `clients = false` on the target to opt out. See [microservices.md](microserv
 `veld export openapi -o openapi.json` writes OpenAPI 3.1 for the whole project (add `--service S` for one
 service). `veld export ir` prints the compiled IR with signatures, for plugin authors. Both print to
 stdout without `-o`.
+
+### Rules in the OpenAPI export
+
+A contract without rules exports exactly as before. Business rules appear as `x-veld-*` extensions,
+so the document doubles as living documentation (all expressions are printed as Veld text):
+
+- a model or error schema with invariants has `x-veld-rules`: a list of `{name, id, message?, fields,
+  expression}`, where `fields` are the wire names the rule reads (a child lists only its own rules);
+- an operation has `x-veld-facts` (`{name, type, optional}`), `x-veld-rules` (`requires`:
+  `{name?, id, expression, else?, message?}` and `ensures`: `{name?, id, expression, message?}`) and,
+  when it has a `transition`, `x-veld-transition` (`{id, field, from, to}`, wire values);
+- an enum that is a state machine has `x-veld-flows` (`{from, to}`, wire values) and `x-veld-finals`.
+
+The implicit `404`, `409` and `422` answers are documented as the other implicit errors are: when the
+compiled contract lists them for the operation.
 
 ## The manifest and your files
 

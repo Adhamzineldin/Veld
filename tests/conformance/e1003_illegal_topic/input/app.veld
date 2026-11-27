@@ -1,0 +1,13 @@
+event Paid { id: uuid }
+
+@topic("bad topic!")
+channel Spaces { carries Paid }
+
+@topic("orders.dlq")
+channel DeadLetters { carries Paid }
+
+@topic("..")
+channel Dots { carries Paid }
+
+@topic("")
+channel Empty { carries Paid }

@@ -1,0 +1,113 @@
+// Every contextual word of spec/rules.md section 2.2 is still an ordinary name: a field, an enum
+// variant, a parameter and, where it is legal, a declaration or endpoint name.
+
+enum Words {
+  rule, message, implies, not, in, has, fact, require, else, ensure, old, now, result,
+  flow, final, emits, transition, policy, permit, forbid, when, allow, principal,
+  example, given, expect
+}
+
+model Fields {
+  rule: string
+  message: string
+  implies: bool
+  not: bool
+  in: int
+  has: int
+  fact: int
+  require: int
+  else: int
+  ensure: int
+  old: int
+  now: int
+  result: int
+  flow: int
+  final: int
+  emits: int
+  transition: int
+  policy: int
+  permit: int
+  forbid: int
+  when: int
+  allow: int
+  principal: int
+  example: int
+  given: int
+  expect: int
+  optionalRule?: string
+
+  rule inRule: in > has
+  rule nowIsAField: now >= 0 && result >= old
+  rule notIsAField: not implies implies
+  rule words: len(message) > 0 && len(rule) > 0
+}
+
+model rule { value: int }
+model message { value: int }
+model implies { value: int }
+model not { value: int }
+model in { value: int }
+model has { value: int }
+model fact { value: int }
+model require { value: int }
+model else { value: int }
+model ensure { value: int }
+model old { value: int }
+model now { value: int }
+model result { value: int }
+model flow { value: int }
+model final { value: int }
+model emits { value: int }
+model transition { value: int }
+model policy { value: int }
+model permit { value: int }
+model forbid { value: int }
+model when { value: int }
+model allow { value: int }
+model principal { value: int }
+model example { value: int }
+model given { value: int }
+model expect { value: int }
+
+model Optional {
+  rule?: string
+  in?: int
+}
+
+model Named {
+  value: int
+  rule message: value > 0
+  rule has: value > 1
+  rule implies: value > 2 message "kept"
+  rule not: value > 3
+  rule in: value > 4
+}
+
+service Vocabulary at "/words" {
+  get "/rule" rule(@query rule: int) -> Fields
+  get "/message" message(@query message: int) -> Fields
+  get "/implies" implies(@query implies: int) -> Fields
+  get "/not" not(@query not: int) -> Fields
+  get "/in" in(@query in: int) -> Fields
+  get "/has" has(@query has: int) -> Fields
+  get "/fact" fact(@query fact: int) -> Fields
+  get "/require" require(@query require: int) -> Fields
+  get "/else" else(@query else: int) -> Fields
+  get "/ensure" ensure(@query ensure: int) -> Fields
+  get "/old" old(@query old: int) -> Fields
+  get "/now" now(@query now: int) -> Fields
+  get "/result" result(@query result: int) -> Fields
+  get "/flow" flow(@query flow: int) -> Fields
+  get "/final" final(@query final: int) -> Fields
+  get "/emits" emits(@query emits: int) -> Fields
+  get "/transition" transition(@query transition: int) -> Fields
+  get "/policy" policy(@query policy: int) -> Fields
+  get "/permit" permit(@query permit: int) -> Fields
+  get "/forbid" forbid(@query forbid: int) -> Fields
+  get "/when" when(@query when: int) -> Fields
+  get "/allow" allow(@query allow: int) -> Fields
+  get "/principal" principal(@query principal: int) -> Fields
+  get "/example" example(@query example: int) -> Fields
+  get "/given" given(@query given: int) -> Fields
+  get "/expect" expect(@query expect: int) -> Fields
+}

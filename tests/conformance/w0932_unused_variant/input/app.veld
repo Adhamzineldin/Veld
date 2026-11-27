@@ -1,0 +1,9 @@
+// `archived` is a variant of a state machine that takes part in no flow and is not final.
+
+enum Status {
+  pending, paid, archived
+  flow pending -> paid
+  final paid
+}
+
+model Booking { id: uuid, status: Status }

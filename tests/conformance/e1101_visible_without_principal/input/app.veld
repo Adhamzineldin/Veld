@@ -1,0 +1,6 @@
+// @visible needs a caller, so the package must declare a principal.
+
+model Booking {
+  guestId: uuid
+  guestPhone?: string @visible(when: has(guestPhone))
+}

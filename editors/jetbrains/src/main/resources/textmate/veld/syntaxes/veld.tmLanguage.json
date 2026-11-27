@@ -26,6 +26,9 @@
       "include": "#arrow"
     },
     {
+      "include": "#rules"
+    },
+    {
       "include": "#methods"
     },
     {
@@ -76,7 +79,7 @@
       "patterns": [
         {
           "name": "entity.other.attribute-name.annotation.veld",
-          "match": "@(auth|middleware|deprecated|min|max|length|pattern|format|readonly|wire|example|discriminator|query|header)\\b"
+          "match": "@(auth|middleware|deprecated|min|max|length|pattern|format|readonly|wire|example|discriminator|query|header|topic|retry|deadLetter|ordered|rollout|version|idempotent|timeout|slo|pii|secret|retain|visible|tenant|audited|limit)\\b"
         },
         {
           "name": "invalid.illegal.unknown-annotation.veld",
@@ -131,6 +134,41 @@
       "name": "keyword.operator.arrow.veld",
       "match": "->|\\|"
     },
+    "rules": {
+      "patterns": [
+        {
+          "match": "^\\s*(rule)\\s+([A-Za-z_][A-Za-z0-9_]*)(?=\\s*:)",
+          "captures": {
+            "1": {
+              "name": "keyword.control.rule.veld"
+            },
+            "2": {
+              "name": "entity.name.function.rule.veld"
+            }
+          }
+        },
+        {
+          "match": "^\\s*(message)(?=\\s+\")",
+          "captures": {
+            "1": {
+              "name": "keyword.control.rule.veld"
+            }
+          }
+        },
+        {
+          "name": "keyword.operator.word.veld",
+          "match": "(?<=\\s)(implies|not|in)(?=\\s)"
+        },
+        {
+          "name": "support.function.builtin.veld",
+          "match": "\\b(has)(?=\\()"
+        },
+        {
+          "name": "keyword.operator.logical.veld",
+          "match": "&&|\\|\\||==|!=|<=|>=|=>"
+        }
+      ]
+    },
     "methods": {
       "name": "keyword.control.http-method.veld",
       "match": "^\\s*\\b(get|post|put|patch|delete|head|options|ws)\\b(?=\\s+\")"
@@ -167,7 +205,7 @@
         },
         {
           "name": "support.class.error.veld",
-          "match": "\\b(BadRequest|Unauthorized|Forbidden|NotFound|Conflict|ValidationError|TooManyRequests|Internal)\\b"
+          "match": "\\b(BadRequest|Unauthorized|Forbidden|NotFound|Conflict|ValidationError|TooManyRequests|Internal|InvalidTransition|PreconditionFailed|SagaFailed|DeadlineExceeded)\\b"
         },
         {
           "name": "entity.name.type.reference.veld",

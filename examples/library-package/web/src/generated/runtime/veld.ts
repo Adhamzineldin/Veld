@@ -1442,7 +1442,8 @@ export interface BasicCredentials {
 type Headers_ = Record<string, string>;
 
 export interface ClientOptions {
-  baseUrl?: string;
+  /** The address of the service (`services.<service>.url` of the runtime config). A trailing `/` is dropped. */
+  baseUrl: string;
   fetch?: FetchLike;
   /** The WebSocket constructor for `ws` endpoints. Default: the global `WebSocket`. */
   webSocket?: WsConstructor;
@@ -1544,18 +1545,10 @@ export interface WsChannel<In, Out> extends AsyncIterable<In> {
 }
 
 export interface ClientDefaults {
-  /** Environment variable consulted for the base URL, e.g. `VELD_ORDERS_URL`. */
-  envVar: string;
-  /** Base URL baked in from the contract. */
-  baseUrl: string | null;
   /** Builds the local `ValidationError`. */
   validation(issues: Issue[]): VeldError;
 }
 
-function envValue(name: string): string | undefined {
-  const g = globalThis as { process?: { env?: Record<string, string | undefined> } };
-  return g.process?.env?.[name];
-}
 
 function scalarString(v: unknown): string {
   return typeof v === 'string' ? v : String(v);
@@ -1684,14 +1677,14 @@ export class ClientCore {
     private readonly opts: ClientOptions,
     private readonly defaults: ClientDefaults,
   ) {
-    const base = opts.baseUrl ?? envValue(defaults.envVar) ?? defaults.baseUrl;
-    if (base === null || base === undefined) {
-      throw new VeldTransportError(`no base URL: pass baseUrl or set ${defaults.envVar}`);
+    const base: unknown = opts.baseUrl;
+    if (typeof base !== 'string' || base === '') {
+      throw new VeldTransportError('no base URL: pass baseUrl');
     }
     this.baseUrl = base.replace(/\/+$/, '');
     const f = opts.fetch ?? (globalThis as { fetch?: FetchLike }).fetch;
     if (!f) throw new VeldTransportError('no fetch implementation: pass options.fetch');
-    this.doFetch = f;
+    this.doFetch = opts.fetch ?? f.bind(globalThis);
   }
 
   private check(ep: EndpointSpec, req: Record<string, unknown>): void {

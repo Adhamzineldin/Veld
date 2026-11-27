@@ -5,22 +5,36 @@
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 
+pub mod block;
+pub mod brokers;
 pub mod client;
+pub mod conditional;
+pub mod config;
 pub mod endpoints;
+pub mod events;
+pub mod flags;
+pub mod guards;
 pub mod models;
+pub mod outbox;
 pub mod package;
+pub mod platform;
+pub mod policies;
+pub mod rules;
 pub mod runtime;
 pub mod server;
+pub mod testing;
+pub mod timed;
 pub mod tree;
 pub mod types;
 pub mod util;
+pub mod warn;
 
 use std::collections::BTreeMap;
 
 use serde::Deserialize;
 use veld_codegen::{
     Capabilities, FileSet, FrameworkInfo, GenDiagnostic, GenRequest, Generator, LanguageInfo,
-    Profile, Role, check_capabilities, naming,
+    Profile, Role, check_capabilities, naming, runtime_config::RuntimeModel,
 };
 use veld_ir::{Feature, ServiceId};
 
@@ -44,6 +58,14 @@ pub struct Options {
     pub transport: Option<String>,
     /// `false` skips run-time request validation by default (the types are unchanged).
     pub validate: Option<bool>,
+    /// `true` adds the test handler (`spec/rules.md` section 12.4) next to every service that has
+    /// endpoint rules: a second entry point, in a file of its own, for `veld test --live`. Server
+    /// role only. Never mount it in production.
+    pub testing: Option<bool>,
+    /// The broker adapters of events phase E2 (`spec/events.md` section 10.7): `"kafka"`,
+    /// `"rabbitmq"` or a list of both. Server role only; a target none of whose services
+    /// publishes or subscribes cannot have it.
+    pub messaging: Option<brokers::Messaging>,
 }
 
 /// The Rust generator (roles `server` and `client`).
@@ -71,6 +93,26 @@ fn client_frameworks() -> Vec<FrameworkInfo> {
             min_language: None,
         },
     ]
+}
+
+/// What the generator supports: everything. A server generates events (phase E1); a client
+/// supports the feature by generating nothing for it (`spec/events.md` section 14).
+fn all_capabilities() -> Capabilities {
+    Capabilities::all_except(&[])
+        .with(Feature::RulesRollout)
+        .with(Feature::RulesVersion)
+        .with(Feature::Idempotency)
+        .with(Feature::RulesDerived)
+        .with(Feature::EventsDelivery)
+        .with(Feature::RulesTimed)
+        .with(Feature::RulesFlags)
+        .with(Feature::Timeouts)
+        .with(Feature::Slo)
+        .with(Feature::EventsOutbox)
+        .with(Feature::Visibility)
+        .with(Feature::Tenancy)
+        .with(Feature::Audit)
+        .with(Feature::Limits)
 }
 
 fn precheck(req: &GenRequest<'_>, caps: &Capabilities) -> Result<(), Vec<GenDiagnostic>> {
@@ -186,9 +228,16 @@ impl Generator for Rust {
     }
 
     fn capabilities(&self, _role: Role) -> Capabilities {
-        // Everything is supported. The one limit is framework dependent and reported as `E0801` by
-        // `generate`: the blocking `ureq` transport cannot open WebSockets.
-        Capabilities::all_except(&[])
+        // Everything: invariants, endpoint rules, state machines, policies and events are
+        // generated (`spec/targets/rust.md` sections 10 and 13). The limits that depend on the
+        // framework or the endpoint are reported as `E0801` by `generate`: the blocking `ureq`
+        // transport cannot open WebSockets, and an endpoint rule on a `ws` endpoint is not
+        // supported.
+        all_capabilities()
+    }
+
+    fn warnings(&self, req: &GenRequest<'_>, opts: &Options) -> Vec<GenDiagnostic> {
+        warn::validation_off(req, opts.validate)
     }
 
     fn generate(
@@ -204,11 +253,13 @@ impl Generator for Rust {
             )]);
         }
         precheck(req, &self.capabilities(req.role))?;
+        let model = RuntimeModel::for_request(req, profile).map_err(|d| vec![d])?;
+        let runtime = model.as_ref().map(config::RuntimeCfg::of);
         let name = crate_name(req, opts)?;
         let tr = transports(req, opts, profile)?;
         let mut used = req.services.clone();
         used.extend(req.consumes.iter().copied());
-        let used_features = req.ir.features_used(&used);
+        let used_features = req.ir.http_features_used(&used);
         let streaming = used_features.contains(&Feature::StreamingSse)
             || used_features.contains(&Feature::StreamingWs);
         let server = req.role == Role::Server;
@@ -223,51 +274,321 @@ impl Generator for Rust {
                 "generator `rust` cannot open WebSockets on the `ureq` transport (it is blocking and has no WebSocket client); use the `reqwest` framework, or serve this contract from another generator",
             ));
         }
+        refuse_ws_blocks(req)?;
+        platform::refusals(req)?;
+        if server {
+            outbox::refusals(req.ir, &req.services)?;
+        }
+        conditional::check(req.ir, &used)?;
+        if opts.testing == Some(true) && req.role != Role::Server {
+            return Err(vec![GenDiagnostic::new(
+                "E0802",
+                "invalid options for generator `rust`: `testing` is an option of the server role",
+            )]);
+        }
+        let testing = opts.testing == Some(true);
+        let chosen = brokers::choose(opts.messaging.as_ref(), req.role, &main_tree(req))?;
+        let idempotency = server && conditional::any_idempotent(req.ir, &served_http(req));
+        // A policy is generated, in either role, for an `allow` of a generated service: its
+        // functions use the rules runtime.
+        let policies = used.iter().any(|s| {
+            req.ir
+                .service(*s)
+                .endpoints
+                .iter()
+                .any(|e| !e.rules.allows.is_empty())
+        });
+        let guards = server
+            && req.services.iter().any(|s| {
+                let svc = req.ir.service(*s);
+                guards::svc_has_guards(svc) || svc.endpoints.iter().any(conditional::has_guard)
+            });
+        // A flagged invariant of an event: the publisher and the consumer take a provider.
+        let event_flags = server && flags::events_flagged(&main_tree(req));
+        let flags = used_features.contains(&Feature::RulesFlags)
+            || event_flags
+            || req
+                .ir
+                .http_features_used(&req.consumes)
+                .contains(&Feature::RulesFlags);
+        let timeouts = used_features.contains(&Feature::Timeouts)
+            || req
+                .ir
+                .http_features_used(&req.consumes)
+                .contains(&Feature::Timeouts);
+        let slo = server
+            && served_http(req)
+                .iter()
+                .any(|s| req.ir.service(*s).endpoints.iter().any(|e| e.slo.is_some()));
+        let timed = server
+            && served_http(req).iter().any(|s| {
+                req.ir
+                    .service(*s)
+                    .endpoints
+                    .iter()
+                    .any(|e| e.rules.transition.as_ref().is_some_and(|t| t.is_timed()))
+            });
+        let flags_http = server && !served_flag_services(req, flags).is_empty();
+        let flags_server = flags_http || (server && event_flags);
+        let p1 = platform::uses(req);
+        // The test handler of a service that is only idempotent, or whose only rules are flagged
+        // invariants, runs the steps of the pipeline too: it needs the endpoint rules runtime.
+        let endpoint_rules = server
+            && (block::served_has_blocks(req.ir, &req.services)
+                || (testing && (idempotency || flags_http || p1.server())));
+        let etag = server && conditional::any_version(req.ir, &served_http(req));
+        let version = etag
+            || conditional::any_guard(req.ir, if server { &req.consumes } else { &req.services });
+        // A declaration that no endpoint reaches is emitted too, and it calls `vr::audit` for its
+        // audited rules: the rollout regions are kept for every audited rule the crate has.
+        let rollout = used_features.contains(&Feature::RulesRollout) || crate_has_audited(req);
+        // A runtime config with `rules.output` needs the rules runtime to carry the mode.
+        let derived = crate_has_derived(req);
+        let rules = crate_has_rules(req)
+            || derived
+            || p1.server()
+            || flags
+            || endpoint_rules
+            || policies
+            || rollout
+            || runtime.as_ref().is_some_and(|r| r.output);
+        // A server whose services only publish or subscribe has no HTTP surface at all: no server
+        // core, no adapter, no framework dependency.
+        let serving = server
+            && req
+                .services
+                .iter()
+                .any(|s| events::serves_http(req.ir.service(*s)));
         let f = Features {
-            server,
+            events: main_tree(req).uses_events(),
+            version,
+            etag,
+            idempotency,
+            conditional: etag || idempotency,
+            rules,
+            endpoint_rules,
+            guards,
+            timed,
+            slo,
+            timeouts,
+            flags,
+            event_flags,
+            outbox: server && outbox::served_emits(req.ir, &served_http(req)),
+            flags_server,
+            policies,
+            rollout,
+            server: serving,
             client: !server || !req.consumes.is_empty(),
             sse: streaming,
-            ws_server: server
+            ws_server: serving
                 && req
                     .ir
                     .features_used(&req.services)
                     .contains(&Feature::StreamingWs),
             ws_client: client_ws,
-            axum: server && profile.framework().unwrap_or(DEFAULT_SERVER_FRAMEWORK) == "axum",
+            axum: serving && profile.framework().unwrap_or(DEFAULT_SERVER_FRAMEWORK) == "axum",
             reqwest: tr.reqwest,
             ureq: tr.ureq,
+            config: model.is_some(),
+            derived,
+            test_events: server
+                && testing
+                && req
+                    .services
+                    .iter()
+                    .any(|s| !req.ir.service(*s).subscriptions.is_empty()),
+            kafka: chosen.contains(&brokers::Broker::Kafka),
+            rabbitmq: chosen.contains(&brokers::Broker::RabbitMq),
+            visibility: serving && p1.visibility,
+            tenancy: serving && p1.tenancy,
+            tenant_fields: p1.tenant_fields,
+            tenant_events: p1.tenant_events,
+            audit_log: serving && p1.audit,
+            limits: serving && p1.limits,
+            limits_client: p1.limits_client,
+            pii: p1.pii,
         };
         let mut files = FileSet::new();
         runtime::emit(&mut files, &f)?;
         package::emit_cargo(&mut files, &name, &f)?;
-        package::emit_readme(&mut files, &name, req.role, &f)?;
+        let runtime_type = model.as_ref().map(RuntimeModel::type_name);
+        package::emit_readme(&mut files, &name, req.role, &f, runtime_type.as_deref())?;
         let validate = opts.validate != Some(false);
-        let main =
-            Tree::new(req.ir, "crate", "src", req.services.clone(), true).with_validate(validate);
+        let main = main_tree(req)
+            .with_validate(validate)
+            .with_rules(rules)
+            .with_rollout(rollout)
+            .with_derived(derived)
+            .with_idempotency(idempotency)
+            .with_timed(timed)
+            .with_timeouts(timeouts)
+            .with_slo(slo)
+            .with_flags(flags)
+            .with_p1(p1_of(p1, serving))
+            .with_runtime(runtime);
+        if let Some(model) = &model {
+            config::emit(&mut files, model, req.ir, req.role, tr)?;
+        }
         models::emit(&mut files, &main)?;
+        policies::emit(&mut files, &main)?;
         if !files.contains("src/prelude.rs") {
             util::add_file(&mut files, "src/prelude.rs", format!("{}\n", util::HEADER))?;
         }
         let mut mods: BTreeMap<ServiceId, Vec<String>> = BTreeMap::new();
         for sid in &req.services {
             let svc = req.ir.service(*sid);
-            let m = if server {
+            let m = if !server {
+                client::client_mod(svc)
+            } else if events::serves_http(svc) {
                 server::service_mod(svc)
             } else {
-                client::client_mod(svc)
+                continue;
             };
             mods.entry(*sid).or_default().push(m);
         }
         if server {
             server::emit(&mut files, &main)?;
+            for sid in events::emit(&mut files, &main)? {
+                mods.entry(sid)
+                    .or_default()
+                    .push(events::events_mod(req.ir.service(sid)));
+            }
+            for sid in testing::emit(&mut files, &main, opts.testing == Some(true))? {
+                mods.entry(sid)
+                    .or_default()
+                    .push(testing::test_mod(req.ir.service(sid)));
+            }
         } else {
             client::emit(&mut files, &main, tr)?;
         }
         let packages = package::emit_modules(&mut files, &main, &mods)?;
-        let has_clients = emit_consumed(&mut files, req, tr, validate)?;
+        let has_clients = emit_consumed(
+            &mut files,
+            req,
+            tr,
+            (validate, rules, derived, timeouts),
+            p1_of(p1, serving),
+        )?;
         package::emit_lib(&mut files, &packages, has_clients, &f, req.role)?;
         Ok(files)
     }
+}
+
+/// What the trees of the crate are generated with: a crate without an HTTP surface serves
+/// nothing, so it has no server features.
+fn p1_of(p1: platform::Flags, serving: bool) -> platform::Flags {
+    if serving {
+        p1
+    } else {
+        platform::Flags {
+            visibility: false,
+            tenancy: false,
+            audit: false,
+            limits: false,
+            pii: false,
+            ..p1
+        }
+    }
+}
+
+/// The served services whose endpoints can reach a flag: their hooks name a provider.
+fn served_flag_services(req: &GenRequest<'_>, flags: bool) -> Vec<ServiceId> {
+    let tree = main_tree(req).with_flags(flags);
+    served_http(req)
+        .into_iter()
+        .filter(|s| flags::svc_reads_flags(&tree, req.ir.service(*s)))
+        .collect()
+}
+
+/// The services of a server that have an HTTP surface.
+fn served_http(req: &GenRequest<'_>) -> Vec<ServiceId> {
+    req.services
+        .iter()
+        .copied()
+        .filter(|s| events::serves_http(req.ir.service(*s)))
+        .collect()
+}
+
+/// `E0801` for an endpoint block on a `ws` endpoint that a server serves: a conversation has no
+/// single result and no request/response pair to apply steps 6 and 9 to. A client enforces no
+/// block, so it generates.
+fn refuse_ws_blocks(req: &GenRequest<'_>) -> Result<(), Vec<GenDiagnostic>> {
+    if req.role != Role::Server {
+        return Ok(());
+    }
+    for sid in &req.services {
+        let svc = req.ir.service(*sid);
+        for ep in &svc.endpoints {
+            if endpoints::kind(ep) == endpoints::Kind::Ws && !ep.rules.is_empty() {
+                return Err(util::unsupported(format!(
+                    "generator `rust` does not support endpoint rules on the `ws` endpoint `{}.{}`",
+                    svc.name, ep.name
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The tree of the crate's own services. A server also has the events of its channels
+/// (`spec/events.md` section 14); a client never has them.
+fn main_tree<'a>(req: &GenRequest<'a>) -> Tree<'a> {
+    let tree = Tree::new(req.ir, "crate", "src", req.services.clone(), true);
+    if req.role == Role::Server {
+        tree.with_events()
+    } else {
+        tree
+    }
+}
+
+/// Whether any declaration that the crate emits has invariants. The flag is per crate: with it,
+/// every schema carries its check function and the rules runtime is part of the crate.
+fn crate_has_rules(req: &GenRequest<'_>) -> bool {
+    let main = main_tree(req);
+    main.has_rules()
+        || req.consumes.iter().any(|sid| {
+            Tree::new(
+                req.ir,
+                "crate::clients::x",
+                "src/clients/x",
+                vec![*sid],
+                false,
+            )
+            .has_rules()
+        })
+}
+
+/// Whether any declaration that the crate emits has a derived field. The flag is per crate: with
+/// it, every schema says which of its fields are derived.
+fn crate_has_derived(req: &GenRequest<'_>) -> bool {
+    let main = main_tree(req);
+    main.has_derived()
+        || req.consumes.iter().any(|sid| {
+            Tree::new(
+                req.ir,
+                "crate::clients::x",
+                "src/clients/x",
+                vec![*sid],
+                false,
+            )
+            .has_derived()
+        })
+}
+
+/// Whether any declaration that the crate emits has an audited invariant (`@rollout(audit)`).
+fn crate_has_audited(req: &GenRequest<'_>) -> bool {
+    let main = main_tree(req);
+    main.has_audited()
+        || req.consumes.iter().any(|sid| {
+            Tree::new(
+                req.ir,
+                "crate::clients::x",
+                "src/clients/x",
+                vec![*sid],
+                false,
+            )
+            .has_audited()
+        })
 }
 
 /// A client tree under `src/clients/<service>` for each consumed service of a server.
@@ -275,7 +596,8 @@ fn emit_consumed(
     files: &mut FileSet,
     req: &GenRequest<'_>,
     tr: Transports,
-    validate: bool,
+    (validate, rules, derived, timeouts): (bool, bool, bool, bool),
+    p1: platform::Flags,
 ) -> Result<bool, Vec<GenDiagnostic>> {
     if req.consumes.is_empty() {
         return Ok(false);
@@ -286,8 +608,14 @@ fn emit_consumed(
         let dir_name = util::module(&svc.name);
         let root = format!("crate::clients::{dir_name}");
         let dir = format!("src/clients/{dir_name}");
-        let tree = Tree::new(req.ir, &root, &dir, vec![*sid], false).with_validate(validate);
+        let tree = Tree::new(req.ir, &root, &dir, vec![*sid], false)
+            .with_validate(validate)
+            .with_rules(rules)
+            .with_derived(derived)
+            .with_p1(p1)
+            .with_timeouts(timeouts);
         models::emit(files, &tree)?;
+        policies::emit(files, &tree)?;
         client::emit(files, &tree, tr)?;
         let mods = BTreeMap::from([(*sid, vec![client::client_mod(svc)])]);
         let packages = package::emit_modules(files, &tree, &mods)?;

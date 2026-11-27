@@ -1,0 +1,28 @@
+const FIRST: date = "2026-01-01"
+const NAME: string = "x"
+
+model Inner {
+  v: int
+}
+
+model Ops {
+  price: decimal
+  other: decimal
+  name: string
+  inner: Inner
+  items: Inner[]
+  data: bytes
+  extra: json
+  flag: bool
+  start: date
+  rule divides: price / 2 <= other
+  rule remainder: price % 2 == other
+  rule orders: name < "b"
+  rule comparesModels: inner == inner
+  rule comparesLists: items == items
+  rule comparesBytes: data == data
+  rule comparesJson: extra == extra
+  rule ordersBools: flag > flag
+  rule usesConst: start > FIRST
+  rule listOfModels: inner in items
+}

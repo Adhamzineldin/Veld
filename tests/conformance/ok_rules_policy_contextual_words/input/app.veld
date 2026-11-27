@@ -1,0 +1,57 @@
+// The words of policies (policy, permit, forbid, when, allow, principal) stay ordinary names: a
+// field, an enum variant, a parameter, an endpoint, a model and a policy may carry any of them.
+// The declarations that use the words as keywords are still told apart by their lookahead.
+
+enum Words { policy, permit, forbid, when, allow, principal }
+
+model Holder {
+  policy: int
+  permit: int
+  forbid: int
+  when: int
+  allow: int
+  principal: int
+  word: Words
+}
+
+model forbid { value: int }
+model when { value: int }
+model principal { value: int }
+
+// `principal` followed by a name is the declaration; its type is the model called `principal`.
+principal principal as permit
+
+// A policy called `permit`, with parameters called `forbid` and `when`.
+policy permit(forbid: Holder, when: Holder) {
+  permit when forbid.permit == when.forbid
+  forbid when forbid.principal > when.principal
+    message "forbid when"
+}
+
+// A policy called `policy` and one called `allow`.
+policy policy(allow: Holder) {
+  permit when allow.allow > allow.when
+}
+
+policy allow(forbid: Holder) {
+  permit when forbid.principal > 0
+}
+
+@auth(bearer)
+service Vocabulary at "/words" {
+  get "/permit" permit(@query when: int) -> Holder {
+    fact other: Holder = when
+    allow permit(other, other)
+    allow policy(other)
+    allow allow(other)
+    require when > 0
+  }
+
+  get "/principal" principal(@query allow: int) -> Holder {
+    fact forbid: Holder = allow
+    allow allow(forbid)
+    require allow > 0
+  }
+
+  get "/policy" policy(@query policy: int) -> Holder
+}

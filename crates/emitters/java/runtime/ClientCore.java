@@ -33,7 +33,14 @@ public final class ClientCore {
   private final ClientDefaults defaults;
   private final String baseUrl;
   private final HttpClient http;
+  // #if rules
+  private volatile String ownDigest;
+  private volatile String serverDigest;
+  private volatile String serviceName;
+  private final java.util.Set<String> mismatched = java.util.concurrent.ConcurrentHashMap.newKeySet();
+  // #endif
 
+  // #if legacy
   /**
    * Creates the core. The base URL is the first of: the option, the environment variable, the
    * contract's {@code base-url}.
@@ -54,6 +61,22 @@ public final class ClientCore {
       throw new VeldTransportError("no base URL: pass baseUrl or set " + defaults.envVar());
     }
     this.baseUrl = base.replaceAll("/+$", "");
+  // #endif
+  // #if runtimecfg
+  /**
+   * Creates the core. The base URL is the {@code baseUrl} option, which a client requires.
+   *
+   * @throws VeldTransportError when the option is not set
+   */
+  public ClientCore(ClientOptions options, ClientDefaults defaults) {
+    this.options = options;
+    this.defaults = defaults;
+    String base = options.baseUrl();
+    if (base == null) {
+      throw new VeldTransportError("no base URL: pass the baseUrl option");
+    }
+    this.baseUrl = base.replaceAll("/+$", "");
+  // #endif
     this.http = options.httpClient() != null ? options.httpClient() : defaultClient();
   }
 
@@ -76,8 +99,48 @@ public final class ClientCore {
   public Json call(EndpointSpec ep, Json.Obj params) {
     check(ep, params);
     HttpRequest request = buildRequest(ep, params, "application/json", Map.of());
+    // #if limits
+    return decode(ep, sendLimited(ep, request));
+    // #endif
+    // #if not_limits
     return decode(ep, send(ep, request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)));
+    // #endif
   }
+  // #if preconditions
+
+  /**
+   * Performs a call that also sends the headers of {@link #conditional}: {@code If-Match} and the
+   * idempotency key. They are not parameters, so they are neither validated nor part of the
+   * request's wire form.
+   */
+  public Json call(EndpointSpec ep, Json.Obj params, Map<String, String> extra) {
+    check(ep, params);
+    HttpRequest request = buildRequest(ep, params, "application/json", extra);
+    // #endif
+    // #if preconditions_limits
+    return decode(ep, sendLimited(ep, request));
+    // #endif
+    // #if preconditions_not_limits
+    return decode(ep, send(ep, request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)));
+    // #endif
+    // #if preconditions
+  }
+
+  /**
+   * The headers of {@code ifMatch} and of the idempotency key, for the ones that are not
+   * {@code null}. The client sends what it is given and checks neither.
+   */
+  public static Map<String, String> conditional(IfMatch ifMatch, String keyHeader, String key) {
+    Map<String, String> out = new java.util.LinkedHashMap<>();
+    if (ifMatch != null) {
+      out.put("If-Match", ifMatch.header());
+    }
+    if (key != null) {
+      out.put(keyHeader, key);
+    }
+    return out;
+  }
+  // #endif
 
   private void check(EndpointSpec ep, Json.Obj params) {
     if (options.validate(defaults.validate())) {
@@ -87,8 +150,66 @@ public final class ClientCore {
         err.setOp(ep.sig());
         throw err;
       }
+      // #if rules_not_messages
+      if (options.localRules() && localRulesOn()) {
+        RuleWalk.localCheck(ep, params, defaults.validation());
+      }
+      // #endif
+      // #if messages_rules
+      if (options.localRules() && localRulesOn()) {
+        try {
+          RuleWalk.localCheck(ep, params, defaults.validation());
+        } catch (VeldError err) {
+          Catalogs.keyLocal(messageKeys, err);
+          throw err;
+        }
+      }
+      // #endif
     }
   }
+  // #if messages
+
+  private volatile java.util.Map<String, String> messageKeys = java.util.Map.of();
+
+  /**
+   * Tells the core the {@code messageKey} of each rule of the service (spec/platform.md section 22),
+   * by rule id: the violations of its local check have them.
+   */
+  public void messageKeys(java.util.Map<String, String> keys) {
+    this.messageKeys = java.util.Map.copyOf(keys);
+  }
+  // #endif
+  // #if rules
+
+  /**
+   * Tells the core the rules digest the client was generated with (spec/rules.md section 9.7).
+   * The local check then runs only while the last response carried the same digest.
+   */
+  public void digest(String service, String digest) {
+    this.serviceName = service;
+    this.ownDigest = digest;
+  }
+
+  private boolean localRulesOn() {
+    return ownDigest == null || ownDigest.equals(serverDigest);
+  }
+
+  private <T> HttpResponse<T> observe(HttpResponse<T> response) {
+    String seen = response.headers().firstValue("Veld-Rules").orElse(null);
+    serverDigest = seen;
+    if (seen != null && !seen.equals(ownDigest) && mismatched.add(seen)) {
+      java.util.function.Consumer<ClientOptions.ContractMismatch> callback = options.onContractMismatch();
+      if (callback != null) {
+        try {
+          callback.accept(new ClientOptions.ContractMismatch(serviceName, ownDigest, seen));
+        } catch (RuntimeException ignored) {
+          // A failing callback must not change the call.
+        }
+      }
+    }
+    return response;
+  }
+  // #endif
   // veld:sse
 
   /**
@@ -158,6 +279,9 @@ public final class ClientCore {
       EndpointSpec ep, Json.Obj params, Codec<In> in, Codec<Out> out) {
     check(ep, params);
     WsChannel<In, Out> channel = new WsChannel<>(ep, in, out, options.validate(defaults.validate()), defaults.validation());
+    // #if rules
+    channel.localRules(options.localRules());
+    // #endif
     URI uri = wsUri(ep, params);
     java.util.function.Function<WebSocket.Listener, WebSocket> opener =
         listener -> {
@@ -229,7 +353,12 @@ public final class ClientCore {
     String path = expandPath(ep, params);
     String qs = queryString(ep, params);
     HttpRequest.Builder builder = HttpRequest.newBuilder(uri(path + (qs.isEmpty() ? "" : "?" + qs)))
+        // #if timeouts
+        .timeout(timeoutOf(ep));
+        // #endif
+        // #if no_timeouts
         .timeout(options.timeout());
+        // #endif
     EndpointSpec.Param body = bodyParam(ep);
     HttpRequest.BodyPublisher publisher = HttpRequest.BodyPublishers.noBody();
     Map<String, String> headers = headers(ep, params, accept);
@@ -237,6 +366,9 @@ public final class ClientCore {
     if (body != null && params.get(body.name()) != null) {
       headers.put("content-type", "application/json");
       Json wire = Wire.prepare(body.type(), params.get(body.name()), Wire.Mode.RESPONSE);
+      // #if derived
+      wire = Derive.strip(body.type(), wire);
+      // #endif
       publisher = HttpRequest.BodyPublishers.ofString(wire.write(), StandardCharsets.UTF_8);
     }
     headers.forEach(builder::header);
@@ -246,14 +378,118 @@ public final class ClientCore {
 
   private <T> HttpResponse<T> send(EndpointSpec ep, HttpRequest request, HttpResponse.BodyHandler<T> handler) {
     try {
+      // #if rules
+      if (ownDigest != null) {
+        return observe(http.send(request, handler));
+      }
+      // #endif
       return http.send(request, handler);
     } catch (IOException e) {
-      throw new VeldTransportError(ep.method() + " " + request.uri().getRawPath() + " failed", e);
+      // #if timeouts
+      if (e instanceof java.net.http.HttpTimeoutException) {
+        throw new VeldTransportError(
+            ep.method() + " " + ep.path() + " timed out after " + timeoutOf(ep).toMillis() + " ms", e);
+      }
+      // #endif
+      throw new VeldTransportError(ep.method() + " " + ep.path() + " failed", e);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
-      throw new VeldTransportError(ep.method() + " " + request.uri().getRawPath() + " was interrupted", e);
+      throw new VeldTransportError(ep.method() + " " + ep.path() + " was interrupted", e);
     }
   }
+  // #if limits
+
+  private final java.util.Set<String> retrying = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+  /**
+   * Tells the core that the endpoint with this operation signature has a limit and is a {@code get} or
+   * {@code @idempotent} (spec/platform.md section 5): a call that gets {@code 429} with {@code
+   * retryAfter} waits that long and sends again, once.
+   */
+  public void retryOnLimit(String sig) {
+    retrying.add(sig);
+  }
+
+  /**
+   * Sends the request; a {@code 429} with {@code retryAfter} of an endpoint that may be repeated is
+   * waited out and sent again, once. The two requests and the wait are inside the one timeout of
+   * the call (spec/platform.md section 9.2): the second request gets what is left of it, and a wait
+   * that does not fit ends the call as timed out, without sleeping.
+   */
+  private HttpResponse<String> sendLimited(EndpointSpec ep, HttpRequest request) {
+    long start = System.nanoTime();
+    HttpResponse<String> first = send(ep, request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+    if (first.statusCode() != 429 || !options.retryOnLimit() || !retrying.contains(ep.sig())) {
+      return first;
+    }
+    long seconds = retryAfter(first.body());
+    if (seconds < 0) {
+      return first;
+    }
+    long budget = request.timeout().map(java.time.Duration::toMillis).orElse(Long.MAX_VALUE);
+    long wait = seconds >= Long.MAX_VALUE / 1000L ? Long.MAX_VALUE : seconds * 1000L;
+    if (budget - elapsedMillis(start) <= wait) {
+      throw timedOut(ep, budget);
+    }
+    try {
+      options.sleeper().sleep(wait);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new VeldTransportError(ep.method() + " " + ep.path() + " was interrupted", e);
+    }
+    long left = budget - elapsedMillis(start);
+    if (left <= 0) {
+      throw timedOut(ep, budget);
+    }
+    // The same request, so the same idempotency key, with the time that is left.
+    HttpRequest again = HttpRequest.newBuilder(request, (name, value) -> true)
+        .timeout(java.time.Duration.ofMillis(left))
+        .build();
+    return send(ep, again, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+  }
+
+  private static long elapsedMillis(long startNanos) {
+    return (System.nanoTime() - startNanos) / 1_000_000L;
+  }
+
+  private static VeldTransportError timedOut(EndpointSpec ep, long budget) {
+    return new VeldTransportError(
+        ep.method() + " " + ep.path() + " timed out after " + budget + " ms",
+        new java.net.http.HttpTimeoutException("the wait of a 429 does not fit in the timeout"));
+  }
+
+  /** The {@code retryAfter} of the {@code data} of a problem document, in seconds, or -1 when it has none. */
+  private static long retryAfter(String body) {
+    try {
+      if (Json.parse(body) instanceof Json.Obj problem
+          && problem.get("data") instanceof Json.Obj data
+          && data.get("retryAfter") instanceof Json.Num seconds
+          && seconds.value() >= 0) {
+        return (long) seconds.value();
+      }
+    } catch (Json.ParseException e) {
+      return -1;
+    }
+    return -1;
+  }
+  // #endif
+  // #if timeouts
+
+  private final java.util.Map<String, Long> deadlines = new java.util.concurrent.ConcurrentHashMap<>();
+
+  /**
+   * Tells the core the deadline of an endpoint (spec/platform.md section 12), by operation
+   * signature: it is the default timeout of its calls when the caller did not set one.
+   */
+  public void deadline(String sig, long ms) {
+    deadlines.put(sig, ms);
+  }
+
+  private java.time.Duration timeoutOf(EndpointSpec ep) {
+    Long ms = deadlines.get(ep.sig());
+    return ms == null || options.timeoutSet() ? options.timeout() : java.time.Duration.ofMillis(ms);
+  }
+  // #endif
 
   private URI uri(String pathAndQuery) {
     return uri(baseUrl, pathAndQuery);
@@ -263,7 +499,7 @@ public final class ClientCore {
     try {
       return URI.create(base + pathAndQuery);
     } catch (IllegalArgumentException e) {
-      throw new VeldTransportError("invalid request URL " + base + pathAndQuery, e);
+      throw new VeldTransportError("invalid request URL", e);
     }
   }
 
@@ -307,6 +543,9 @@ public final class ClientCore {
         addPairs(pairs, p.name(), v);
       } else if (p.binding() == EndpointSpec.Binding.QUERY_OBJECT && v != null) {
         Json wire = Wire.prepare(p.type(), v, Wire.Mode.RESPONSE);
+        // #if derived
+        wire = Derive.strip(p.type(), wire);
+        // #endif
         if (wire instanceof Json.Obj obj) {
           obj.fields().forEach((k, x) -> addPairs(pairs, k, x));
         }
@@ -441,6 +680,12 @@ public final class ClientCore {
   }
 
   static RuntimeException decodeFailure(EndpointSpec ep, int status, Json body) {
+    // #if rules
+    RuntimeException withViolations = RuleWalk.decodeProblem(ep, status, body);
+    if (withViolations != null) {
+      return withViolations;
+    }
+    // #endif
     if (body instanceof Json.Obj obj && obj.get("type") instanceof Json.Str type) {
       for (EndpointSpec.Declared d : ep.errors()) {
         if (d.sig().equals(type.value())) {

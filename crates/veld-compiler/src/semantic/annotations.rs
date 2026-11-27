@@ -5,7 +5,8 @@ use super::regex;
 use crate::diagnostics::{Diagnostic, Span};
 use crate::language::{self, ArgShape, Target};
 use crate::syntax::ast::{Annotation, Arg, ArgValue, LitKind, Literal};
-use veld_ir::{Auth, AuthKind, Constraints, Scalar, StringFormat, Type};
+use veld_ir::retention::RetainThen;
+use veld_ir::{Auth, AuthKind, Constraints, Rollout, Scalar, StringFormat, Type};
 
 /// The meaning of the annotations written on one node.
 #[derive(Debug, Default)]
@@ -20,7 +21,62 @@ pub struct Anns<'a> {
     pub discriminator: Option<String>,
     pub query: Option<Span>,
     pub header: Option<(String, Span)>,
+    pub topic: Option<String>,
+    /// `@rollout(audit)` on a rule, a `require` or an `ensure`.
+    pub rollout: Option<Rollout>,
+    /// `@version` on a field.
+    pub version: Option<Span>,
+    /// `@pii` and `@secret` on a field (`spec/rules.md` section 19.3).
+    pub pii: bool,
+    pub secret: bool,
+    /// `@tenant` on a field (`spec/platform.md` section 3).
+    pub tenant: bool,
+    /// `@audited` on a service or an endpoint (`spec/platform.md` section 4).
+    pub audited: bool,
+    /// `@limit` on a service or an endpoint (`spec/platform.md` section 5).
+    pub limit: Option<LimitAnn>,
+    /// `@idempotent` on an endpoint.
+    pub idempotent: Option<Idempotent>,
+    /// `@retry` on a channel.
+    pub retry: Option<veld_ir::Retry>,
+    /// `@deadLetter` on a channel.
+    pub dead_letter: bool,
+    /// `@ordered` on a channel.
+    pub ordered: bool,
+    /// `@timeout` on a service or an endpoint.
+    pub timeout: Option<super::service_levels::Timeout>,
+    /// `@slo` on a service or an endpoint.
+    pub slo: Option<super::service_levels::SloArgs>,
+    /// `@retain` on a model (`spec/platform.md` section 23).
+    pub retain: Option<RetainAnn>,
+    /// `@visible(when: e)` on a field (`spec/platform.md` section 2): the expression, not yet
+    /// checked.
+    pub visible: Option<&'a crate::syntax::ast::Expr>,
 }
+
+/// What `@retain(days(30), since: f, then: anonymize)` says, before the field is looked up.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RetainAnn {
+    /// The duration, in milliseconds.
+    pub after_ms: i64,
+    /// The source name of the `since` field.
+    pub since: String,
+    pub since_span: Span,
+    pub then: RetainThen,
+    pub span: Span,
+}
+
+/// What `@idempotent(header: "Name", required: true)` says (`spec/rules.md` section 11.8).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Idempotent {
+    /// The header, `None` for the default `Idempotency-Key`.
+    pub header: Option<String>,
+    pub required: bool,
+    pub span: Span,
+}
+
+/// The header of `@idempotent` without a `header:` argument.
+pub const DEFAULT_IDEMPOTENCY_HEADER: &str = "Idempotency-Key";
 
 #[must_use]
 pub fn target_name(t: Target) -> &'static str {
@@ -34,7 +90,12 @@ pub fn target_name(t: Target) -> &'static str {
         Target::Const => "const",
         Target::Field => "field",
         Target::Variant => "enum variant",
+        Target::Rule => "rule",
+        Target::Require => "require",
+        Target::Ensure => "ensure",
         Target::Param => "parameter",
+        Target::Event => "event",
+        Target::Channel => "channel",
     }
 }
 
@@ -51,7 +112,7 @@ pub fn parse<'a>(
     for a in anns {
         let name = a.name.name.as_str();
         let Some(spec) = language::annotation(name) else {
-            diags.push(unknown(a));
+            diags.push(unknown(a, target));
             continue;
         };
         if !spec.targets.contains(&target) {
@@ -60,7 +121,8 @@ pub fn parse<'a>(
         }
         if seen.contains(&name) {
             diags.push(Diagnostic::error(
-                "E0602",
+                // An endpoint has at most one `@limit` (`spec/platform.md` section 5).
+                if name == "limit" { "E1120" } else { "E0602" },
                 format!("`@{name}` is written more than once"),
                 a.span,
             ));
@@ -77,9 +139,48 @@ pub fn parse<'a>(
     out
 }
 
-fn unknown(a: &Annotation) -> Diagnostic {
-    let known: Vec<String> = language::ANNOTATIONS
+/// True when `spec` applies only to channels or events and `target` is neither, or only to
+/// rules and `target` is not one: such an annotation is not suggested for a model, a field or
+/// an endpoint.
+fn hidden_from(spec: &language::AnnotationSpec, target: Target) -> bool {
+    let events_only = |t: &Target| matches!(t, Target::Channel | Target::Event);
+    let rules_only = |t: &Target| matches!(t, Target::Rule | Target::Require | Target::Ensure);
+    // `@version` and `@idempotent` are suggested only where they apply, so that the help of an
+    // unknown annotation on a model or a service reads as it did before they existed.
+    let own_target_only = matches!(
+        spec.name,
+        "version"
+            | "idempotent"
+            | "timeout"
+            | "slo"
+            | "pii"
+            | "secret"
+            | "retain"
+            | "visible"
+            | "tenant"
+            | "audited"
+            | "limit"
+    );
+    (!events_only(&target) && spec.targets.iter().all(events_only))
+        || (!rules_only(&target) && spec.targets.iter().all(rules_only))
+        || (own_target_only && !spec.targets.contains(&target))
+}
+
+fn unknown(a: &Annotation, target: Target) -> Diagnostic {
+    let visible: Vec<&language::AnnotationSpec> = language::ANNOTATIONS
         .iter()
+        .filter(|s| !hidden_from(s, target))
+        .collect();
+    // The list of known annotations stays as it was before `@pii`, `@secret` and `@retain`; a
+    // misspelling of one of them is still answered with `did you mean`.
+    let known: Vec<String> = visible
+        .iter()
+        .filter(|s| {
+            !matches!(
+                s.name,
+                "pii" | "secret" | "retain" | "visible" | "tenant" | "audited" | "limit"
+            )
+        })
         .map(|s| format!("@{}", s.name))
         .collect();
     Diagnostic::error(
@@ -89,9 +190,18 @@ fn unknown(a: &Annotation) -> Diagnostic {
     )
     .did_you_mean(
         &a.name.name,
-        language::ANNOTATIONS.iter().map(|s| s.name),
+        visible.iter().map(|s| s.name),
         Some(format!("known annotations: {}", known.join(", "))),
     )
+}
+
+/// `an` before a vowel sound, `a` otherwise: `an enum`, `an ensure`, `a rule`.
+fn article(word: &str) -> &'static str {
+    if word.starts_with(['a', 'e', 'i', 'o']) {
+        "an"
+    } else {
+        "a"
+    }
 }
 
 fn wrong_target(a: &Annotation, allowed: &[Target], got: Target) -> Diagnostic {
@@ -99,8 +209,9 @@ fn wrong_target(a: &Annotation, allowed: &[Target], got: Target) -> Diagnostic {
     Diagnostic::error(
         "E0602",
         format!(
-            "`@{}` cannot be applied to a {}",
+            "`@{}` cannot be applied to {} {}",
             a.name.name,
+            article(target_name(got)),
             target_name(got)
         ),
         a.span,
@@ -136,6 +247,7 @@ fn apply<'a>(
     let args = a.args.as_deref().unwrap_or(&[]);
     match (spec.name, spec.args) {
         (_, ArgShape::None) => no_args(args, spec.name)?,
+        ("visible", _) => out.visible = Some(visible_arg(a)?),
         ("deprecated", _) => out.deprecated = Some(one_string(args)?),
         ("wire", _) => {
             let w = one_string(args)?;
@@ -175,16 +287,46 @@ fn apply<'a>(
         ("example", _) => out.example = Some(one_literal(args)?),
         ("discriminator", _) => out.discriminator = Some(one_string(args)?),
         ("header", _) => out.header = Some((one_string(args)?, a.span)),
-        ("auth", _) => out.auth = Some(auth_arg(args)?),
+        ("topic", _) => out.topic = Some(one_string(args)?),
+        ("rollout", _) => out.rollout = Some(rollout_arg(args)?),
+        ("idempotent", _) => out.idempotent = Some(idempotent_args(args, a.span)?),
+        ("retry", _) => out.retry = Some(retry_args(args)?),
+        ("timeout", _) => out.timeout = Some(super::service_levels::timeout_args(args, a.span)?),
+        ("slo", _) => out.slo = Some(super::service_levels::slo_args(args, a.span)?),
+        ("retain", _) => out.retain = retain_args(args, a.span, diags),
+        ("limit", _) => out.limit = limit_args(args, a.span, diags),
+        ("auth", _) => out.auth = Some(auth_arg(args)?.declared()),
         ("middleware", _) => out.middleware = Some(idents(args)?),
         _ => {}
     }
     match spec.name {
         "readonly" => out.readonly = true,
+        "deadLetter" => out.dead_letter = true,
+        "ordered" => out.ordered = true,
+        "pii" => out.pii = true,
+        "secret" => out.secret = true,
+        "tenant" => out.tenant = true,
+        "audited" => out.audited = true,
+        "version" => {
+            require_type(
+                ty,
+                is_integer,
+                "`@version` applies to `int` and `long` fields",
+            )?;
+            out.version = Some(a.span);
+        }
         "query" => out.query = Some(a.span),
         _ => {}
     }
     Ok(())
+}
+
+/// `@visible` takes `when: expression` and nothing else.
+fn visible_arg(a: &Annotation) -> Result<&crate::syntax::ast::Expr, String> {
+    match (&a.when, &a.args) {
+        (Some(e), None) => Ok(e),
+        (_, _) => Err("`@visible` takes one argument, `when: expression`".to_string()),
+    }
 }
 
 fn no_args(args: &[Arg], name: &str) -> Result<(), String> {
@@ -208,6 +350,10 @@ fn is_string(t: &Type) -> bool {
 
 fn is_numeric(t: &Type) -> bool {
     matches!(t, Type::Scalar(s) if s.is_numeric())
+}
+
+fn is_integer(t: &Type) -> bool {
+    matches!(t, Type::Scalar(Scalar::Int | Scalar::Long))
 }
 
 fn is_sized(t: &Type) -> bool {
@@ -296,18 +442,394 @@ fn length_args(c: &mut Constraints, args: &[Arg]) -> Result<(), String> {
     Ok(())
 }
 
+/// `@rollout(audit)`: the one word `audit` (`spec/rules.md` section 17.1).
+fn rollout_arg(args: &[Arg]) -> Result<Rollout, String> {
+    match &one(args)?.value {
+        ArgValue::Ident(i) if i.name == "audit" => Ok(Rollout::Audit),
+        ArgValue::Ident(i) => Err(format!(
+            "unknown rollout `{}`; the only one is `audit`",
+            i.name
+        )),
+        ArgValue::Literal(_) | ArgValue::Call { .. } => {
+            Err("expected the word `audit`".to_string())
+        }
+    }
+}
+
+const RETAIN_USAGE: &str = "@retain(days(30), since: checkedOutAt, then: delete | anonymize)";
+
+/// One day in milliseconds.
+const DAY_MS: i64 = 86_400_000;
+
+fn retain_error(span: Span, message: impl Into<String>) -> Diagnostic {
+    Diagnostic::error("E1310", message, span).with_help(format!("usage: {RETAIN_USAGE}"))
+}
+
+/// `@retain(days(n), since: field, then: delete | anonymize)` (`spec/platform.md` section 23):
+/// every mistake is `E1310`, and the annotation has no meaning when there is one. Whether the field
+/// exists and is a date, and whether `anonymize` has a `@pii` field to work on, are checked once
+/// the fields of the model are known.
+fn retain_args(args: &[Arg], span: Span, diags: &mut Vec<Diagnostic>) -> Option<RetainAnn> {
+    let before = diags.len();
+    let (mut after, mut since, mut then) = (None, None, None);
+    for a in args {
+        match a.name.as_ref().map(|n| n.name.as_str()) {
+            None => take_once(
+                &mut after,
+                retain_days(a, diags),
+                a.span,
+                "the duration",
+                diags,
+            ),
+            Some("since") => match &a.value {
+                ArgValue::Ident(i) => {
+                    take_once(
+                        &mut since,
+                        Some((i.name.clone(), i.span)),
+                        a.span,
+                        "`since:`",
+                        diags,
+                    );
+                }
+                ArgValue::Literal(_) | ArgValue::Call { .. } => {
+                    diags.push(retain_error(a.span, "`since:` names a field of the model"));
+                }
+            },
+            Some("then") => take_once(&mut then, retain_then(a, diags), a.span, "`then:`", diags),
+            Some(other) => diags.push(retain_error(
+                a.span,
+                format!("`{other}:` is not an argument of `@retain`"),
+            )),
+        }
+    }
+    let missing: Vec<&str> = [
+        (after.is_none(), "the duration `days(n)`"),
+        (since.is_none(), "`since:`"),
+        (then.is_none(), "`then:`"),
+    ]
+    .into_iter()
+    .filter_map(|(m, what)| m.then_some(what))
+    .collect();
+    if diags.len() == before && !missing.is_empty() {
+        diags.push(retain_error(
+            span,
+            format!("`@retain` needs {}", missing.join(", ")),
+        ));
+    }
+    let ((after_ms, _), (since, since_span), (then, _)) = (after?, since?, then?);
+    (diags.len() == before).then_some(RetainAnn {
+        after_ms,
+        since,
+        since_span,
+        then,
+        span,
+    })
+}
+
+/// What `@limit(n, per: w, by: k)` says (`spec/platform.md` section 5).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LimitAnn {
+    pub limit: veld_ir::Limit,
+    pub span: Span,
+}
+
+const LIMIT_USAGE: &str = "@limit(10, per: minute, by: user)";
+
+fn limit_error(span: Span, message: impl Into<String>) -> Diagnostic {
+    Diagnostic::error("E1120", message, span).with_help(format!("usage: {LIMIT_USAGE}"))
+}
+
+/// `@limit(n, per: w, by: k)`: `n` a whole number from 1, `w` one of `second`, `minute`, `hour`,
+/// `day`, `k` one of `user`, `tenant`, `ip`. Every mistake is `E1120` and the annotation has no
+/// meaning when there is one. Whether the endpoint can supply `k` is checked with the endpoint.
+fn limit_args(args: &[Arg], span: Span, diags: &mut Vec<Diagnostic>) -> Option<LimitAnn> {
+    let before = diags.len();
+    let (mut count, mut per, mut by) = (None, None, None);
+    for a in args {
+        match a.name.as_ref().map(|n| n.name.as_str()) {
+            None => take_limit(
+                &mut count,
+                limit_count(a, diags),
+                a.span,
+                "the count",
+                diags,
+            ),
+            Some("per") => take_limit(&mut per, limit_window(a, diags), a.span, "`per:`", diags),
+            Some("by") => take_limit(&mut by, limit_subject(a, diags), a.span, "`by:`", diags),
+            Some(other) => diags.push(limit_error(
+                a.span,
+                format!(
+                    "`{other}:` is not an argument of `@limit`: it takes a count, `per:` and `by:`"
+                ),
+            )),
+        }
+    }
+    if diags.len() == before && (count.is_none() || per.is_none() || by.is_none()) {
+        diags.push(limit_error(
+            span,
+            "`@limit` needs a count, `per:` and `by:`",
+        ));
+    }
+    let (count, per, by) = (count?, per?, by?);
+    (diags.len() == before).then_some(LimitAnn {
+        limit: veld_ir::Limit { count, per, by },
+        span,
+    })
+}
+
+fn take_limit<T>(
+    slot: &mut Option<T>,
+    value: Option<T>,
+    span: Span,
+    what: &str,
+    diags: &mut Vec<Diagnostic>,
+) {
+    if slot.is_some() {
+        diags.push(limit_error(span, format!("{what} is given more than once")));
+    } else if value.is_some() {
+        *slot = value;
+    }
+}
+
+fn limit_count(a: &Arg, diags: &mut Vec<Diagnostic>) -> Option<u32> {
+    let n = match literal_of(a).map(|l| &l.kind) {
+        Some(LitKind::Int(n)) => u32::try_from(*n).ok().filter(|n| *n >= 1),
+        _ => None,
+    };
+    if n.is_none() {
+        diags.push(limit_error(
+            a.span,
+            "the count is a whole number from 1 to 4294967295: `@limit(10, ..)`",
+        ));
+    }
+    n
+}
+
+fn limit_window(a: &Arg, diags: &mut Vec<Diagnostic>) -> Option<veld_ir::LimitWindow> {
+    use veld_ir::LimitWindow as W;
+    let found = match &a.value {
+        ArgValue::Ident(i) => [W::Second, W::Minute, W::Hour, W::Day]
+            .into_iter()
+            .find(|w| w.word() == i.name),
+        ArgValue::Literal(_) | ArgValue::Call { .. } => None,
+    };
+    if found.is_none() {
+        diags.push(limit_error(
+            a.span,
+            "`per:` is `second`, `minute`, `hour` or `day`",
+        ));
+    }
+    found
+}
+
+fn limit_subject(a: &Arg, diags: &mut Vec<Diagnostic>) -> Option<veld_ir::LimitSubject> {
+    use veld_ir::LimitSubject as S;
+    let found = match &a.value {
+        ArgValue::Ident(i) => [S::User, S::Tenant, S::Ip]
+            .into_iter()
+            .find(|s| s.word() == i.name),
+        ArgValue::Literal(_) | ArgValue::Call { .. } => None,
+    };
+    if found.is_none() {
+        diags.push(limit_error(a.span, "`by:` is `user`, `tenant` or `ip`"));
+    }
+    found
+}
+
+/// Keeps the first value and reports a second one.
+fn take_once<T>(
+    slot: &mut Option<T>,
+    value: Option<T>,
+    span: Span,
+    what: &str,
+    diags: &mut Vec<Diagnostic>,
+) {
+    if slot.is_some() {
+        diags.push(retain_error(
+            span,
+            format!("{what} is given more than once"),
+        ));
+    } else if value.is_some() {
+        *slot = value;
+    }
+}
+
+/// `days(30)`: a whole, positive number of days that fits in milliseconds.
+fn retain_days(a: &Arg, diags: &mut Vec<Diagnostic>) -> Option<(i64, Span)> {
+    let fail = |diags: &mut Vec<Diagnostic>, why: &str| {
+        diags.push(retain_error(a.span, why.to_string()));
+        None
+    };
+    let ArgValue::Call { name, args } = &a.value else {
+        return fail(
+            diags,
+            "the first argument is a duration of whole days: `days(30)`",
+        );
+    };
+    if name.name != "days" {
+        return fail(
+            diags,
+            &format!(
+                "`{}(..)` is not a whole number of days: write `days(n)`",
+                name.name
+            ),
+        );
+    }
+    let n = match args.as_slice() {
+        [one] if one.name.is_none() => literal_of(one).map(|l| &l.kind),
+        _ => None,
+    };
+    match n {
+        Some(LitKind::Int(n)) if *n >= 1 => match n.checked_mul(DAY_MS) {
+            Some(ms) => Some((ms, a.span)),
+            None => fail(diags, "the duration is too long"),
+        },
+        _ => fail(diags, "`days(n)` takes one whole number of days, 1 or more"),
+    }
+}
+
+fn retain_then(a: &Arg, diags: &mut Vec<Diagnostic>) -> Option<(RetainThen, Span)> {
+    let found = match &a.value {
+        ArgValue::Ident(i) if i.name == "delete" => Some(RetainThen::Delete),
+        ArgValue::Ident(i) if i.name == "anonymize" => Some(RetainThen::Anonymize),
+        ArgValue::Ident(_) | ArgValue::Literal(_) | ArgValue::Call { .. } => None,
+    };
+    if found.is_none() {
+        diags.push(retain_error(a.span, "`then:` is `delete` or `anonymize`"));
+    }
+    found.map(|t| (t, a.span))
+}
+
+/// `@idempotent`, `@idempotent(header: "Name")`, `@idempotent(required: true)` or both, in either
+/// order (`spec/rules.md` section 11.8). The header must be an HTTP token that no part of Veld owns.
+fn idempotent_args(args: &[Arg], span: Span) -> Result<Idempotent, String> {
+    let mut out = Idempotent {
+        header: None,
+        required: false,
+        span,
+    };
+    let (mut saw_header, mut saw_required) = (false, false);
+    for a in args {
+        let key = a.name.as_ref().map(|n| n.name.as_str());
+        let kind = literal_of(a).map(|l| &l.kind);
+        match (key, kind) {
+            (Some("header"), Some(LitKind::Str(h))) => {
+                once_only(&mut saw_header, "header")?;
+                out.header = Some(idempotency_header(h)?);
+            }
+            (Some("required"), Some(LitKind::Bool(b))) => {
+                once_only(&mut saw_required, "required")?;
+                out.required = *b;
+            }
+            _ => {
+                return Err(
+                    "expected `header: \"Name\"` and/or `required: true` or `required: false`"
+                        .to_string(),
+                );
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// The most a `@retry` may ask for (`spec/events.md` section 10.2).
+pub const RETRY_MAX: u64 = 100;
+
+/// `@retry(max: n, backoff: fixed | exponential)`: `max` is 0 to 100 and required, `backoff`
+/// defaults to `exponential`, each is given once.
+fn retry_args(args: &[Arg]) -> Result<veld_ir::Retry, String> {
+    const USAGE: &str =
+        "expected `max: n` and, optionally, `backoff: fixed` or `backoff: exponential`";
+    let (mut max, mut backoff) = (None, None);
+    for a in args {
+        let key = a.name.as_ref().map(|n| n.name.as_str());
+        match (key, &a.value) {
+            (Some("max"), ArgValue::Literal(l)) => {
+                once_slot(&max, "max")?;
+                max = Some(retry_max(&l.kind)?);
+            }
+            (Some("backoff"), ArgValue::Ident(i)) => {
+                once_slot(&backoff, "backoff")?;
+                backoff = Some(match i.name.as_str() {
+                    "fixed" => veld_ir::Backoff::Fixed,
+                    "exponential" => veld_ir::Backoff::Exponential,
+                    other => {
+                        return Err(format!(
+                            "unknown backoff `{other}`; use `fixed` or `exponential`"
+                        ));
+                    }
+                });
+            }
+            _ => return Err(USAGE.to_string()),
+        }
+    }
+    let Some(max) = max else {
+        return Err("`@retry` needs `max: n`".to_string());
+    };
+    Ok(veld_ir::Retry {
+        max,
+        backoff: backoff.unwrap_or(veld_ir::Backoff::Exponential),
+    })
+}
+
+fn once_slot<T>(slot: &Option<T>, name: &str) -> Result<(), String> {
+    if slot.is_some() {
+        return Err(format!("`{name}:` is given more than once"));
+    }
+    Ok(())
+}
+
+fn retry_max(kind: &LitKind) -> Result<u32, String> {
+    match kind {
+        LitKind::Int(n) if (0..=RETRY_MAX as i64).contains(n) => {
+            u32::try_from(*n).map_err(|_| "`max` is out of range".to_string())
+        }
+        LitKind::Int(n) => Err(format!("`max: {n}` is out of range; use 0 to {RETRY_MAX}")),
+        LitKind::Str(_)
+        | LitKind::Float(_)
+        | LitKind::Bool(_)
+        | LitKind::Null
+        | LitKind::Variant(_)
+        | LitKind::EmptyList => Err("`max` must be an integer from 0 to 100".to_string()),
+    }
+}
+
+fn once_only(seen: &mut bool, name: &str) -> Result<(), String> {
+    if std::mem::replace(seen, true) {
+        return Err(format!("`{name}:` is given more than once"));
+    }
+    Ok(())
+}
+
+/// Headers Veld or HTTP already uses: a key cannot take their place.
+const RESERVED_HEADERS: [&str; 7] = [
+    "authorization",
+    "content-type",
+    "content-length",
+    "accept",
+    "host",
+    "if-match",
+    "etag",
+];
+
+fn idempotency_header(h: &str) -> Result<String, String> {
+    let token = |c: char| c.is_ascii_alphanumeric() || "!#$%&'*+-.^_`|~".contains(c);
+    if h.is_empty() || !h.chars().all(token) {
+        return Err(format!("`{h}` is not a header name"));
+    }
+    let lower = h.to_ascii_lowercase();
+    if RESERVED_HEADERS.contains(&lower.as_str()) || lower.starts_with("veld-") {
+        return Err(format!("`{h}` is a header that Veld or HTTP already uses"));
+    }
+    Ok(h.to_string())
+}
+
 fn auth_arg(args: &[Arg]) -> Result<Auth, String> {
     let arg = one(args)?;
     match &arg.value {
         ArgValue::Ident(i) => match i.name.as_str() {
-            "bearer" => Ok(Auth {
-                kind: AuthKind::Bearer,
-                header: None,
-            }),
-            "basic" => Ok(Auth {
-                kind: AuthKind::Basic,
-                header: None,
-            }),
+            "bearer" => Ok(Auth::new(AuthKind::Bearer, None)),
+            "basic" => Ok(Auth::new(AuthKind::Basic, None)),
             "none" => Ok(Auth::none()),
             "apiKey" => Err("`apiKey` needs a header: `apiKey(header: \"X-API-Key\")`".to_string()),
             other => Err(format!("unknown auth scheme `{other}`")),
@@ -326,10 +848,7 @@ fn auth_arg(args: &[Arg]) -> Result<Auth, String> {
                 }
                 _ => return Err("`apiKey` takes exactly `header: \"Name\"`".to_string()),
             };
-            Ok(Auth {
-                kind: AuthKind::ApiKey,
-                header: Some(header),
-            })
+            Ok(Auth::new(AuthKind::ApiKey, Some(header)))
         }
         ArgValue::Literal(_) | ArgValue::Call { .. } => {
             Err("expected bearer, basic, none or apiKey(header: \"X\")".to_string())

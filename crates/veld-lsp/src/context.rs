@@ -21,6 +21,10 @@ pub enum Block {
     Params,
     /// Arguments of `@name(`.
     AnnotationArgs(String),
+    /// The `{ ... }` of an endpoint (its rule statements) or of a `subscribes` line.
+    Endpoint,
+    /// Any other `{ ... }` that no declaration owns: a payload, an object value.
+    Nested,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,6 +57,8 @@ pub struct Context {
     pub inert: bool,
     /// The last top-level declaration keyword before the cursor (for `extends` and `at`).
     pub at_top_level: bool,
+    /// The text of the cursor line before the partial word, for the event positions.
+    pub line: String,
 }
 
 fn is_word(c: char) -> bool {
@@ -72,6 +78,7 @@ pub fn scan(prefix: &str) -> Context {
         partial.clone_from(w);
         items.pop();
     }
+    let line = line_before(prefix, &partial);
     let cursor_line = prefix.matches('\n').count();
     let mut st = State::default();
     for it in &items {
@@ -86,7 +93,14 @@ pub fn scan(prefix: &str) -> Context {
         use_stmt: st.use_stmt,
         inert,
         at_top_level: st.stack.is_empty(),
+        line,
     }
+}
+
+/// The last line of `prefix` without the partial word that ends it.
+fn line_before(prefix: &str, partial: &str) -> String {
+    let line = prefix.rsplit('\n').next().unwrap_or("");
+    line.strip_suffix(partial).unwrap_or(line).to_owned()
 }
 
 #[derive(Default)]
@@ -143,9 +157,14 @@ impl State {
     fn nested(&mut self, t: &Tok) {
         match t {
             Tok::Punct('{') => {
-                if let Some(k) = self.pending.take() {
-                    self.stack.push(Block::Body(k));
-                }
+                let block = match self.pending.take() {
+                    Some(k) => Block::Body(k),
+                    None if matches!(self.stack.last(), Some(Block::Body(BodyKind::Service))) => {
+                        Block::Endpoint
+                    }
+                    None => Block::Nested,
+                };
+                self.stack.push(block);
             }
             Tok::Punct('}') => {
                 if matches!(self.stack.pop(), Some(Block::Import)) {
@@ -348,5 +367,18 @@ mod tests {
     fn braces_inside_strings_do_not_open_blocks() {
         let c = scan("service S at \"/s\" {\n  get \"/{id}\" f(");
         assert_eq!(c.block, Some(Block::Params));
+    }
+
+    #[test]
+    fn an_endpoint_block_is_a_block_of_its_own_and_closes_cleanly() {
+        let c = scan(
+            "service S at \"/s\" {\n  post \"/\" f(a: int) -> A {\n    require a > 0 else E { x: 1 }\n    ",
+        );
+        assert_eq!(c.block, Some(Block::Endpoint));
+        let c = scan("service S at \"/s\" {\n  post \"/\" f() -> A {\n    require true\n  }\n  ");
+        assert_eq!(c.block, Some(Block::Body(BodyKind::Service)));
+        let c =
+            scan("service S at \"/s\" {\n  post \"/\" f() -> A {\n    require true else E { x: ");
+        assert_eq!(c.block, Some(Block::Nested));
     }
 }

@@ -1,0 +1,9 @@
+// The principal is a model. An enum, a scalar and an error are not.
+
+enum Role { admin, member }
+
+error Denied 403 { reason: string }
+
+principal Role
+principal int
+principal Denied

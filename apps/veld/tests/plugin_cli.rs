@@ -54,8 +54,8 @@ fn project(dir: &Path, plugin_args: &str, extra_plugin_keys: &str) {
         dir,
         "veld.toml",
         &format!(
-            "[project]\nname = \"demo\"\n\n[plugins.stub]\ncommand = \"node {} {plugin_args}\"\n{extra_plugin_keys}\n\
-             [[targets]]\nname = \"kt\"\nrole = \"client\"\nemitter = \"plugin:stub\"\nout = \"gen/kt\"\n",
+            "[service]\nname = \"demo\"\n\n[plugins.stub]\ncommand = \"node {} {plugin_args}\"\n{extra_plugin_keys}\n\
+             [client]\nname = \"kt\"\nemitter = \"plugin:stub\"\nout = \"gen/kt\"\n",
             stub()
         ),
     );

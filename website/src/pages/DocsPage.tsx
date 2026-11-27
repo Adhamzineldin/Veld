@@ -6,6 +6,12 @@ import styles from './DocsPage.module.css';
 import { nav } from './docs/nav';
 import GettingStarted from './docs/GettingStarted';
 import Language from './docs/Language';
+import Rules from './docs/Rules';
+import EndpointRules from './docs/EndpointRules';
+import StateMachines from './docs/StateMachines';
+import Policies from './docs/Policies';
+import RulesTesting from './docs/RulesTesting';
+import RulesTools from './docs/RulesTools';
 import UsingGenerated from './docs/UsingGenerated';
 import Microservices from './docs/Microservices';
 import ErrorsEquality from './docs/ErrorsEquality';
@@ -95,6 +101,12 @@ export default function DocsPage() {
 
           <GettingStarted />
           <Language />
+          <Rules />
+          <EndpointRules />
+          <StateMachines />
+          <Policies />
+          <RulesTesting />
+          <RulesTools />
           <UsingGenerated />
           <Microservices />
           <ErrorsEquality />

@@ -4,6 +4,7 @@ model Greeting {
 }
 
 /// Says hello.
+@auth(none)
 service Hello at "/hello" {
   /// Greets the person with the given name.
   get "/{name}" greet(name: string) -> Greeting | NotFound

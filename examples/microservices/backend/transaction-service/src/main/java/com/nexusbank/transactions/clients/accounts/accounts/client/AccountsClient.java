@@ -23,7 +23,7 @@ import java.util.List;
 /**
  * Bank account management: open, view, freeze and close accounts.
  *
- * Blocking. The base URL is the `baseUrl` option, else the environment variable `VELD_ACCOUNTS_URL`, else the contract's `base-url`.
+ * Blocking. The `baseUrl` option is required; the runtime config of the target gives it (`spec/runtime-config.md`), and `&lt;Target&gt;Clients.create` builds every client with it.
  */
 @SuppressWarnings("deprecation")
 public final class AccountsClient {
@@ -153,16 +153,11 @@ public final class AccountsClient {
 
   private final ClientCore core;
 
-  /** Creates a client with default options. */
-  public AccountsClient() {
-    this(ClientOptions.defaults());
-  }
-
-  /** Creates a client. */
+  /** Creates a client. `options` must set `baseUrl`. */
   public AccountsClient(ClientOptions options) {
     this.core = new ClientCore(
         options,
-        new ClientDefaults("VELD_ACCOUNTS_URL", "http://account-service:3002", issues -> ValidationError.fromWire(Router.issuesToWire(issues), 422, null)));
+        new ClientDefaults(issues -> ValidationError.fromWire(Router.issuesToWire(issues), 422, null)));
   }
 
   /** Lists the accounts of the authenticated user. */

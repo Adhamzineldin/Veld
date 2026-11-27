@@ -38,6 +38,13 @@ pub fn tm_language(language_json: &str) -> Result<String> {
         serde_json::from_str(language_json).context("editors/veld-language.json is not JSON")?;
     let reserved = words(&spec, "reserved");
     let contextual = words(&spec, "contextual");
+    // Contextual words of the rules language that read as operators between two operands.
+    let rule_words = words(&spec, "rule_words");
+    let word_operators: Vec<String> = ["implies", "not", "in"]
+        .iter()
+        .filter(|w| rule_words.iter().any(|r| r == *w))
+        .map(|w| (*w).to_string())
+        .collect();
     let scalars = words(&spec, "scalars");
     let generics = words(&spec, "generics");
     let annotations: Vec<String> = spec["annotations"]
@@ -68,6 +75,7 @@ pub fn tm_language(language_json: &str) -> Result<String> {
             {"include": "#declarations"},
             {"include": "#use"},
             {"include": "#arrow"},
+            {"include": "#rules"},
             {"include": "#methods"},
             {"include": "#literals"},
             {"include": "#variants"},
@@ -122,6 +130,22 @@ pub fn tm_language(language_json: &str) -> Result<String> {
                 }
             },
             "arrow": {"name": "keyword.operator.arrow.veld", "match": "->|\\|"},
+            "rules": {"patterns": [
+                {
+                    "match": "^\\s*(rule)\\s+([A-Za-z_][A-Za-z0-9_]*)(?=\\s*:)",
+                    "captures": {
+                        "1": {"name": "keyword.control.rule.veld"},
+                        "2": {"name": "entity.name.function.rule.veld"}
+                    }
+                },
+                {
+                    "match": "^\\s*(message)(?=\\s+\")",
+                    "captures": {"1": {"name": "keyword.control.rule.veld"}}
+                },
+                {"name": "keyword.operator.word.veld", "match": format!("(?<=\\s)({})(?=\\s)", word_operators.join("|"))},
+                {"name": "support.function.builtin.veld", "match": "\\b(has)(?=\\()"},
+                {"name": "keyword.operator.logical.veld", "match": "&&|\\|\\||==|!=|<=|>=|=>"}
+            ]},
             "methods": {
                 "name": "keyword.control.http-method.veld",
                 "match": format!("^\\s*{}(?=\\s+\")", alternation(&contextual))

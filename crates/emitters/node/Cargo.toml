@@ -20,6 +20,9 @@ serde_json.workspace = true
 tempfile.workspace = true
 insta.workspace = true
 veld-emit-conformance.workspace = true
+veld-rules.workspace = true
+veld-test-support.workspace = true
+veld-testing.workspace = true
 
 [lints]
 workspace = true

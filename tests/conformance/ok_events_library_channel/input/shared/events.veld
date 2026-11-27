@@ -1,0 +1,7 @@
+// A channel of a library: its publisher may live in another repository.
+
+event Ping { id: uuid }
+
+channel Pings {
+  carries Ping
+}

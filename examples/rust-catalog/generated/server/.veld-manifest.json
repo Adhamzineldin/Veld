@@ -16,7 +16,7 @@
     "src/veld/mod.rs": "cd6648aae8aab01399e628317eb356645583409b9b282e6cad0185b098a95997",
     "src/veld/page.rs": "5d7bae17bf895770162173f6a05cd97dd1aa03b2c95342a331a8ac81a494b4a9",
     "src/veld/regex.rs": "667f8c31c9be9d576a6e17a6c6a3ac9a65cf433cd8550bf3d8acdac6ff9e79e5",
-    "src/veld/schema.rs": "e52e95ddd32ef48662796fb4a6890f00c29db7e8cddb7385855679d3277395c7",
+    "src/veld/schema.rs": "07e6e7c636991e98b6d8436c8f63bdb595742b3fd8c1e533eadd8690e335015d",
     "src/veld/server.rs": "0c7abb85a5a05cf859b08f362953b7f4b8cf19066ccc2c469ee5f9948d64f6e1",
     "src/veld/spec.rs": "9aeaf717885a2dc7e94b5d32705243a00b3e1b882debcc9c8ceb3eb15cf08174",
     "src/veld/util.rs": "6b2e652607f68fdd5228fc3c9f8c84d8a92e00ccc9b84f4f5110f2d7322edf3e"

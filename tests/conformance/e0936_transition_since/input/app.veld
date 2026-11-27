@@ -1,0 +1,59 @@
+// A transition over a timed edge needs `since`; `since` is for timed edges, one source, and a
+// required `datetime` field of the same fact.
+
+enum Status {
+  pending, paid, cancelled, expired
+  flow pending -> paid
+  flow pending -> cancelled after hours(24)
+  flow paid -> cancelled after hours(1)
+  final cancelled, expired
+}
+
+model Stamps { entered: datetime, label: string }
+
+model Booking {
+  id: uuid
+  status: Status
+  pendingSince: datetime
+  maybeSince?: datetime
+  day: date
+  stamps: Stamps
+}
+
+service Bookings at "/bookings" {
+  post "/{id}/a" noSince(id: uuid) -> 204 {
+    fact booking: Booking = id
+    transition booking.status: pending -> cancelled
+  }
+
+  post "/{id}/b" notTimed(id: uuid) -> 204 {
+    fact booking: Booking = id
+    transition booking.status: pending -> paid since booking.pendingSince
+  }
+
+  post "/{id}/c" twoSources(id: uuid) -> 204 {
+    fact booking: Booking = id
+    transition booking.status: pending, paid -> cancelled since booking.pendingSince
+  }
+
+  post "/{id}/d" optionalSince(id: uuid) -> 204 {
+    fact booking: Booking = id
+    transition booking.status: pending -> cancelled since booking.maybeSince
+  }
+
+  post "/{id}/e" notADatetime(id: uuid) -> 204 {
+    fact booking: Booking = id
+    transition booking.status: pending -> cancelled since booking.day
+  }
+
+  post "/{id}/f" otherFact(id: uuid) -> 204 {
+    fact booking: Booking = id
+    fact other: Booking = id
+    transition booking.status: pending -> cancelled since other.pendingSince
+  }
+
+  post "/{id}/g" wrongLabel(id: uuid) -> 204 {
+    fact booking: Booking = id
+    transition booking.status: pending -> cancelled since booking.stamps.label
+  }
+}

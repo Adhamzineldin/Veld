@@ -10,11 +10,25 @@ import {
   Forbidden,
   NotFound,
   createAccountsHandler,
+  createClients,
+  fromEnv,
   iam,
   toExpress,
   transactions,
 } from '@veld/accounts-api';
 import type { Account, AccountsService } from '@veld/accounts-api';
+
+/**
+ * The addresses of the consumed services are settings of the deployment: the names of the
+ * variables are this service's choice (the compose file and the README set them).
+ */
+const runtime = fromEnv({
+  'services.iam.url': 'VELD_IAM_URL',
+  'services.transactions.url': 'VELD_TRANSACTIONS_URL',
+});
+
+/** The clients of the consumed services, all calling with `token`. */
+const clientsFor = (token: string) => createClients(runtime, { auth: { bearer: () => token } });
 
 interface Principal {
   user: iam.User;
@@ -27,7 +41,7 @@ const principalOf = (ctx: { principal: unknown }): Principal => ctx.principal as
 /** Asks the iam service who owns `token`; null when it is not valid. */
 async function authenticate(token: string): Promise<Principal | null> {
   try {
-    const user = await new iam.IamClient({ auth: { bearer: () => token } }).getProfile({});
+    const user = await clientsFor(token).iam.getProfile({});
     return { user, token };
   } catch (e) {
     if (iam.Unauthorized.matches(e)) return null;
@@ -36,8 +50,7 @@ async function authenticate(token: string): Promise<Principal | null> {
 }
 
 /** The transactions service, called with the caller's own token. */
-const transactionsFor = (p: Principal) =>
-  new transactions.TransactionsClient({ auth: { bearer: () => p.token } });
+const transactionsFor = (p: Principal): transactions.TransactionsClient => clientsFor(p.token).transactions;
 
 function nextIban(): string {
   const digits = Array.from({ length: 16 }, () => Math.floor(Math.random() * 10)).join('');
@@ -128,7 +141,7 @@ const impl: AccountsService = {
 };
 
 const app = express();
-app.use(toExpress(createAccountsHandler(impl, { auth: { bearer: authenticate } })));
+app.use(toExpress(createAccountsHandler(impl, { auth: { bearer: authenticate } }, runtime)));
 
 const port = Number(process.env.PORT ?? 3002);
 app.listen(port, process.env.HOST ?? '127.0.0.1', () => {

@@ -1,0 +1,65 @@
+// Every value of an example must fit the type it is used at (spec/rules.md 12.1).
+
+enum Status { pending, paid }
+model Room { id: uuid, capacity: int, status: Status }
+model Booking { id: uuid, guests: int, day: date }
+
+service Bookings at "/bookings" {
+  post "/" create(body: Booking) -> 201 Booking {
+    fact room: Room = body.id
+  }
+  delete "/{id}" remove(id: uuid) -> 204
+}
+
+example "a string is not an int" {
+  create(body: { guests: "three" }) -> ok
+}
+
+example "out of range" {
+  create(body: { guests: 3000000000 }) -> ok
+}
+
+example "no such field" {
+  create(body: { nope: 1 }) -> ok
+}
+
+example "no such parameter" {
+  create(nope: 1) -> ok
+}
+
+example "bad date" {
+  create(body: { day: "2026-13-01" }) -> ok
+}
+
+example "unknown variant" {
+  given room = { status: .paidd }
+  create() -> ok
+}
+
+example "read of an absent given" {
+  given room = absent
+  create(body: { id: room.id }) -> ok
+}
+
+example "read of the wrong type" {
+  given room = { id: "00000000-0000-4000-8000-000000000001" }
+  create(body: { guests: room.id }) -> ok
+}
+
+example "no success body" {
+  remove() returns { id: "00000000-0000-4000-8000-000000000001" } -> ok
+}
+
+example "an error the endpoint cannot answer with" {
+  remove() -> Conflict
+}
+
+example "bad clock" {
+  at "tomorrow"
+  remove() -> ok
+}
+
+example "a principal needs a policy" {
+  as 1
+  remove() -> ok
+}

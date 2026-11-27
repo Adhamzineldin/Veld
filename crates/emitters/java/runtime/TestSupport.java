@@ -1,0 +1,682 @@
+package dev.veld.runtime;
+
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.Base64;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+/**
+ * What a generated test handler needs (spec/rules.md section 12.4): the facts, the principal, the
+ * clock and the result come from the {@code Veld-Test-*} request headers, a dry run stops after
+ * step 6, and {@code GET /__veld/test} tells a test handler from a production server.
+ *
+ * <p>This is for tests only. It must never be mounted in production.
+ */
+public final class TestSupport {
+  private TestSupport() {}
+
+  /** The path that answers as a test handler. */
+  public static final String PROBE_PATH = "/__veld/test";
+
+  /** Reports once that a test handler was created. */
+  public static void notice(String service) {
+    System.getLogger("veld.test")
+        .log(
+            System.Logger.Level.WARNING,
+            "{0}: a TEST handler was created: facts, principal, clock and result come from request headers. Never mount it in production.",
+            service);
+  }
+
+  private static Json json(RequestContext ctx, String header) {
+    String text = ctx.header(header);
+    if (text == null || text.isEmpty()) {
+      return null;
+    }
+    byte[] bytes = Base64.getUrlDecoder().decode(text);
+    return Json.parse(new String(bytes, StandardCharsets.UTF_8));
+  }
+
+  // #if flags
+  /**
+   * Makes the flags come from the request header {@code Veld-Test-Flags} (spec/rules.md section 12.4):
+   * the unpadded base64url of a JSON array of the flags that are on; without the header every flag is
+   * off. The provider of the application is not asked.
+   */
+  public static void flags(HandlerHooks hooks) {
+    hooks.setFlagSource((name, request, context) -> {
+      Json on = json(request, "Veld-Test-Flags");
+      if (on instanceof Json.Arr list) {
+        for (Json item : list.items()) {
+          if (item instanceof Json.Str s && s.value().equals(name)) {
+            return true;
+          }
+        }
+      }
+      return false;
+    });
+  }
+
+  // #endif
+  // #if testing_platform
+  /** The platform features read the clock of the request from {@code Veld-Test-Now}, like the rules do. */
+  public static void platform(HandlerHooks hooks) {
+    hooks.setClock(TestSupport::now);
+  }
+
+  // #endif
+  /**
+   * The wire value of a fact the request carries, or empty when the fact is absent (missing from
+   * the object, or {@code null}).
+   */
+  public static Optional<Json> fact(RequestContext ctx, String name) {
+    Json facts = json(ctx, "Veld-Test-Facts");
+    if (facts instanceof Json.Obj obj && obj.get(name) != null && !(obj.get(name) instanceof Json.Null)) {
+      return Optional.of(obj.get(name));
+    }
+    return Optional.empty();
+  }
+
+  /** The clock of this request: {@code Veld-Test-Now}, or the system clock when it is absent. */
+  public static long now(RequestContext ctx) {
+    String text = ctx.header("Veld-Test-Now");
+    return text == null ? System.currentTimeMillis() : Instant.parse(text).toEpochMilli();
+  }
+
+  /** The wire value the handler is to answer with, or {@code null} for the application's handler. */
+  public static Json result(RequestContext ctx) {
+    return json(ctx, "Veld-Test-Result");
+  }
+
+  /** Whether the request asks to stop after step 6. */
+  public static boolean dryRun(RequestContext ctx) {
+    return "1".equals(ctx.header("Veld-Test-Dry-Run"));
+  }
+
+  // #if endpoint
+  /** The response of a dry run that passed: {@code 204} and {@code Veld-Test-Passed: 1}. */
+  public static EndpointRules.Early passed() {
+    return new EndpointRules.Early(new VeldResponse(204, Map.of("Veld-Test-Passed", "1"), null));
+  }
+  // #endif
+  // #if early
+
+  /**
+   * The response of a dry run that passed: {@code 204} and {@code Veld-Test-Passed: 1}. A server
+   * without endpoint rules ends the request through {@code Conditions.Early}.
+   */
+  public static Conditions.Early passed() {
+    return new Conditions.Early(new VeldResponse(204, Map.of("Veld-Test-Passed", "1"), null));
+  }
+  // #endif
+  // #if testing_platform_early
+
+  /**
+   * The response of a dry run that passed: {@code 204} and {@code Veld-Test-Passed: 1}. A server with
+   * neither endpoint rules nor a guard ends the request through {@code Platform.Early}.
+   */
+  public static Platform.Early passed() {
+    return new Platform.Early(new VeldResponse(204, Map.of("Veld-Test-Passed", "1"), null));
+  }
+  // #endif
+
+  /**
+   * The endpoint without authentication and middleware: the principal comes from
+   * {@code Veld-Test-Principal} (the wire JSON, or {@code true} when the header is absent).
+   * Streaming endpoints are returned as they are.
+   */
+  public static ServerEndpoint endpoint(ServerEndpoint e) {
+    if (e.call() == null) {
+      return e;
+    }
+    EndpointSpec s = e.spec();
+    EndpointSpec open = new EndpointSpec(
+        s.name(), s.method(), s.path(), s.sig(), s.status(), null, s.params(), s.success(), s.errors(), s.stream());
+    return new ServerEndpoint(open, List.of(), (params, ctx) -> {
+      Json principal = json(ctx, "Veld-Test-Principal");
+      ctx.setPrincipal(principal == null ? Boolean.TRUE : principal);
+      return e.call().call(params, ctx);
+    });
+  }
+
+  // #if policies
+  /**
+   * Like {@link #endpoint(ServerEndpoint)}, for a service with a principal: the principal is what
+   * {@code decode} makes of the wire JSON in {@code Veld-Test-Principal}, the generated type of the
+   * principal's model, or {@code null} when the header is absent.
+   */
+  public static ServerEndpoint endpoint(ServerEndpoint e, java.util.function.Function<Json, Object> decode) {
+    if (e.call() == null) {
+      return e;
+    }
+    EndpointSpec s = e.spec();
+    EndpointSpec open = new EndpointSpec(
+        s.name(), s.method(), s.path(), s.sig(), s.status(), null, s.params(), s.success(), s.errors(), s.stream());
+    return new ServerEndpoint(open, List.of(), (params, ctx) -> {
+      Json principal = json(ctx, "Veld-Test-Principal");
+      ctx.setPrincipal(principal == null ? null : decode.apply(principal));
+      return e.call().call(params, ctx);
+    });
+  }
+
+  // #endif
+  /**
+   * Adds {@code GET /__veld/test}, which answers {@code 200} with
+   * {@code {"veldTestHandler":1,"digests":{"<Service>":"<digest>"}}}.
+   *
+   * @param digests the rules digest by service name, or {@code null} for a service without one
+   */
+  public static VeldHandler handler(VeldHandler inner, Map<String, String> digests) {
+    return new VeldHandler() {
+      @Override
+      public Optional<VeldResponse> handle(VeldRequest request) {
+        if (request.method().equalsIgnoreCase("GET") && request.path().equals(PROBE_PATH)) {
+          Map<String, Json> members = new LinkedHashMap<>();
+          digests.forEach((name, digest) -> members.put(name, digest == null ? Json.NULL : Json.of(digest)));
+          Json body = Json.object()
+              .put("veldTestHandler", Json.of(1L))
+              .put("digests", new Json.Obj(members))
+              .build();
+          return Optional.of(new VeldResponse(200, Map.of("content-type", "application/json"), body.write()));
+        }
+        // #if testing_conditional
+        return withStore(request, () -> inner.handle(request));
+        // #endif
+        // #if testing_plain
+        return inner.handle(request);
+        // #endif
+      }
+
+      @Override
+      public Optional<VeldResponse> invoke(String endpoint, VeldRequest request) {
+        // #if testing_conditional
+        return withStore(request, () -> inner.invoke(endpoint, request));
+        // #endif
+        // #if testing_plain
+        return inner.invoke(endpoint, request);
+        // #endif
+      }
+    };
+  }
+  // #if testing_conditional
+
+  /** The request header that tells the test handler what the idempotency store holds for the key. */
+  public static final String IDEMPOTENCY_HEADER = "Veld-Test-Idempotency";
+
+  /** What the request said about the store, and the store built from it once it is asked. */
+  private static final class RequestState {
+    final String header;
+    IdempotencyStore store;
+
+    RequestState(String header) {
+      this.header = header;
+    }
+  }
+
+  private static final ThreadLocal<RequestState> REQUEST_STATE = new ThreadLocal<>();
+
+  /**
+   * The store of a test handler: every request gets a fresh memory store, and what
+   * {@code Veld-Test-Idempotency} says (spec/rules.md section 11.9) is in it under the
+   * fingerprint of the request, or under another one for {@code other}. Pass it to
+   * {@link HandlerHooks#withIdempotency}.
+   *
+   * @param conditions the conditional headers of the service by operation signature, for the
+   *     {@code ETag} of a stored success
+   */
+  public static IdempotencyStore store(Map<String, Conditions> conditions) {
+    return new IdempotencyStore() {
+      @Override
+      public Begin begin(String scope, String key, String fingerprint) throws Exception {
+        return current().begin(scope, key, fingerprint);
+      }
+
+      @Override
+      public void complete(String scope, String key, StoredAnswer answer) throws Exception {
+        current().complete(scope, key, answer);
+      }
+
+      @Override
+      public void release(String scope, String key) throws Exception {
+        current().release(scope, key);
+      }
+
+      private IdempotencyStore current() {
+        RequestState state = REQUEST_STATE.get();
+        if (state == null) {
+          throw new IllegalStateException("the test handler's store is used outside a request");
+        }
+        if (state.store == null) {
+          state.store = new SeededStore(state.header, conditions);
+        }
+        return state.store;
+      }
+    };
+  }
+
+  /**
+   * The caller of a test request: the canonical JSON of {@code Veld-Test-Principal}, or
+   * {@code caller} when the request has none (spec/rules.md section 11.10). The application's hook
+   * is not called.
+   */
+  public static HandlerHooks.IdempotencyCaller caller() {
+    return (principal, ctx) -> {
+      Json wire = json(ctx, "Veld-Test-Principal");
+      return wire == null ? "caller" : wire.canonical();
+    };
+  }
+
+  private static Optional<VeldResponse> withStore(
+      VeldRequest request, java.util.function.Supplier<Optional<VeldResponse>> call) {
+    REQUEST_STATE.set(new RequestState(header(request, IDEMPOTENCY_HEADER)));
+    try {
+      return call.get();
+    } finally {
+      REQUEST_STATE.remove();
+    }
+  }
+
+  private static String header(VeldRequest request, String name) {
+    for (Map.Entry<String, List<String>> e : request.headers().entrySet()) {
+      if (e.getKey() != null && e.getKey().equalsIgnoreCase(name) && !e.getValue().isEmpty()) {
+        return e.getValue().get(0);
+      }
+    }
+    return null;
+  }
+
+  /** A memory store that starts with what the request says it holds for the key it is about to ask for. */
+  private static final class SeededStore implements IdempotencyStore {
+    private final MemoryIdempotencyStore memory = new MemoryIdempotencyStore();
+    private final Map<String, Conditions> conditions;
+    private Json.Obj state;
+
+    SeededStore(String header, Map<String, Conditions> conditions) {
+      this.conditions = conditions;
+      if (header != null && !header.isEmpty()) {
+        byte[] bytes = Base64.getUrlDecoder().decode(header);
+        this.state = Json.parse(new String(bytes, StandardCharsets.UTF_8)).asObject();
+      }
+    }
+
+    @Override
+    public Begin begin(String scope, String key, String fingerprint) throws Exception {
+      Json.Obj seeded = state;
+      state = null;
+      if (seeded == null) {
+        return memory.begin(scope, key, fingerprint);
+      }
+      String kind = seeded.get("state").asString();
+      if (kind.equals("other")) {
+        return new Begin.Other();
+      }
+      if (kind.equals("running")) {
+        return new Begin.Running();
+      }
+      return new Begin.Replay(answer(scope, seeded, conditions));
+    }
+
+    @Override
+    public void complete(String scope, String key, StoredAnswer answer) throws Exception {
+      memory.complete(scope, key, answer);
+    }
+
+    @Override
+    public void release(String scope, String key) throws Exception {
+      memory.release(scope, key);
+    }
+  }
+
+  /**
+   * The answer a stored state stands for: the problem document of an error (its title is the name
+   * in its signature, its operation the one the scope starts with) or the body of a success.
+   */
+  private static StoredAnswer answer(String scope, Json.Obj seeded, Map<String, Conditions> conditions) {
+    int status = (int) ((Json.Num) seeded.get("status")).value();
+    Json data = seeded.get("data");
+    Json type = seeded.get("type");
+    if (type instanceof Json.Str sig) {
+      String name = sig.value().substring(sig.value().lastIndexOf('/') + 1, sig.value().lastIndexOf('@'));
+      int cut = scope.indexOf('\n');
+      Json body = Json.object()
+          .put("type", Json.of(sig.value()))
+          .put("title", Json.of(name))
+          .put("status", Json.of((long) status))
+          .put("operation", Json.of(cut < 0 ? scope : scope.substring(0, cut)))
+          .put("data", data == null || data instanceof Json.Null ? Json.object().build() : data)
+          .build();
+      return new StoredAnswer(
+          status, body.write().getBytes(StandardCharsets.UTF_8), "application/problem+json", null, null);
+    }
+    if (data == null || data instanceof Json.Null) {
+      return new StoredAnswer(status, new byte[0], null, null, null);
+    }
+    int cut = scope.indexOf('\n');
+    Conditions owed = conditions.get(cut < 0 ? scope : scope.substring(0, cut));
+    String etag = owed == null ? null : owed.etagOf(data);
+    return new StoredAnswer(
+        status, data.write().getBytes(StandardCharsets.UTF_8), "application/json", etag, null);
+  }
+  // #endif
+  // #if testing_events
+
+  /** The path of the event endpoint of a test handler (spec/events.md section 10.9). */
+  public static final String EVENT_PATH = "/__veld/test/event";
+
+  /** What a generated test handler tells {@link #events} about its service. */
+  @FunctionalInterface
+  public interface EventService {
+    /**
+     * Subscribes the service's own subscriber to {@code transport} with handlers that only add one
+     * to their entry of {@code called} (the name is {@code <Service>.<handler>}).
+     */
+    Transport.Subscription subscribe(
+        Transport transport, Events.ConsumerOptions options, Map<String, java.util.concurrent.atomic.AtomicInteger> called);
+  }
+
+  /**
+   * Adds the event endpoint to a test handler and {@code subscribes} to its probe
+   * (spec/events.md section 10.9). {@code POST /__veld/test/event} takes the message bytes as the
+   * body and the headers {@code Veld-Test-Topic}, {@code Veld-Test-Key} and {@code
+   * Veld-Test-Deliveries}; it delivers the message that many times to the service's own subscriber
+   * over a fresh memory transport with a fresh memory inbox and a {@code sleep} that does not wait,
+   * and answers {@code outcome}, {@code reason}, {@code called}, {@code violations} and {@code
+   * deadLetters}. The application's handlers are not called.
+   *
+   * @param inner the test handler without events, whose probe is extended
+   * @param subscribes the topics the service subscribes to, by service name
+   * @param handlers every handler of the service as {@code <Service>.<handler>}
+   * @param service connects the service's subscriber
+   */
+  public static VeldHandler events(
+      VeldHandler inner, Map<String, List<String>> subscribes, List<String> handlers, EventService service) {
+    return new VeldHandler() {
+      @Override
+      public Optional<VeldResponse> handle(VeldRequest request) {
+        if (request.method().equalsIgnoreCase("POST") && request.path().equals(EVENT_PATH)) {
+          return Optional.of(deliver(request, handlers, service));
+        }
+        Optional<VeldResponse> answer = inner.handle(request);
+        if (request.method().equalsIgnoreCase("GET") && request.path().equals(PROBE_PATH)) {
+          return answer.map(r -> withSubscribes(r, subscribes));
+        }
+        return answer;
+      }
+
+      @Override
+      public Optional<VeldResponse> invoke(String endpoint, VeldRequest request) {
+        return inner.invoke(endpoint, request);
+      }
+    };
+  }
+
+  private static VeldResponse withSubscribes(VeldResponse probe, Map<String, List<String>> subscribes) {
+    Map<String, Json> topics = new LinkedHashMap<>();
+    subscribes.forEach(
+        (name, list) -> {
+          List<Json> items = new java.util.ArrayList<>();
+          for (String topic : list) {
+            items.add(Json.of(topic));
+          }
+          topics.put(name, Json.array(items));
+        });
+    Json.Obj body = Json.parse(probe.body()).asObject().with("subscribes", new Json.Obj(topics));
+    return new VeldResponse(probe.status(), probe.headers(), body.write());
+  }
+
+  private static String eventHeader(VeldRequest request, String name) {
+    for (Map.Entry<String, List<String>> e : request.headers().entrySet()) {
+      if (e.getKey() != null && e.getKey().equalsIgnoreCase(name) && !e.getValue().isEmpty()) {
+        return e.getValue().get(0);
+      }
+    }
+    return null;
+  }
+
+  private static VeldResponse json(int status, Json body) {
+    return new VeldResponse(status, Map.of("content-type", "application/json"), body.write());
+  }
+
+  private static VeldResponse bad(String message) {
+    return json(400, Json.object().put("error", Json.of(message)).build());
+  }
+
+  /** A memory transport that counts what is published to a dead-letter topic. */
+  private static final class CountingTransport implements Transport {
+    private final MemoryTransport memory = new MemoryTransport();
+    private final java.util.concurrent.atomic.AtomicInteger deadLetters = new java.util.concurrent.atomic.AtomicInteger();
+
+    @Override
+    public void publish(String topic, String key, byte[] bytes) {
+      if (topic.endsWith(".dlq")) {
+        deadLetters.incrementAndGet();
+      }
+      memory.publish(topic, key, bytes);
+    }
+
+    @Override
+    public Subscription subscribe(String topic, String group, Deliver deliver) {
+      return memory.subscribe(topic, group, deliver);
+    }
+  }
+
+  private static VeldResponse deliver(VeldRequest request, List<String> handlers, EventService service) {
+    String topic = eventHeader(request, "Veld-Test-Topic");
+    if (topic == null || topic.isEmpty()) {
+      return bad("the header Veld-Test-Topic is required");
+    }
+    String deliveries = eventHeader(request, "Veld-Test-Deliveries");
+    int times = deliveries == null ? 1 : deliveries.equals("2") ? 2 : deliveries.equals("1") ? 1 : 0;
+    if (times == 0) {
+      return bad("Veld-Test-Deliveries is 1 or 2");
+    }
+    String key = eventHeader(request, "Veld-Test-Key");
+    byte[] bytes = request.body() == null ? new byte[0] : request.body().getBytes(StandardCharsets.UTF_8);
+    Map<String, java.util.concurrent.atomic.AtomicInteger> called = new LinkedHashMap<>();
+    for (String name : handlers) {
+      called.put(name, new java.util.concurrent.atomic.AtomicInteger());
+    }
+    java.util.concurrent.atomic.AtomicReference<Events.EventRejected> rejected =
+        new java.util.concurrent.atomic.AtomicReference<>();
+    Events.ConsumerOptions options =
+        new Events.ConsumerOptions()
+            .inbox(new Events.MemoryInbox())
+            .sleep(ms -> {})
+            .onEventRejected(e -> rejected.compareAndSet(null, e));
+    CountingTransport transport = new CountingTransport();
+    Transport.Subscription subscription = service.subscribe(transport, options, called);
+    try {
+      for (int i = 0; i < times; i++) {
+        transport.publish(topic, key, bytes);
+      }
+      transport.memory.idle();
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      return bad("interrupted");
+    } finally {
+      subscription.close();
+    }
+    return answer(rejected.get(), called, transport.deadLetters.get());
+  }
+
+  private static VeldResponse answer(
+      Events.EventRejected rejected, Map<String, java.util.concurrent.atomic.AtomicInteger> called, int deadLetters) {
+    Map<String, Json> counts = new LinkedHashMap<>();
+    boolean ran = false;
+    for (Map.Entry<String, java.util.concurrent.atomic.AtomicInteger> e : called.entrySet()) {
+      counts.put(e.getKey(), Json.of((long) e.getValue().get()));
+      ran |= e.getValue().get() > 0;
+    }
+    List<Json> violations = new java.util.ArrayList<>();
+    if (rejected != null) {
+      for (Violation v : rejected.violations()) {
+        List<Json> fields = new java.util.ArrayList<>();
+        for (String f : v.fields()) {
+          fields.add(Json.of(f));
+        }
+        violations.add(
+            Json.object()
+                .put("rule", Json.of(v.rule()))
+                .put("path", Json.of(v.path()))
+                .put("fields", Json.array(fields))
+                .put("message", Json.of(v.message()))
+                .build());
+      }
+    }
+    return json(
+        200,
+        Json.object()
+            .put("outcome", Json.of(rejected != null ? "rejected" : ran ? "handled" : "ignored"))
+            .put("reason", rejected == null ? Json.NULL : Json.of(rejected.reason().text()))
+            .put("called", new Json.Obj(counts))
+            .put("violations", Json.array(violations))
+            .put("deadLetters", Json.of((long) deadLetters))
+            .build());
+  }
+  // #endif
+  // #if rollout
+
+  /** The most audited reports a test handler sends in {@code Veld-Test-Audited}. */
+  private static final int AUDITED_LIMIT = 100;
+
+  /**
+   * Like {@link #handler}, and every answer carries the response header {@code Veld-Test-Audited}
+   * when the request made the server report audited rules ({@code @rollout(audit)}, spec/rules.md
+   * section 12.4): the unpadded base64url of a compact JSON array with one entry per report, the
+   * first 100 at most.
+   */
+  public static VeldHandler auditedHandler(VeldHandler inner, Map<String, String> digests) {
+    VeldHandler probe = handler(inner, digests);
+    return new VeldHandler() {
+      @Override
+      public Optional<VeldResponse> handle(VeldRequest request) {
+        return audited(() -> probe.handle(request));
+      }
+
+      @Override
+      public Optional<VeldResponse> invoke(String endpoint, VeldRequest request) {
+        return audited(() -> probe.invoke(endpoint, request));
+      }
+    };
+  }
+
+  private static Optional<VeldResponse> audited(java.util.function.Supplier<Optional<VeldResponse>> call) {
+    Audit.startLog();
+    Optional<VeldResponse> answer;
+    try {
+      answer = call.get();
+    } catch (RuntimeException | Error e) {
+      Audit.endLog();
+      throw e;
+    }
+    List<Violation> reported = Audit.endLog();
+    return reported.isEmpty() ? answer : answer.map(r -> withAudited(r, reported));
+  }
+
+  private static VeldResponse withAudited(VeldResponse response, List<Violation> reported) {
+    List<Json> entries = new java.util.ArrayList<>();
+    for (Violation v : reported.subList(0, Math.min(reported.size(), AUDITED_LIMIT))) {
+      entries.add(v.toWire());
+    }
+    String text = Base64.getUrlEncoder().withoutPadding()
+        .encodeToString(Json.array(entries).write().getBytes(StandardCharsets.UTF_8));
+    Map<String, String> headers = new LinkedHashMap<>(response.headers());
+    headers.put("veld-test-audited", text);
+    return new VeldResponse(response.status(), headers, response.body());
+  }
+  // #endif
+  // #if testing_outbox
+
+  /** The response header that lists the events a request wrote to its outbox (spec/events.md section 11.2). */
+  public static final String EMITTED_HEADER = "veld-test-emitted";
+
+  /** What one request of a test handler wrote: its own memory outbox and the names, in write order. */
+  private static final class RequestOutbox {
+    final MemoryOutbox memory = new MemoryOutbox();
+    final List<String> written = new java.util.ArrayList<>();
+  }
+
+  private static final ThreadLocal<RequestOutbox> EMITTED = new ThreadLocal<>();
+
+  private static RequestOutbox currentOutbox() {
+    RequestOutbox state = EMITTED.get();
+    if (state == null) {
+      throw new IllegalStateException("the test handler's outbox is used outside a request");
+    }
+    return state;
+  }
+
+  /**
+   * What the endpoints of a test handler write to: every request gets a memory outbox of its own,
+   * and the names of the events it wrote are the header {@code Veld-Test-Emitted} of the answer
+   * (see {@link #emitted}). The outbox of the application is not used. {@code options} are the id
+   * source and the clock of the hooks.
+   */
+  public static Emission.Source emissions(Events.PublisherOptions options) {
+    Outbox outbox =
+        new Outbox() {
+          @Override
+          public void save(String topic, String key, byte[] bytes) {
+            currentOutbox().memory.save(topic, key, bytes);
+          }
+
+          @Override
+          public List<OutboxEntry> pending(int limit) {
+            return currentOutbox().memory.pending(limit);
+          }
+
+          @Override
+          public void done(OutboxEntry entry) {
+            currentOutbox().memory.done(entry);
+          }
+        };
+    return new Emission.Source(
+        outbox,
+        options == null ? new Events.PublisherOptions() : options,
+        name -> currentOutbox().written.add(name));
+  }
+
+  /**
+   * Adds the header {@code Veld-Test-Emitted} to every answer of {@code inner}: the declaration
+   * names of the events the request wrote to its memory outbox, separated by {@code ,} without
+   * spaces, in the order written. It is absent when nothing was written. With {@code
+   * Veld-Test-Result} the application's handler does not run and the header names the events the
+   * edge taken emits.
+   */
+  public static VeldHandler emitted(VeldHandler inner) {
+    return new VeldHandler() {
+      @Override
+      public Optional<VeldResponse> handle(VeldRequest request) {
+        return withEmitted(() -> inner.handle(request));
+      }
+
+      @Override
+      public Optional<VeldResponse> invoke(String endpoint, VeldRequest request) {
+        return withEmitted(() -> inner.invoke(endpoint, request));
+      }
+    };
+  }
+
+  private static Optional<VeldResponse> withEmitted(java.util.function.Supplier<Optional<VeldResponse>> call) {
+    RequestOutbox state = new RequestOutbox();
+    EMITTED.set(state);
+    Optional<VeldResponse> answer;
+    try {
+      answer = call.get();
+    } finally {
+      EMITTED.remove();
+    }
+    if (state.written.isEmpty()) {
+      return answer;
+    }
+    return answer.map(
+        r -> {
+          Map<String, String> headers = new LinkedHashMap<>(r.headers());
+          headers.put(EMITTED_HEADER, String.join(",", state.written));
+          return new VeldResponse(r.status(), headers, r.body());
+        });
+  }
+  // #endif
+}

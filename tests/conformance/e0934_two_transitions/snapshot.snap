@@ -1,0 +1,17 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0934]: an endpoint has at most one `transition`
+ --> app/app.veld:16:5
+   |
+16 |     transition booking.status: pending -> cancelled
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ --> app/app.veld:15:5
+   |
+15 |     transition booking.status: pending -> paid
+   |     ------------------------------------------ first `transition` here
+  = help: list every source state in one statement: `transition x.state: a, b -> c`
+
+== ir ==
+(no IR: compilation failed)

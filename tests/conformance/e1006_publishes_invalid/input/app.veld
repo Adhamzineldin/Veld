@@ -1,0 +1,12 @@
+event Paid { id: uuid }
+model Plain { a: int }
+channel A { carries Paid }
+
+service Publisher {
+  publishes A, A, Plain
+}
+
+service Consumer {
+  subscribes A as "g1" { on Paid -> first }
+  subscribes A as "g2" { on Paid -> second }
+}

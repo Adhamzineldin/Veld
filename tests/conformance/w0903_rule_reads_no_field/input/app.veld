@@ -1,0 +1,8 @@
+const LIMIT: int = 3
+
+model Constant {
+  n: int
+  rule alwaysTrue: 1 < 2
+  rule onlyConst: LIMIT > 2
+  rule readsField: n < LIMIT
+}

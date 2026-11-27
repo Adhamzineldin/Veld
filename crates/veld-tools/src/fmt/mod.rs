@@ -2,9 +2,13 @@
 //! the comment side-table, so every comment survives and the output is a fixed
 //! point of the formatter.
 
+mod expr;
 mod layout;
 mod print;
+mod saga;
+mod stmt;
 pub(crate) mod text;
+mod wrap;
 
 use veld_compiler::{Diagnostic, FileId, parse_file};
 
@@ -28,3 +32,39 @@ pub fn format(source: &str) -> Result<String, Vec<Diagnostic>> {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod rule_tests;
+
+#[cfg(test)]
+mod delivery_tests;
+#[cfg(test)]
+mod endpoint_tests;
+
+#[cfg(test)]
+mod platform_p1_tests;
+#[cfg(test)]
+mod platform_tests;
+#[cfg(test)]
+mod policy_tests;
+
+#[cfg(test)]
+mod event_tests;
+
+#[cfg(test)]
+mod derived_tests;
+#[cfg(test)]
+mod flags_tests;
+#[cfg(test)]
+mod outbox_tests;
+#[cfg(test)]
+mod rollout_tests;
+#[cfg(test)]
+mod saga_tests;
+#[cfg(test)]
+mod timed_tests;
+#[cfg(test)]
+mod version_tests;
+
+#[cfg(test)]
+mod wrap_tests;

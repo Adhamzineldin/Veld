@@ -1,0 +1,25 @@
+// `@pii` and `@secret` stand on a field and take no argument (spec/rules.md section 19.3).
+
+@pii
+model OnModel {
+  a: string
+}
+
+@secret
+error OnError 400 {
+  a: string
+}
+
+model WithArgument {
+  a: string @pii(true)
+  b: string @secret("token")
+}
+
+model Twice {
+  a: string @pii @pii
+}
+
+service Guests at "/guests" {
+  @pii
+  get "/" list() -> OnModel
+}

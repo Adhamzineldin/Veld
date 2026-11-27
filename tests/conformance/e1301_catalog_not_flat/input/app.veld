@@ -1,0 +1,16 @@
+// A contract with rule messages, for the catalog cases (spec/platform.md section 22).
+
+model Stay {
+  id: uuid
+  nights: int
+  rule atLeastOne: nights >= 1
+    message "A stay is at least one night"
+}
+
+@auth(none)
+service Stays at "/stays" {
+  post "/" book(body: Stay) -> 201 Stay {
+    require notTooLong: body.nights <= 30
+      message "A stay is at most thirty nights"
+  }
+}

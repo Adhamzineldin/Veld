@@ -5,6 +5,8 @@ import { CardCancelled } from '../errors/cards';
 import { Card, RequestCardInput } from '../models/cards';
 import type { InternalData, NotFoundData, UnauthorizedData, ValidationErrorData } from '../prelude';
 import { Internal, NotFound, Unauthorized, ValidationError } from '../prelude';
+import type { CardsApiRuntime } from '../runtime';
+import { checkRuntime } from '../runtime';
 import * as veld from '../runtime/veld';
 
 export type ListCardsRequest = {};
@@ -48,7 +50,8 @@ export interface CardsHooks {
 }
 
 /** Builds the HTTP handler for `Cards`. Mount it with an adapter from `./adapters`. */
-export function createCardsHandler(impl: CardsService, hooks: CardsHooks): veld.VeldHandler {
+export function createCardsHandler(impl: CardsService, hooks: CardsHooks, runtime: CardsApiRuntime): veld.VeldHandler {
+  checkRuntime(runtime);
   const endpoints: veld.ServerEndpoint[] = [
     {
       name: 'listCards',

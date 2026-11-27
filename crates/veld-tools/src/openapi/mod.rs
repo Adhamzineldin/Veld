@@ -2,7 +2,9 @@
 //! are emitted in sorted order and every object is built with a fixed key
 //! order.
 
+mod conditional;
 mod paths;
+mod rules;
 mod schema;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -36,6 +38,39 @@ pub fn openapi(ir: &Ir, services: &[ServiceId]) -> Value {
         Value::from(ir.ir_version.clone()),
     );
     Value::Object(doc)
+}
+
+/// The schema builder of the export, for the AsyncAPI export (`spec/events.md` section 16.1):
+/// the component name of a declaration, its schema (an event is built like a model), and the
+/// schema of a type.
+pub(crate) mod shared {
+    use serde_json::Value;
+    use veld_ir::{Decl, DeclId, DeclKind, Ir, Type};
+
+    use super::schema;
+
+    #[must_use]
+    pub(crate) fn component_name(ir: &Ir, id: DeclId) -> String {
+        schema::schema_name(ir, id)
+    }
+
+    /// The component schema of a declaration; an event is an object like a model.
+    #[must_use]
+    pub(crate) fn component_schema(ir: &Ir, d: &Decl) -> Option<Value> {
+        match d.kind {
+            DeclKind::Event(_) => Some(schema::model_schema(ir, d)),
+            DeclKind::Model(_)
+            | DeclKind::Error(_)
+            | DeclKind::Enum(_)
+            | DeclKind::Union(_)
+            | DeclKind::Const(_) => schema::decl_schema(ir, d),
+        }
+    }
+
+    #[must_use]
+    pub(crate) fn type_schema(ir: &Ir, ty: &Type) -> Value {
+        schema::type_schema(ir, ty)
+    }
 }
 
 fn info(ir: &Ir, ids: &[ServiceId]) -> Value {
@@ -129,5 +164,21 @@ fn security_schemes(ir: &Ir, ids: &[ServiceId]) -> Map<String, Value> {
     found.into_iter().collect()
 }
 
+#[cfg(test)]
+mod conditional_tests;
+#[cfg(test)]
+mod derived_tests;
+#[cfg(test)]
+mod event_tests;
+#[cfg(test)]
+mod pii_tests;
+#[cfg(test)]
+mod platform_p1_tests;
+#[cfg(test)]
+mod rollout_tests;
+#[cfg(test)]
+mod saga_tests;
+#[cfg(test)]
+mod service_levels_tests;
 #[cfg(test)]
 mod tests;

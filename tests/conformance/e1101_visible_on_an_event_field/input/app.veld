@@ -1,0 +1,14 @@
+// The field of an event itself.
+
+model User {
+  id: uuid
+}
+
+principal User
+
+event GuestRegistered {
+  id: uuid
+  phone?: string @visible(when: user.id == id)
+}
+
+channel GuestEvents { carries GuestRegistered }

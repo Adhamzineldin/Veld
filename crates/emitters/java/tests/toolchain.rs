@@ -250,9 +250,12 @@ fn build_java(release: &'static str) -> Result<Java, Unavailable> {
 
     // 2. The test programs against the compiled generated code.
     std::fs::create_dir_all(work.join("tests")).unwrap();
-    for f in java_files(&java_dir(), &[]).iter().filter(|p| {
-        !p.starts_with(java_dir().join(".work")) && !p.starts_with(java_dir().join("spring"))
-    }) {
+    // Only the programs directly in this folder belong to this run: every subfolder (`events/`,
+    // `rules/`, `spring/`, ...) holds the programs of other tests, which they compile themselves.
+    for f in java_files(&java_dir(), &[])
+        .iter()
+        .filter(|p| p.parent() == Some(java_dir().as_path()))
+    {
         std::fs::copy(f, work.join("tests").join(f.file_name().unwrap())).unwrap();
     }
     javac(
@@ -415,7 +418,7 @@ fn gen_ts(
         framework: None,
     };
     generator
-        .generate_dyn(&req, &Value::Null)
+        .generate_dyn(&req, &veld_codegen::with_target_name(&Value::Null, "t"))
         .unwrap_or_else(|d| panic!("generation failed: {d:?}"))
 }
 
@@ -936,35 +939,8 @@ fn build_spring_app(j: &Java) -> PathBuf {
         )
         .unwrap();
     }
-    let mut mvn = if cfg!(windows) {
-        let mut c = Command::new("cmd");
-        c.args(["/c", r".\mvnw.cmd"]);
-        c
-    } else {
-        let mut c = Command::new("sh");
-        c.arg("./mvnw");
-        c
-    };
-    mvn.args(["-q", "-B", "package", "-DskipTests"])
-        .arg(format!("-Djava.version={}", j.release))
-        .current_dir(&work);
-    run_logged(&mut mvn, "mvnw package", &work.join("mvnw.log"));
+    mvnw_package(&work, j.release);
     work.join("target/app.jar")
-}
-
-/// Runs a build tool as a process tree (a launcher such as `cmd` or `sh` that starts the real
-/// process), killed as a whole on drop, with its output in `log`.
-fn run_logged(cmd: &mut Command, what: &str, log: &Path) {
-    let mut tree = veld_test_support::ProcessTree::spawn_logged(cmd, log)
-        .unwrap_or_else(|e| panic!("{what}: cannot start: {e}"));
-    let status = tree.child_mut().wait().unwrap();
-    let output = std::fs::read_to_string(log).unwrap_or_default();
-    print!("{output}");
-    assert!(
-        status.success(),
-        "{what} failed ({status})
-{output}"
-    );
 }
 
 /// The executable jar of the Spring application for `j`, built once per release.

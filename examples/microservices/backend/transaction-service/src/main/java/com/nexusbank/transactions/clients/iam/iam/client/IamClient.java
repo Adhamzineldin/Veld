@@ -22,7 +22,7 @@ import java.util.List;
 /**
  * Identity and access management: authentication and user profiles.
  *
- * Blocking. The base URL is the `baseUrl` option, else the environment variable `VELD_IAM_URL`, else the contract's `base-url`.
+ * Blocking. The `baseUrl` option is required; the runtime config of the target gives it (`spec/runtime-config.md`), and `&lt;Target&gt;Clients.create` builds every client with it.
  */
 @SuppressWarnings("deprecation")
 public final class IamClient {
@@ -116,16 +116,11 @@ public final class IamClient {
 
   private final ClientCore core;
 
-  /** Creates a client with default options. */
-  public IamClient() {
-    this(ClientOptions.defaults());
-  }
-
-  /** Creates a client. */
+  /** Creates a client. `options` must set `baseUrl`. */
   public IamClient(ClientOptions options) {
     this.core = new ClientCore(
         options,
-        new ClientDefaults("VELD_IAM_URL", "http://iam-service:3001", issues -> ValidationError.fromWire(Router.issuesToWire(issues), 422, null)));
+        new ClientDefaults(issues -> ValidationError.fromWire(Router.issuesToWire(issues), 422, null)));
   }
 
   /** Creates a new user account. */

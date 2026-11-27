@@ -1,0 +1,5641 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+(none)
+
+== ir ==
+{
+  "ir_version": "1.1",
+  "packages": [
+    {
+      "id": 0,
+      "name": "app",
+      "kind": "service"
+    }
+  ],
+  "decls": [
+    {
+      "id": 0,
+      "package": 0,
+      "module": "app",
+      "name": "Booking",
+      "qualified": "app:app.Booking",
+      "sig": "veld:app/Booking@cd44eb991da26418",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 16,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "start",
+          "wire": "start",
+          "type": {
+            "scalar": "datetime"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 17,
+            "col": 3
+          }
+        },
+        {
+          "name": "end",
+          "wire": "end",
+          "type": {
+            "scalar": "datetime"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 18,
+            "col": 3
+          }
+        },
+        {
+          "name": "status",
+          "wire": "status",
+          "type": {
+            "decl": 7
+          },
+          "optional": false,
+          "default": {
+            "lit": "enum_variant",
+            "value": {
+              "name": "pending",
+              "wire": "pending"
+            }
+          },
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 19,
+            "col": 3
+          }
+        },
+        {
+          "name": "paidAt",
+          "wire": "paidAt",
+          "type": {
+            "scalar": "datetime"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 20,
+            "col": 3
+          }
+        },
+        {
+          "name": "guests",
+          "wire": "guests",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 21,
+            "col": 3
+          }
+        },
+        {
+          "name": "tier",
+          "wire": "tier",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 22,
+            "col": 3
+          }
+        },
+        {
+          "name": "items",
+          "wire": "items",
+          "type": {
+            "list": {
+              "decl": 2
+            }
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 23,
+            "col": 3
+          }
+        },
+        {
+          "name": "tags",
+          "wire": "tags",
+          "type": {
+            "list": {
+              "scalar": "string"
+            }
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 24,
+            "col": 3
+          }
+        },
+        {
+          "name": "limits",
+          "wire": "limits",
+          "type": {
+            "map": {
+              "scalar": "int"
+            }
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 25,
+            "col": 3
+          }
+        },
+        {
+          "name": "code",
+          "wire": "code",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 26,
+            "col": 3
+          }
+        },
+        {
+          "name": "big",
+          "wire": "big",
+          "type": {
+            "scalar": "long"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 27,
+            "col": 3
+          }
+        },
+        {
+          "name": "ratio",
+          "wire": "ratio",
+          "type": {
+            "scalar": "float"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 28,
+            "col": 3
+          }
+        },
+        {
+          "name": "total",
+          "wire": "total",
+          "type": {
+            "scalar": "decimal"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 29,
+            "col": 3
+          }
+        },
+        {
+          "name": "score",
+          "wire": "score",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 30,
+            "col": 3
+          }
+        }
+      ],
+      "rules": [
+        {
+          "name": "endAfterStart",
+          "id": "veld:app/Booking.endAfterStart@8c7d3fdbf97acca7",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "gt",
+                "l": {
+                  "t": {
+                    "scalar": "datetime"
+                  },
+                  "e": {
+                    "path": {
+                      "root": "self",
+                      "steps": [
+                        {
+                          "name": "end",
+                          "wire": "end",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "datetime"
+                  },
+                  "e": {
+                    "path": {
+                      "root": "self",
+                      "steps": [
+                        {
+                          "name": "start",
+                          "wire": "start",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": "A booking must end after it starts",
+          "reads": [
+            "end",
+            "start"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": "Shown under the date picker.",
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 33,
+            "col": 8
+          }
+        },
+        {
+          "name": "maxStay",
+          "id": "veld:app/Booking.maxStay@786a67132a3354f6",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "le",
+                "l": {
+                  "t": "duration",
+                  "e": {
+                    "bin": {
+                      "op": "sub",
+                      "l": {
+                        "t": {
+                          "scalar": "datetime"
+                        },
+                        "e": {
+                          "path": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "end",
+                                "wire": "end",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "datetime"
+                        },
+                        "e": {
+                          "path": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "start",
+                                "wire": "start",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "r": {
+                  "t": "duration",
+                  "e": {
+                    "bin": {
+                      "op": "add",
+                      "l": {
+                        "t": "duration",
+                        "e": {
+                          "bin": {
+                            "op": "add",
+                            "l": {
+                              "t": "duration",
+                              "e": {
+                                "bin": {
+                                  "op": "sub",
+                                  "l": {
+                                    "t": "duration",
+                                    "e": {
+                                      "bin": {
+                                        "op": "add",
+                                        "l": {
+                                          "t": "duration",
+                                          "e": {
+                                            "call": {
+                                              "f": "days",
+                                              "args": [
+                                                {
+                                                  "t": {
+                                                    "scalar": "int"
+                                                  },
+                                                  "e": {
+                                                    "lit": {
+                                                      "int": 30
+                                                    }
+                                                  }
+                                                }
+                                              ]
+                                            }
+                                          }
+                                        },
+                                        "r": {
+                                          "t": "duration",
+                                          "e": {
+                                            "call": {
+                                              "f": "hours",
+                                              "args": [
+                                                {
+                                                  "t": {
+                                                    "scalar": "int"
+                                                  },
+                                                  "e": {
+                                                    "lit": {
+                                                      "int": 12
+                                                    }
+                                                  }
+                                                }
+                                              ]
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "r": {
+                                    "t": "duration",
+                                    "e": {
+                                      "call": {
+                                        "f": "minutes",
+                                        "args": [
+                                          {
+                                            "t": {
+                                              "scalar": "int"
+                                            },
+                                            "e": {
+                                              "lit": {
+                                                "int": 30
+                                              }
+                                            }
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            "r": {
+                              "t": "duration",
+                              "e": {
+                                "call": {
+                                  "f": "seconds",
+                                  "args": [
+                                    {
+                                      "t": {
+                                        "scalar": "int"
+                                      },
+                                      "e": {
+                                        "lit": {
+                                          "int": 1
+                                        }
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": "duration",
+                        "e": {
+                          "call": {
+                            "f": "ms",
+                            "args": [
+                              {
+                                "t": {
+                                  "scalar": "int"
+                                },
+                                "e": {
+                                  "lit": {
+                                    "int": 5
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "end",
+            "start"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 35,
+            "col": 8
+          }
+        },
+        {
+          "name": "paidHasTime",
+          "id": "veld:app/Booking.paidHasTime@e84bd76f7c423aeb",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "implies",
+                "l": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "in",
+                      "l": {
+                        "t": {
+                          "decl": 7
+                        },
+                        "e": {
+                          "path": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "status",
+                                "wire": "status",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "list": {
+                            "decl": 7
+                          }
+                        },
+                        "e": {
+                          "list": [
+                            {
+                              "t": {
+                                "decl": 7
+                              },
+                              "e": {
+                                "lit": {
+                                  "enum": {
+                                    "decl": 7,
+                                    "name": "paid",
+                                    "wire": "paid"
+                                  }
+                                }
+                              }
+                            },
+                            {
+                              "t": {
+                                "decl": 7
+                              },
+                              "e": {
+                                "lit": {
+                                  "enum": {
+                                    "decl": 7,
+                                    "name": "checkedIn",
+                                    "wire": "CHECKED_IN"
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "has": {
+                      "root": "self",
+                      "steps": [
+                        {
+                          "name": "paidAt",
+                          "wire": "paidAt",
+                          "optional": true
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "status",
+            "paidAt"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 36,
+            "col": 8
+          }
+        },
+        {
+          "name": "oldFits",
+          "id": "veld:app/Booking.oldFits@f83386ba8f618724",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "or",
+                "l": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "le",
+                      "l": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "path": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "guests",
+                                "wire": "guests",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "lit": {
+                            "int": 4
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "eq",
+                      "l": {
+                        "t": {
+                          "scalar": "string"
+                        },
+                        "e": {
+                          "path": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "tier",
+                                "wire": "tier",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "string"
+                        },
+                        "e": {
+                          "lit": {
+                            "string": "vip"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "guests",
+            "tier"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": "use fits",
+          "origin": {
+            "file": "app.veld",
+            "line": 38,
+            "col": 8
+          }
+        },
+        {
+          "name": "fits",
+          "id": "veld:app/Booking.fits@181bd0b752675af7",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "or",
+                "l": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "le",
+                      "l": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "path": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "guests",
+                                "wire": "guests",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "lit": {
+                            "int": 4
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "not": {
+                      "t": {
+                        "scalar": "bool"
+                      },
+                      "e": {
+                        "bin": {
+                          "op": "ne",
+                          "l": {
+                            "t": {
+                              "scalar": "string"
+                            },
+                            "e": {
+                              "path": {
+                                "root": "self",
+                                "steps": [
+                                  {
+                                    "name": "tier",
+                                    "wire": "tier",
+                                    "optional": false
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          "r": {
+                            "t": {
+                              "scalar": "string"
+                            },
+                            "e": {
+                              "lit": {
+                                "string": "vip"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "guests",
+            "tier"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 39,
+            "col": 8
+          }
+        },
+        {
+          "name": "shaped",
+          "id": "veld:app/Booking.shaped@0f3bbb4a5999126d",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "and",
+                "l": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "and",
+                      "l": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "bin": {
+                            "op": "and",
+                            "l": {
+                              "t": {
+                                "scalar": "bool"
+                              },
+                              "e": {
+                                "call": {
+                                  "f": "matches",
+                                  "args": [
+                                    {
+                                      "t": {
+                                        "scalar": "string"
+                                      },
+                                      "e": {
+                                        "path": {
+                                          "root": "self",
+                                          "steps": [
+                                            {
+                                              "name": "code",
+                                              "wire": "code",
+                                              "optional": false
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "t": {
+                                        "scalar": "string"
+                                      },
+                                      "e": {
+                                        "lit": {
+                                          "string": "^[A-Z]{3}-\\d{4}$"
+                                        }
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            "r": {
+                              "t": {
+                                "scalar": "bool"
+                              },
+                              "e": {
+                                "call": {
+                                  "f": "starts_with",
+                                  "args": [
+                                    {
+                                      "t": {
+                                        "scalar": "string"
+                                      },
+                                      "e": {
+                                        "path": {
+                                          "root": "self",
+                                          "steps": [
+                                            {
+                                              "name": "code",
+                                              "wire": "code",
+                                              "optional": false
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "t": {
+                                        "scalar": "string"
+                                      },
+                                      "e": {
+                                        "lit": {
+                                          "string": "ABC"
+                                        }
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "call": {
+                            "f": "ends_with",
+                            "args": [
+                              {
+                                "t": {
+                                  "scalar": "string"
+                                },
+                                "e": {
+                                  "path": {
+                                    "root": "self",
+                                    "steps": [
+                                      {
+                                        "name": "code",
+                                        "wire": "code",
+                                        "optional": false
+                                      }
+                                    ]
+                                  }
+                                }
+                              },
+                              {
+                                "t": {
+                                  "scalar": "string"
+                                },
+                                "e": {
+                                  "lit": {
+                                    "string": "9"
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "call": {
+                      "f": "contains",
+                      "args": [
+                        {
+                          "t": {
+                            "scalar": "string"
+                          },
+                          "e": {
+                            "path": {
+                              "root": "self",
+                              "steps": [
+                                {
+                                  "name": "code",
+                                  "wire": "code",
+                                  "optional": false
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "t": {
+                            "scalar": "string"
+                          },
+                          "e": {
+                            "lit": {
+                              "string": "-"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "code"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 40,
+            "col": 8
+          }
+        },
+        {
+          "name": "sized",
+          "id": "veld:app/Booking.sized@10b156f126c225c6",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "and",
+                "l": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "and",
+                      "l": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "bin": {
+                            "op": "lt",
+                            "l": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "call": {
+                                  "f": "len",
+                                  "args": [
+                                    {
+                                      "t": {
+                                        "list": {
+                                          "scalar": "string"
+                                        }
+                                      },
+                                      "e": {
+                                        "path": {
+                                          "root": "self",
+                                          "steps": [
+                                            {
+                                              "name": "tags",
+                                              "wire": "tags",
+                                              "optional": false
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            "r": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "lit": {
+                                  "int": 3
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "bin": {
+                            "op": "eq",
+                            "l": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "call": {
+                                  "f": "len",
+                                  "args": [
+                                    {
+                                      "t": {
+                                        "scalar": "string"
+                                      },
+                                      "e": {
+                                        "path": {
+                                          "root": "self",
+                                          "steps": [
+                                            {
+                                              "name": "code",
+                                              "wire": "code",
+                                              "optional": false
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            "r": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "lit": {
+                                  "int": 8
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "ge",
+                      "l": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "call": {
+                            "f": "len",
+                            "args": [
+                              {
+                                "t": {
+                                  "map": {
+                                    "scalar": "int"
+                                  }
+                                },
+                                "e": {
+                                  "path": {
+                                    "root": "self",
+                                    "steps": [
+                                      {
+                                        "name": "limits",
+                                        "wire": "limits",
+                                        "optional": false
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "lit": {
+                            "int": 0
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "tags",
+            "code",
+            "limits"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 41,
+            "col": 8
+          }
+        },
+        {
+          "name": "keyed",
+          "id": "veld:app/Booking.keyed@0c56e6af9aef91dd",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "and",
+                "l": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "in",
+                      "l": {
+                        "t": {
+                          "scalar": "string"
+                        },
+                        "e": {
+                          "lit": {
+                            "string": "max"
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "map": {
+                            "scalar": "int"
+                          }
+                        },
+                        "e": {
+                          "path": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "limits",
+                                "wire": "limits",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "in",
+                      "l": {
+                        "t": {
+                          "scalar": "string"
+                        },
+                        "e": {
+                          "lit": {
+                            "string": "gift"
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "list": {
+                            "scalar": "string"
+                          }
+                        },
+                        "e": {
+                          "path": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "tags",
+                                "wire": "tags",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "limits",
+            "tags"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 42,
+            "col": 8
+          }
+        },
+        {
+          "name": "sums",
+          "id": "veld:app/Booking.sums@a26e5b8f92b0bde9",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "and",
+                "l": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "eq",
+                      "l": {
+                        "t": {
+                          "scalar": "decimal"
+                        },
+                        "e": {
+                          "quant": {
+                            "q": "sum",
+                            "list": {
+                              "t": {
+                                "list": {
+                                  "decl": 2
+                                }
+                              },
+                              "e": {
+                                "path": {
+                                  "root": "self",
+                                  "steps": [
+                                    {
+                                      "name": "items",
+                                      "wire": "items",
+                                      "optional": false
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            "var": "i",
+                            "body": {
+                              "t": {
+                                "scalar": "decimal"
+                              },
+                              "e": {
+                                "bin": {
+                                  "op": "mul",
+                                  "l": {
+                                    "t": {
+                                      "scalar": "decimal"
+                                    },
+                                    "e": {
+                                      "path": {
+                                        "root": {
+                                          "var": "i"
+                                        },
+                                        "steps": [
+                                          {
+                                            "name": "price",
+                                            "wire": "price",
+                                            "optional": false
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  },
+                                  "r": {
+                                    "t": {
+                                      "scalar": "decimal"
+                                    },
+                                    "e": {
+                                      "widen": {
+                                        "t": {
+                                          "scalar": "int"
+                                        },
+                                        "e": {
+                                          "path": {
+                                            "root": {
+                                              "var": "i"
+                                            },
+                                            "steps": [
+                                              {
+                                                "name": "qty",
+                                                "wire": "qty",
+                                                "optional": false
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "decimal"
+                        },
+                        "e": {
+                          "path": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "total",
+                                "wire": "total",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "ge",
+                      "l": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "quant": {
+                            "q": "count",
+                            "list": {
+                              "t": {
+                                "list": {
+                                  "decl": 2
+                                }
+                              },
+                              "e": {
+                                "path": {
+                                  "root": "self",
+                                  "steps": [
+                                    {
+                                      "name": "items",
+                                      "wire": "items",
+                                      "optional": false
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            "var": "i",
+                            "body": {
+                              "t": {
+                                "scalar": "bool"
+                              },
+                              "e": {
+                                "bin": {
+                                  "op": "gt",
+                                  "l": {
+                                    "t": {
+                                      "scalar": "int"
+                                    },
+                                    "e": {
+                                      "path": {
+                                        "root": {
+                                          "var": "i"
+                                        },
+                                        "steps": [
+                                          {
+                                            "name": "qty",
+                                            "wire": "qty",
+                                            "optional": false
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  },
+                                  "r": {
+                                    "t": {
+                                      "scalar": "int"
+                                    },
+                                    "e": {
+                                      "lit": {
+                                        "int": 0
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "lit": {
+                            "int": 1
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "items",
+            "total"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 43,
+            "col": 8
+          }
+        },
+        {
+          "name": "quantified",
+          "id": "veld:app/Booking.quantified@fa2228130ee114a1",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "and",
+                "l": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "quant": {
+                      "q": "all",
+                      "list": {
+                        "t": {
+                          "list": {
+                            "decl": 2
+                          }
+                        },
+                        "e": {
+                          "path": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "items",
+                                "wire": "items",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "var": "i",
+                      "body": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "bin": {
+                            "op": "gt",
+                            "l": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "path": {
+                                  "root": {
+                                    "var": "i"
+                                  },
+                                  "steps": [
+                                    {
+                                      "name": "qty",
+                                      "wire": "qty",
+                                      "optional": false
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            "r": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "lit": {
+                                  "int": 0
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "quant": {
+                      "q": "any",
+                      "list": {
+                        "t": {
+                          "list": {
+                            "decl": 2
+                          }
+                        },
+                        "e": {
+                          "path": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "items",
+                                "wire": "items",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "var": "i",
+                      "body": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "bin": {
+                            "op": "gt",
+                            "l": {
+                              "t": {
+                                "scalar": "decimal"
+                              },
+                              "e": {
+                                "path": {
+                                  "root": {
+                                    "var": "i"
+                                  },
+                                  "steps": [
+                                    {
+                                      "name": "price",
+                                      "wire": "price",
+                                      "optional": false
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            "r": {
+                              "t": {
+                                "scalar": "decimal"
+                              },
+                              "e": {
+                                "lit": {
+                                  "decimal": "1.5"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "items"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 44,
+            "col": 8
+          }
+        },
+        {
+          "name": "arithmetic",
+          "id": "veld:app/Booking.arithmetic@19342f7ea507b818",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "eq",
+                "l": {
+                  "t": {
+                    "scalar": "int"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "sub",
+                      "l": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "bin": {
+                            "op": "mul",
+                            "l": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "bin": {
+                                  "op": "add",
+                                  "l": {
+                                    "t": {
+                                      "scalar": "int"
+                                    },
+                                    "e": {
+                                      "path": {
+                                        "root": "self",
+                                        "steps": [
+                                          {
+                                            "name": "score",
+                                            "wire": "score",
+                                            "optional": false
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  },
+                                  "r": {
+                                    "t": {
+                                      "scalar": "int"
+                                    },
+                                    "e": {
+                                      "lit": {
+                                        "int": 1
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            "r": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "lit": {
+                                  "int": 2
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "bin": {
+                            "op": "rem",
+                            "l": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "bin": {
+                                  "op": "div",
+                                  "l": {
+                                    "t": {
+                                      "scalar": "int"
+                                    },
+                                    "e": {
+                                      "lit": {
+                                        "int": 3
+                                      }
+                                    }
+                                  },
+                                  "r": {
+                                    "t": {
+                                      "scalar": "int"
+                                    },
+                                    "e": {
+                                      "lit": {
+                                        "int": 1
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            "r": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "lit": {
+                                  "int": 5
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "int"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "add",
+                      "l": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "neg": {
+                            "t": {
+                              "scalar": "int"
+                            },
+                            "e": {
+                              "path": {
+                                "root": "self",
+                                "steps": [
+                                  {
+                                    "name": "score",
+                                    "wire": "score",
+                                    "optional": false
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "lit": {
+                            "int": 7
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "score"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 45,
+            "col": 8
+          }
+        },
+        {
+          "name": "widened",
+          "id": "veld:app/Booking.widened@484a599dcce5c771",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "and",
+                "l": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "and",
+                      "l": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "bin": {
+                            "op": "and",
+                            "l": {
+                              "t": {
+                                "scalar": "bool"
+                              },
+                              "e": {
+                                "bin": {
+                                  "op": "lt",
+                                  "l": {
+                                    "t": {
+                                      "scalar": "long"
+                                    },
+                                    "e": {
+                                      "widen": {
+                                        "t": {
+                                          "scalar": "int"
+                                        },
+                                        "e": {
+                                          "path": {
+                                            "root": "self",
+                                            "steps": [
+                                              {
+                                                "name": "score",
+                                                "wire": "score",
+                                                "optional": false
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "r": {
+                                    "t": {
+                                      "scalar": "long"
+                                    },
+                                    "e": {
+                                      "path": {
+                                        "root": "self",
+                                        "steps": [
+                                          {
+                                            "name": "big",
+                                            "wire": "big",
+                                            "optional": false
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            "r": {
+                              "t": {
+                                "scalar": "bool"
+                              },
+                              "e": {
+                                "bin": {
+                                  "op": "lt",
+                                  "l": {
+                                    "t": {
+                                      "scalar": "float"
+                                    },
+                                    "e": {
+                                      "bin": {
+                                        "op": "mul",
+                                        "l": {
+                                          "t": {
+                                            "scalar": "float"
+                                          },
+                                          "e": {
+                                            "widen": {
+                                              "t": {
+                                                "scalar": "int"
+                                              },
+                                              "e": {
+                                                "path": {
+                                                  "root": "self",
+                                                  "steps": [
+                                                    {
+                                                      "name": "score",
+                                                      "wire": "score",
+                                                      "optional": false
+                                                    }
+                                                  ]
+                                                }
+                                              }
+                                            }
+                                          }
+                                        },
+                                        "r": {
+                                          "t": {
+                                            "scalar": "float"
+                                          },
+                                          "e": {
+                                            "path": {
+                                              "root": "self",
+                                              "steps": [
+                                                {
+                                                  "name": "ratio",
+                                                  "wire": "ratio",
+                                                  "optional": false
+                                                }
+                                              ]
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "r": {
+                                    "t": {
+                                      "scalar": "float"
+                                    },
+                                    "e": {
+                                      "lit": {
+                                        "float": 1.5
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "bin": {
+                            "op": "lt",
+                            "l": {
+                              "t": {
+                                "scalar": "long"
+                              },
+                              "e": {
+                                "path": {
+                                  "root": "self",
+                                  "steps": [
+                                    {
+                                      "name": "big",
+                                      "wire": "big",
+                                      "optional": false
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            "r": {
+                              "t": {
+                                "scalar": "long"
+                              },
+                              "e": {
+                                "lit": {
+                                  "long": "5000000000"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "le",
+                      "l": {
+                        "t": {
+                          "scalar": "decimal"
+                        },
+                        "e": {
+                          "bin": {
+                            "op": "mul",
+                            "l": {
+                              "t": {
+                                "scalar": "decimal"
+                              },
+                              "e": {
+                                "widen": {
+                                  "t": {
+                                    "scalar": "int"
+                                  },
+                                  "e": {
+                                    "path": {
+                                      "root": "self",
+                                      "steps": [
+                                        {
+                                          "name": "score",
+                                          "wire": "score",
+                                          "optional": false
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            "r": {
+                              "t": {
+                                "scalar": "decimal"
+                              },
+                              "e": {
+                                "path": {
+                                  "root": "self",
+                                  "steps": [
+                                    {
+                                      "name": "total",
+                                      "wire": "total",
+                                      "optional": false
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "decimal"
+                        },
+                        "e": {
+                          "lit": {
+                            "decimal": "100"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "score",
+            "big",
+            "ratio",
+            "total"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 46,
+            "col": 8
+          }
+        },
+        {
+          "name": "negated",
+          "id": "veld:app/Booking.negated@731d11f9bb53daf1",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "or",
+                "l": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "not": {
+                      "t": {
+                        "scalar": "bool"
+                      },
+                      "e": {
+                        "bin": {
+                          "op": "gt",
+                          "l": {
+                            "t": {
+                              "scalar": "int"
+                            },
+                            "e": {
+                              "path": {
+                                "root": "self",
+                                "steps": [
+                                  {
+                                    "name": "guests",
+                                    "wire": "guests",
+                                    "optional": false
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          "r": {
+                            "t": {
+                              "scalar": "int"
+                            },
+                            "e": {
+                              "lit": {
+                                "int": 0
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "and",
+                      "l": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "bin": {
+                            "op": "eq",
+                            "l": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "path": {
+                                  "root": "self",
+                                  "steps": [
+                                    {
+                                      "name": "guests",
+                                      "wire": "guests",
+                                      "optional": false
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            "r": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "lit": {
+                                  "int": 1
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "lit": {
+                            "bool": true
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "guests"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 47,
+            "col": 8
+          }
+        },
+        {
+          "name": "listed",
+          "id": "veld:app/Booking.listed@4425dfcbff6d8055",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "and",
+                "l": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "in",
+                      "l": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "path": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "score",
+                                "wire": "score",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "list": {
+                            "scalar": "int"
+                          }
+                        },
+                        "e": {
+                          "list": [
+                            {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "lit": {
+                                  "int": 1
+                                }
+                              }
+                            },
+                            {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "lit": {
+                                  "int": 2
+                                }
+                              }
+                            },
+                            {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "lit": {
+                                  "int": 3
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "not": {
+                      "t": {
+                        "scalar": "bool"
+                      },
+                      "e": {
+                        "lit": {
+                          "bool": false
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "score"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 48,
+            "col": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "package": 0,
+      "module": "app",
+      "name": "Child",
+      "qualified": "app:app.Child",
+      "sig": "veld:app/Child@9a9a95d32931091a",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 51,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": 0,
+      "fields": [
+        {
+          "name": "start",
+          "wire": "start",
+          "type": {
+            "scalar": "datetime"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": 0,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 17,
+            "col": 3
+          }
+        },
+        {
+          "name": "end",
+          "wire": "end",
+          "type": {
+            "scalar": "datetime"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": 0,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 18,
+            "col": 3
+          }
+        },
+        {
+          "name": "status",
+          "wire": "status",
+          "type": {
+            "decl": 7
+          },
+          "optional": false,
+          "default": {
+            "lit": "enum_variant",
+            "value": {
+              "name": "pending",
+              "wire": "pending"
+            }
+          },
+          "readonly": false,
+          "inherited_from": 0,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 19,
+            "col": 3
+          }
+        },
+        {
+          "name": "paidAt",
+          "wire": "paidAt",
+          "type": {
+            "scalar": "datetime"
+          },
+          "optional": true,
+          "default": null,
+          "readonly": false,
+          "inherited_from": 0,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 20,
+            "col": 3
+          }
+        },
+        {
+          "name": "guests",
+          "wire": "guests",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": 0,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 21,
+            "col": 3
+          }
+        },
+        {
+          "name": "tier",
+          "wire": "tier",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": 0,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 22,
+            "col": 3
+          }
+        },
+        {
+          "name": "items",
+          "wire": "items",
+          "type": {
+            "list": {
+              "decl": 2
+            }
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": 0,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 23,
+            "col": 3
+          }
+        },
+        {
+          "name": "tags",
+          "wire": "tags",
+          "type": {
+            "list": {
+              "scalar": "string"
+            }
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": 0,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 24,
+            "col": 3
+          }
+        },
+        {
+          "name": "limits",
+          "wire": "limits",
+          "type": {
+            "map": {
+              "scalar": "int"
+            }
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": 0,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 25,
+            "col": 3
+          }
+        },
+        {
+          "name": "code",
+          "wire": "code",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": 0,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 26,
+            "col": 3
+          }
+        },
+        {
+          "name": "big",
+          "wire": "big",
+          "type": {
+            "scalar": "long"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": 0,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 27,
+            "col": 3
+          }
+        },
+        {
+          "name": "ratio",
+          "wire": "ratio",
+          "type": {
+            "scalar": "float"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": 0,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 28,
+            "col": 3
+          }
+        },
+        {
+          "name": "total",
+          "wire": "total",
+          "type": {
+            "scalar": "decimal"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": 0,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 29,
+            "col": 3
+          }
+        },
+        {
+          "name": "score",
+          "wire": "score",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": 0,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 30,
+            "col": 3
+          }
+        },
+        {
+          "name": "extra",
+          "wire": "extra",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 52,
+            "col": 3
+          }
+        }
+      ],
+      "rules": [
+        {
+          "name": "endAfterStart",
+          "id": "veld:app/Booking.endAfterStart@8c7d3fdbf97acca7",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "gt",
+                "l": {
+                  "t": {
+                    "scalar": "datetime"
+                  },
+                  "e": {
+                    "path": {
+                      "root": "self",
+                      "steps": [
+                        {
+                          "name": "end",
+                          "wire": "end",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "datetime"
+                  },
+                  "e": {
+                    "path": {
+                      "root": "self",
+                      "steps": [
+                        {
+                          "name": "start",
+                          "wire": "start",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": "A booking must end after it starts",
+          "reads": [
+            "end",
+            "start"
+          ],
+          "reads_readonly": false,
+          "inherited_from": 0,
+          "docs": "Shown under the date picker.",
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 33,
+            "col": 8
+          }
+        },
+        {
+          "name": "maxStay",
+          "id": "veld:app/Booking.maxStay@786a67132a3354f6",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "le",
+                "l": {
+                  "t": "duration",
+                  "e": {
+                    "bin": {
+                      "op": "sub",
+                      "l": {
+                        "t": {
+                          "scalar": "datetime"
+                        },
+                        "e": {
+                          "path": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "end",
+                                "wire": "end",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "datetime"
+                        },
+                        "e": {
+                          "path": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "start",
+                                "wire": "start",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "r": {
+                  "t": "duration",
+                  "e": {
+                    "bin": {
+                      "op": "add",
+                      "l": {
+                        "t": "duration",
+                        "e": {
+                          "bin": {
+                            "op": "add",
+                            "l": {
+                              "t": "duration",
+                              "e": {
+                                "bin": {
+                                  "op": "sub",
+                                  "l": {
+                                    "t": "duration",
+                                    "e": {
+                                      "bin": {
+                                        "op": "add",
+                                        "l": {
+                                          "t": "duration",
+                                          "e": {
+                                            "call": {
+                                              "f": "days",
+                                              "args": [
+                                                {
+                                                  "t": {
+                                                    "scalar": "int"
+                                                  },
+                                                  "e": {
+                                                    "lit": {
+                                                      "int": 30
+                                                    }
+                                                  }
+                                                }
+                                              ]
+                                            }
+                                          }
+                                        },
+                                        "r": {
+                                          "t": "duration",
+                                          "e": {
+                                            "call": {
+                                              "f": "hours",
+                                              "args": [
+                                                {
+                                                  "t": {
+                                                    "scalar": "int"
+                                                  },
+                                                  "e": {
+                                                    "lit": {
+                                                      "int": 12
+                                                    }
+                                                  }
+                                                }
+                                              ]
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "r": {
+                                    "t": "duration",
+                                    "e": {
+                                      "call": {
+                                        "f": "minutes",
+                                        "args": [
+                                          {
+                                            "t": {
+                                              "scalar": "int"
+                                            },
+                                            "e": {
+                                              "lit": {
+                                                "int": 30
+                                              }
+                                            }
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            "r": {
+                              "t": "duration",
+                              "e": {
+                                "call": {
+                                  "f": "seconds",
+                                  "args": [
+                                    {
+                                      "t": {
+                                        "scalar": "int"
+                                      },
+                                      "e": {
+                                        "lit": {
+                                          "int": 1
+                                        }
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": "duration",
+                        "e": {
+                          "call": {
+                            "f": "ms",
+                            "args": [
+                              {
+                                "t": {
+                                  "scalar": "int"
+                                },
+                                "e": {
+                                  "lit": {
+                                    "int": 5
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "end",
+            "start"
+          ],
+          "reads_readonly": false,
+          "inherited_from": 0,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 35,
+            "col": 8
+          }
+        },
+        {
+          "name": "paidHasTime",
+          "id": "veld:app/Booking.paidHasTime@e84bd76f7c423aeb",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "implies",
+                "l": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "in",
+                      "l": {
+                        "t": {
+                          "decl": 7
+                        },
+                        "e": {
+                          "path": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "status",
+                                "wire": "status",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "list": {
+                            "decl": 7
+                          }
+                        },
+                        "e": {
+                          "list": [
+                            {
+                              "t": {
+                                "decl": 7
+                              },
+                              "e": {
+                                "lit": {
+                                  "enum": {
+                                    "decl": 7,
+                                    "name": "paid",
+                                    "wire": "paid"
+                                  }
+                                }
+                              }
+                            },
+                            {
+                              "t": {
+                                "decl": 7
+                              },
+                              "e": {
+                                "lit": {
+                                  "enum": {
+                                    "decl": 7,
+                                    "name": "checkedIn",
+                                    "wire": "CHECKED_IN"
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "has": {
+                      "root": "self",
+                      "steps": [
+                        {
+                          "name": "paidAt",
+                          "wire": "paidAt",
+                          "optional": true
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "status",
+            "paidAt"
+          ],
+          "reads_readonly": false,
+          "inherited_from": 0,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 36,
+            "col": 8
+          }
+        },
+        {
+          "name": "oldFits",
+          "id": "veld:app/Booking.oldFits@f83386ba8f618724",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "or",
+                "l": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "le",
+                      "l": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "path": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "guests",
+                                "wire": "guests",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "lit": {
+                            "int": 4
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "eq",
+                      "l": {
+                        "t": {
+                          "scalar": "string"
+                        },
+                        "e": {
+                          "path": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "tier",
+                                "wire": "tier",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "string"
+                        },
+                        "e": {
+                          "lit": {
+                            "string": "vip"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "guests",
+            "tier"
+          ],
+          "reads_readonly": false,
+          "inherited_from": 0,
+          "docs": null,
+          "deprecated": "use fits",
+          "origin": {
+            "file": "app.veld",
+            "line": 38,
+            "col": 8
+          }
+        },
+        {
+          "name": "fits",
+          "id": "veld:app/Booking.fits@181bd0b752675af7",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "or",
+                "l": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "le",
+                      "l": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "path": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "guests",
+                                "wire": "guests",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "lit": {
+                            "int": 4
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "not": {
+                      "t": {
+                        "scalar": "bool"
+                      },
+                      "e": {
+                        "bin": {
+                          "op": "ne",
+                          "l": {
+                            "t": {
+                              "scalar": "string"
+                            },
+                            "e": {
+                              "path": {
+                                "root": "self",
+                                "steps": [
+                                  {
+                                    "name": "tier",
+                                    "wire": "tier",
+                                    "optional": false
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          "r": {
+                            "t": {
+                              "scalar": "string"
+                            },
+                            "e": {
+                              "lit": {
+                                "string": "vip"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "guests",
+            "tier"
+          ],
+          "reads_readonly": false,
+          "inherited_from": 0,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 39,
+            "col": 8
+          }
+        },
+        {
+          "name": "shaped",
+          "id": "veld:app/Booking.shaped@0f3bbb4a5999126d",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "and",
+                "l": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "and",
+                      "l": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "bin": {
+                            "op": "and",
+                            "l": {
+                              "t": {
+                                "scalar": "bool"
+                              },
+                              "e": {
+                                "call": {
+                                  "f": "matches",
+                                  "args": [
+                                    {
+                                      "t": {
+                                        "scalar": "string"
+                                      },
+                                      "e": {
+                                        "path": {
+                                          "root": "self",
+                                          "steps": [
+                                            {
+                                              "name": "code",
+                                              "wire": "code",
+                                              "optional": false
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "t": {
+                                        "scalar": "string"
+                                      },
+                                      "e": {
+                                        "lit": {
+                                          "string": "^[A-Z]{3}-\\d{4}$"
+                                        }
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            "r": {
+                              "t": {
+                                "scalar": "bool"
+                              },
+                              "e": {
+                                "call": {
+                                  "f": "starts_with",
+                                  "args": [
+                                    {
+                                      "t": {
+                                        "scalar": "string"
+                                      },
+                                      "e": {
+                                        "path": {
+                                          "root": "self",
+                                          "steps": [
+                                            {
+                                              "name": "code",
+                                              "wire": "code",
+                                              "optional": false
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "t": {
+                                        "scalar": "string"
+                                      },
+                                      "e": {
+                                        "lit": {
+                                          "string": "ABC"
+                                        }
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "call": {
+                            "f": "ends_with",
+                            "args": [
+                              {
+                                "t": {
+                                  "scalar": "string"
+                                },
+                                "e": {
+                                  "path": {
+                                    "root": "self",
+                                    "steps": [
+                                      {
+                                        "name": "code",
+                                        "wire": "code",
+                                        "optional": false
+                                      }
+                                    ]
+                                  }
+                                }
+                              },
+                              {
+                                "t": {
+                                  "scalar": "string"
+                                },
+                                "e": {
+                                  "lit": {
+                                    "string": "9"
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "call": {
+                      "f": "contains",
+                      "args": [
+                        {
+                          "t": {
+                            "scalar": "string"
+                          },
+                          "e": {
+                            "path": {
+                              "root": "self",
+                              "steps": [
+                                {
+                                  "name": "code",
+                                  "wire": "code",
+                                  "optional": false
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "t": {
+                            "scalar": "string"
+                          },
+                          "e": {
+                            "lit": {
+                              "string": "-"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "code"
+          ],
+          "reads_readonly": false,
+          "inherited_from": 0,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 40,
+            "col": 8
+          }
+        },
+        {
+          "name": "sized",
+          "id": "veld:app/Booking.sized@10b156f126c225c6",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "and",
+                "l": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "and",
+                      "l": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "bin": {
+                            "op": "lt",
+                            "l": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "call": {
+                                  "f": "len",
+                                  "args": [
+                                    {
+                                      "t": {
+                                        "list": {
+                                          "scalar": "string"
+                                        }
+                                      },
+                                      "e": {
+                                        "path": {
+                                          "root": "self",
+                                          "steps": [
+                                            {
+                                              "name": "tags",
+                                              "wire": "tags",
+                                              "optional": false
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            "r": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "lit": {
+                                  "int": 3
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "bin": {
+                            "op": "eq",
+                            "l": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "call": {
+                                  "f": "len",
+                                  "args": [
+                                    {
+                                      "t": {
+                                        "scalar": "string"
+                                      },
+                                      "e": {
+                                        "path": {
+                                          "root": "self",
+                                          "steps": [
+                                            {
+                                              "name": "code",
+                                              "wire": "code",
+                                              "optional": false
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            "r": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "lit": {
+                                  "int": 8
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "ge",
+                      "l": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "call": {
+                            "f": "len",
+                            "args": [
+                              {
+                                "t": {
+                                  "map": {
+                                    "scalar": "int"
+                                  }
+                                },
+                                "e": {
+                                  "path": {
+                                    "root": "self",
+                                    "steps": [
+                                      {
+                                        "name": "limits",
+                                        "wire": "limits",
+                                        "optional": false
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "lit": {
+                            "int": 0
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "tags",
+            "code",
+            "limits"
+          ],
+          "reads_readonly": false,
+          "inherited_from": 0,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 41,
+            "col": 8
+          }
+        },
+        {
+          "name": "keyed",
+          "id": "veld:app/Booking.keyed@0c56e6af9aef91dd",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "and",
+                "l": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "in",
+                      "l": {
+                        "t": {
+                          "scalar": "string"
+                        },
+                        "e": {
+                          "lit": {
+                            "string": "max"
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "map": {
+                            "scalar": "int"
+                          }
+                        },
+                        "e": {
+                          "path": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "limits",
+                                "wire": "limits",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "in",
+                      "l": {
+                        "t": {
+                          "scalar": "string"
+                        },
+                        "e": {
+                          "lit": {
+                            "string": "gift"
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "list": {
+                            "scalar": "string"
+                          }
+                        },
+                        "e": {
+                          "path": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "tags",
+                                "wire": "tags",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "limits",
+            "tags"
+          ],
+          "reads_readonly": false,
+          "inherited_from": 0,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 42,
+            "col": 8
+          }
+        },
+        {
+          "name": "sums",
+          "id": "veld:app/Booking.sums@a26e5b8f92b0bde9",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "and",
+                "l": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "eq",
+                      "l": {
+                        "t": {
+                          "scalar": "decimal"
+                        },
+                        "e": {
+                          "quant": {
+                            "q": "sum",
+                            "list": {
+                              "t": {
+                                "list": {
+                                  "decl": 2
+                                }
+                              },
+                              "e": {
+                                "path": {
+                                  "root": "self",
+                                  "steps": [
+                                    {
+                                      "name": "items",
+                                      "wire": "items",
+                                      "optional": false
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            "var": "i",
+                            "body": {
+                              "t": {
+                                "scalar": "decimal"
+                              },
+                              "e": {
+                                "bin": {
+                                  "op": "mul",
+                                  "l": {
+                                    "t": {
+                                      "scalar": "decimal"
+                                    },
+                                    "e": {
+                                      "path": {
+                                        "root": {
+                                          "var": "i"
+                                        },
+                                        "steps": [
+                                          {
+                                            "name": "price",
+                                            "wire": "price",
+                                            "optional": false
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  },
+                                  "r": {
+                                    "t": {
+                                      "scalar": "decimal"
+                                    },
+                                    "e": {
+                                      "widen": {
+                                        "t": {
+                                          "scalar": "int"
+                                        },
+                                        "e": {
+                                          "path": {
+                                            "root": {
+                                              "var": "i"
+                                            },
+                                            "steps": [
+                                              {
+                                                "name": "qty",
+                                                "wire": "qty",
+                                                "optional": false
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "decimal"
+                        },
+                        "e": {
+                          "path": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "total",
+                                "wire": "total",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "ge",
+                      "l": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "quant": {
+                            "q": "count",
+                            "list": {
+                              "t": {
+                                "list": {
+                                  "decl": 2
+                                }
+                              },
+                              "e": {
+                                "path": {
+                                  "root": "self",
+                                  "steps": [
+                                    {
+                                      "name": "items",
+                                      "wire": "items",
+                                      "optional": false
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            "var": "i",
+                            "body": {
+                              "t": {
+                                "scalar": "bool"
+                              },
+                              "e": {
+                                "bin": {
+                                  "op": "gt",
+                                  "l": {
+                                    "t": {
+                                      "scalar": "int"
+                                    },
+                                    "e": {
+                                      "path": {
+                                        "root": {
+                                          "var": "i"
+                                        },
+                                        "steps": [
+                                          {
+                                            "name": "qty",
+                                            "wire": "qty",
+                                            "optional": false
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  },
+                                  "r": {
+                                    "t": {
+                                      "scalar": "int"
+                                    },
+                                    "e": {
+                                      "lit": {
+                                        "int": 0
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "lit": {
+                            "int": 1
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "items",
+            "total"
+          ],
+          "reads_readonly": false,
+          "inherited_from": 0,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 43,
+            "col": 8
+          }
+        },
+        {
+          "name": "quantified",
+          "id": "veld:app/Booking.quantified@fa2228130ee114a1",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "and",
+                "l": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "quant": {
+                      "q": "all",
+                      "list": {
+                        "t": {
+                          "list": {
+                            "decl": 2
+                          }
+                        },
+                        "e": {
+                          "path": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "items",
+                                "wire": "items",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "var": "i",
+                      "body": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "bin": {
+                            "op": "gt",
+                            "l": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "path": {
+                                  "root": {
+                                    "var": "i"
+                                  },
+                                  "steps": [
+                                    {
+                                      "name": "qty",
+                                      "wire": "qty",
+                                      "optional": false
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            "r": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "lit": {
+                                  "int": 0
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "quant": {
+                      "q": "any",
+                      "list": {
+                        "t": {
+                          "list": {
+                            "decl": 2
+                          }
+                        },
+                        "e": {
+                          "path": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "items",
+                                "wire": "items",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "var": "i",
+                      "body": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "bin": {
+                            "op": "gt",
+                            "l": {
+                              "t": {
+                                "scalar": "decimal"
+                              },
+                              "e": {
+                                "path": {
+                                  "root": {
+                                    "var": "i"
+                                  },
+                                  "steps": [
+                                    {
+                                      "name": "price",
+                                      "wire": "price",
+                                      "optional": false
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            "r": {
+                              "t": {
+                                "scalar": "decimal"
+                              },
+                              "e": {
+                                "lit": {
+                                  "decimal": "1.5"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "items"
+          ],
+          "reads_readonly": false,
+          "inherited_from": 0,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 44,
+            "col": 8
+          }
+        },
+        {
+          "name": "arithmetic",
+          "id": "veld:app/Booking.arithmetic@19342f7ea507b818",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "eq",
+                "l": {
+                  "t": {
+                    "scalar": "int"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "sub",
+                      "l": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "bin": {
+                            "op": "mul",
+                            "l": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "bin": {
+                                  "op": "add",
+                                  "l": {
+                                    "t": {
+                                      "scalar": "int"
+                                    },
+                                    "e": {
+                                      "path": {
+                                        "root": "self",
+                                        "steps": [
+                                          {
+                                            "name": "score",
+                                            "wire": "score",
+                                            "optional": false
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  },
+                                  "r": {
+                                    "t": {
+                                      "scalar": "int"
+                                    },
+                                    "e": {
+                                      "lit": {
+                                        "int": 1
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            "r": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "lit": {
+                                  "int": 2
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "bin": {
+                            "op": "rem",
+                            "l": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "bin": {
+                                  "op": "div",
+                                  "l": {
+                                    "t": {
+                                      "scalar": "int"
+                                    },
+                                    "e": {
+                                      "lit": {
+                                        "int": 3
+                                      }
+                                    }
+                                  },
+                                  "r": {
+                                    "t": {
+                                      "scalar": "int"
+                                    },
+                                    "e": {
+                                      "lit": {
+                                        "int": 1
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            "r": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "lit": {
+                                  "int": 5
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "int"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "add",
+                      "l": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "neg": {
+                            "t": {
+                              "scalar": "int"
+                            },
+                            "e": {
+                              "path": {
+                                "root": "self",
+                                "steps": [
+                                  {
+                                    "name": "score",
+                                    "wire": "score",
+                                    "optional": false
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "lit": {
+                            "int": 7
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "score"
+          ],
+          "reads_readonly": false,
+          "inherited_from": 0,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 45,
+            "col": 8
+          }
+        },
+        {
+          "name": "widened",
+          "id": "veld:app/Booking.widened@484a599dcce5c771",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "and",
+                "l": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "and",
+                      "l": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "bin": {
+                            "op": "and",
+                            "l": {
+                              "t": {
+                                "scalar": "bool"
+                              },
+                              "e": {
+                                "bin": {
+                                  "op": "lt",
+                                  "l": {
+                                    "t": {
+                                      "scalar": "long"
+                                    },
+                                    "e": {
+                                      "widen": {
+                                        "t": {
+                                          "scalar": "int"
+                                        },
+                                        "e": {
+                                          "path": {
+                                            "root": "self",
+                                            "steps": [
+                                              {
+                                                "name": "score",
+                                                "wire": "score",
+                                                "optional": false
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "r": {
+                                    "t": {
+                                      "scalar": "long"
+                                    },
+                                    "e": {
+                                      "path": {
+                                        "root": "self",
+                                        "steps": [
+                                          {
+                                            "name": "big",
+                                            "wire": "big",
+                                            "optional": false
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            "r": {
+                              "t": {
+                                "scalar": "bool"
+                              },
+                              "e": {
+                                "bin": {
+                                  "op": "lt",
+                                  "l": {
+                                    "t": {
+                                      "scalar": "float"
+                                    },
+                                    "e": {
+                                      "bin": {
+                                        "op": "mul",
+                                        "l": {
+                                          "t": {
+                                            "scalar": "float"
+                                          },
+                                          "e": {
+                                            "widen": {
+                                              "t": {
+                                                "scalar": "int"
+                                              },
+                                              "e": {
+                                                "path": {
+                                                  "root": "self",
+                                                  "steps": [
+                                                    {
+                                                      "name": "score",
+                                                      "wire": "score",
+                                                      "optional": false
+                                                    }
+                                                  ]
+                                                }
+                                              }
+                                            }
+                                          }
+                                        },
+                                        "r": {
+                                          "t": {
+                                            "scalar": "float"
+                                          },
+                                          "e": {
+                                            "path": {
+                                              "root": "self",
+                                              "steps": [
+                                                {
+                                                  "name": "ratio",
+                                                  "wire": "ratio",
+                                                  "optional": false
+                                                }
+                                              ]
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "r": {
+                                    "t": {
+                                      "scalar": "float"
+                                    },
+                                    "e": {
+                                      "lit": {
+                                        "float": 1.5
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "bin": {
+                            "op": "lt",
+                            "l": {
+                              "t": {
+                                "scalar": "long"
+                              },
+                              "e": {
+                                "path": {
+                                  "root": "self",
+                                  "steps": [
+                                    {
+                                      "name": "big",
+                                      "wire": "big",
+                                      "optional": false
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            "r": {
+                              "t": {
+                                "scalar": "long"
+                              },
+                              "e": {
+                                "lit": {
+                                  "long": "5000000000"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "le",
+                      "l": {
+                        "t": {
+                          "scalar": "decimal"
+                        },
+                        "e": {
+                          "bin": {
+                            "op": "mul",
+                            "l": {
+                              "t": {
+                                "scalar": "decimal"
+                              },
+                              "e": {
+                                "widen": {
+                                  "t": {
+                                    "scalar": "int"
+                                  },
+                                  "e": {
+                                    "path": {
+                                      "root": "self",
+                                      "steps": [
+                                        {
+                                          "name": "score",
+                                          "wire": "score",
+                                          "optional": false
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            "r": {
+                              "t": {
+                                "scalar": "decimal"
+                              },
+                              "e": {
+                                "path": {
+                                  "root": "self",
+                                  "steps": [
+                                    {
+                                      "name": "total",
+                                      "wire": "total",
+                                      "optional": false
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "decimal"
+                        },
+                        "e": {
+                          "lit": {
+                            "decimal": "100"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "score",
+            "big",
+            "ratio",
+            "total"
+          ],
+          "reads_readonly": false,
+          "inherited_from": 0,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 46,
+            "col": 8
+          }
+        },
+        {
+          "name": "negated",
+          "id": "veld:app/Booking.negated@731d11f9bb53daf1",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "or",
+                "l": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "not": {
+                      "t": {
+                        "scalar": "bool"
+                      },
+                      "e": {
+                        "bin": {
+                          "op": "gt",
+                          "l": {
+                            "t": {
+                              "scalar": "int"
+                            },
+                            "e": {
+                              "path": {
+                                "root": "self",
+                                "steps": [
+                                  {
+                                    "name": "guests",
+                                    "wire": "guests",
+                                    "optional": false
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          "r": {
+                            "t": {
+                              "scalar": "int"
+                            },
+                            "e": {
+                              "lit": {
+                                "int": 0
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "and",
+                      "l": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "bin": {
+                            "op": "eq",
+                            "l": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "path": {
+                                  "root": "self",
+                                  "steps": [
+                                    {
+                                      "name": "guests",
+                                      "wire": "guests",
+                                      "optional": false
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            "r": {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "lit": {
+                                  "int": 1
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "scalar": "bool"
+                        },
+                        "e": {
+                          "lit": {
+                            "bool": true
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "guests"
+          ],
+          "reads_readonly": false,
+          "inherited_from": 0,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 47,
+            "col": 8
+          }
+        },
+        {
+          "name": "listed",
+          "id": "veld:app/Booking.listed@4425dfcbff6d8055",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "and",
+                "l": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "bin": {
+                      "op": "in",
+                      "l": {
+                        "t": {
+                          "scalar": "int"
+                        },
+                        "e": {
+                          "path": {
+                            "root": "self",
+                            "steps": [
+                              {
+                                "name": "score",
+                                "wire": "score",
+                                "optional": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "r": {
+                        "t": {
+                          "list": {
+                            "scalar": "int"
+                          }
+                        },
+                        "e": {
+                          "list": [
+                            {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "lit": {
+                                  "int": 1
+                                }
+                              }
+                            },
+                            {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "lit": {
+                                  "int": 2
+                                }
+                              }
+                            },
+                            {
+                              "t": {
+                                "scalar": "int"
+                              },
+                              "e": {
+                                "lit": {
+                                  "int": 3
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "bool"
+                  },
+                  "e": {
+                    "not": {
+                      "t": {
+                        "scalar": "bool"
+                      },
+                      "e": {
+                        "lit": {
+                          "bool": false
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "score"
+          ],
+          "reads_readonly": false,
+          "inherited_from": 0,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 48,
+            "col": 8
+          }
+        },
+        {
+          "name": "extraPositive",
+          "id": "veld:app/Child.extraPositive@779fac95919209d8",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "gt",
+                "l": {
+                  "t": {
+                    "scalar": "int"
+                  },
+                  "e": {
+                    "path": {
+                      "root": "self",
+                      "steps": [
+                        {
+                          "name": "extra",
+                          "wire": "extra",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "int"
+                  },
+                  "e": {
+                    "lit": {
+                      "int": 0
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "extra"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 53,
+            "col": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "package": 0,
+      "module": "app",
+      "name": "Item",
+      "qualified": "app:app.Item",
+      "sig": "veld:app/Item@2fa3ff9cbbc3f6bd",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 10,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "sku",
+          "wire": "sku",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 11,
+            "col": 3
+          }
+        },
+        {
+          "name": "qty",
+          "wire": "qty",
+          "type": {
+            "scalar": "int"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 12,
+            "col": 3
+          }
+        },
+        {
+          "name": "price",
+          "wire": "price",
+          "type": {
+            "scalar": "decimal"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 13,
+            "col": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "package": 0,
+      "module": "app",
+      "name": "LIMIT",
+      "qualified": "app:app.LIMIT",
+      "sig": "veld:app/LIMIT@01e6cff42c5e1c88",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 6,
+        "col": 7
+      },
+      "kind": "const",
+      "type": {
+        "scalar": "long"
+      },
+      "value": {
+        "lit": "int",
+        "value": 5000000000
+      }
+    },
+    {
+      "id": 4,
+      "package": 0,
+      "module": "app",
+      "name": "MAX_GUESTS",
+      "qualified": "app:app.MAX_GUESTS",
+      "sig": "veld:app/MAX_GUESTS@f82843e5c958afa0",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 3,
+        "col": 7
+      },
+      "kind": "const",
+      "type": {
+        "scalar": "int"
+      },
+      "value": {
+        "lit": "int",
+        "value": 4
+      }
+    },
+    {
+      "id": 5,
+      "package": 0,
+      "module": "app",
+      "name": "RATE",
+      "qualified": "app:app.RATE",
+      "sig": "veld:app/RATE@ee182275052c1baf",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 5,
+        "col": 7
+      },
+      "kind": "const",
+      "type": {
+        "scalar": "decimal"
+      },
+      "value": {
+        "lit": "string",
+        "value": "1.5"
+      }
+    },
+    {
+      "id": 6,
+      "package": 0,
+      "module": "app",
+      "name": "Rejected",
+      "qualified": "app:app.Rejected",
+      "sig": "veld:app/Rejected@d7b7e8e756350205",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 56,
+        "col": 7
+      },
+      "kind": "error",
+      "default_status": 422,
+      "parent": null,
+      "fields": [
+        {
+          "name": "reason",
+          "wire": "reason",
+          "type": {
+            "scalar": "string"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 57,
+            "col": 3
+          }
+        }
+      ],
+      "rules": [
+        {
+          "name": "reasoned",
+          "id": "veld:app/Rejected.reasoned@c88299182f8d8685",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "gt",
+                "l": {
+                  "t": {
+                    "scalar": "int"
+                  },
+                  "e": {
+                    "call": {
+                      "f": "len",
+                      "args": [
+                        {
+                          "t": {
+                            "scalar": "string"
+                          },
+                          "e": {
+                            "path": {
+                              "root": "self",
+                              "steps": [
+                                {
+                                  "name": "reason",
+                                  "wire": "reason",
+                                  "optional": false
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "int"
+                  },
+                  "e": {
+                    "lit": {
+                      "int": 0
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "reason"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 58,
+            "col": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "package": 0,
+      "module": "app",
+      "name": "Status",
+      "qualified": "app:app.Status",
+      "sig": "veld:app/Status@d3fb069ccf17599c",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 8,
+        "col": 6
+      },
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "pending",
+          "wire": "pending",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "paid",
+          "wire": "paid",
+          "docs": null,
+          "deprecated": null
+        },
+        {
+          "name": "checkedIn",
+          "wire": "CHECKED_IN",
+          "docs": null,
+          "deprecated": null
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "package": 0,
+      "module": "app",
+      "name": "VIP",
+      "qualified": "app:app.VIP",
+      "sig": "veld:app/VIP@b78a9a8762562c74",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 4,
+        "col": 7
+      },
+      "kind": "const",
+      "type": {
+        "scalar": "string"
+      },
+      "value": {
+        "lit": "string",
+        "value": "vip"
+      }
+    }
+  ],
+  "services": [],
+  "consumes": {}
+}

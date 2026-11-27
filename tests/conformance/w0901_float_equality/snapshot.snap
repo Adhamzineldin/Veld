@@ -1,0 +1,286 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+warning[W0901]: `==` and `!=` on `float` compare bits exactly
+ --> app/app.veld:4:14
+  |
+4 |   rule same: a == b
+  |              ^^^^^^
+  = help: compare with `<` and `>` against a bound, or use `decimal`
+
+warning[W0901]: `==` and `!=` on `float` compare bits exactly
+ --> app/app.veld:5:17
+  |
+5 |   rule differs: a != 0.5
+  |                 ^^^^^^^^
+  = help: compare with `<` and `>` against a bound, or use `decimal`
+
+== ir ==
+{
+  "ir_version": "1.1",
+  "packages": [
+    {
+      "id": 0,
+      "name": "app",
+      "kind": "service"
+    }
+  ],
+  "decls": [
+    {
+      "id": 0,
+      "package": 0,
+      "module": "app",
+      "name": "Floats",
+      "qualified": "app:app.Floats",
+      "sig": "veld:app/Floats@b92cd42119990a37",
+      "docs": null,
+      "deprecated": null,
+      "origin": {
+        "file": "app.veld",
+        "line": 1,
+        "col": 7
+      },
+      "kind": "model",
+      "parent": null,
+      "fields": [
+        {
+          "name": "a",
+          "wire": "a",
+          "type": {
+            "scalar": "float"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 2,
+            "col": 3
+          }
+        },
+        {
+          "name": "b",
+          "wire": "b",
+          "type": {
+            "scalar": "float"
+          },
+          "optional": false,
+          "default": null,
+          "readonly": false,
+          "inherited_from": null,
+          "constraints": {
+            "min": null,
+            "max": null,
+            "min_len": null,
+            "max_len": null,
+            "pattern": null,
+            "format": null
+          },
+          "example": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 3,
+            "col": 3
+          }
+        }
+      ],
+      "rules": [
+        {
+          "name": "same",
+          "id": "veld:app/Floats.same@1d560cfff41afd9a",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "eq",
+                "l": {
+                  "t": {
+                    "scalar": "float"
+                  },
+                  "e": {
+                    "path": {
+                      "root": "self",
+                      "steps": [
+                        {
+                          "name": "a",
+                          "wire": "a",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "float"
+                  },
+                  "e": {
+                    "path": {
+                      "root": "self",
+                      "steps": [
+                        {
+                          "name": "b",
+                          "wire": "b",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "a",
+            "b"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 4,
+            "col": 8
+          }
+        },
+        {
+          "name": "differs",
+          "id": "veld:app/Floats.differs@1eb05c526298ddbd",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "ne",
+                "l": {
+                  "t": {
+                    "scalar": "float"
+                  },
+                  "e": {
+                    "path": {
+                      "root": "self",
+                      "steps": [
+                        {
+                          "name": "a",
+                          "wire": "a",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "float"
+                  },
+                  "e": {
+                    "lit": {
+                      "float": 0.5
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "a"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 5,
+            "col": 8
+          }
+        },
+        {
+          "name": "fine",
+          "id": "veld:app/Floats.fine@d62ba286e0cce985",
+          "expr": {
+            "t": {
+              "scalar": "bool"
+            },
+            "e": {
+              "bin": {
+                "op": "lt",
+                "l": {
+                  "t": {
+                    "scalar": "float"
+                  },
+                  "e": {
+                    "path": {
+                      "root": "self",
+                      "steps": [
+                        {
+                          "name": "a",
+                          "wire": "a",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                },
+                "r": {
+                  "t": {
+                    "scalar": "float"
+                  },
+                  "e": {
+                    "path": {
+                      "root": "self",
+                      "steps": [
+                        {
+                          "name": "b",
+                          "wire": "b",
+                          "optional": false
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "message": null,
+          "reads": [
+            "a",
+            "b"
+          ],
+          "reads_readonly": false,
+          "inherited_from": null,
+          "docs": null,
+          "deprecated": null,
+          "origin": {
+            "file": "app.veld",
+            "line": 6,
+            "col": 8
+          }
+        }
+      ]
+    }
+  ],
+  "services": [],
+  "consumes": {}
+}

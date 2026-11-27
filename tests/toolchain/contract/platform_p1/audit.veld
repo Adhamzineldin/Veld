@@ -1,0 +1,46 @@
+// The audit log (spec/platform.md section 4), the contract of the shared toolchain tests of the
+// Node, Java and Rust servers. Every endpoint says which case it is for.
+
+model User {
+  id: uuid
+  // Left out of the event, and listed.
+  email: string @pii
+}
+
+principal User
+
+model Note {
+  id: uuid
+  text: string
+  // Left out of the event, and listed, wherever it is: a parameter, a fact, a result.
+  secret?: string @secret
+}
+
+@auth(bearer)
+service Notes at "/notes" {
+  // A success: the result is in the event, without the secret.
+  @audited
+  get "/{id}" getNote(id: uuid) -> Note
+
+  // A parameter with a secret: the body is in the event, without it.
+  @audited
+  post "/" addNote(body: Note) -> 201 Note
+
+  // A fact: it is in the event in wire form, and the clock is read once for the whole request.
+  @audited
+  get "/fact/{id}" viaFact(id: uuid) -> Note {
+    fact note: Note = id
+  }
+
+  // A handler that throws: the caller gets a 500 and the event records it, with no result.
+  @audited
+  get "/boom/{id}" boom(id: uuid) -> Note
+
+  // A deadline: the 504 is recorded too.
+  @audited
+  @timeout(ms(30))
+  get "/slow/{id}" slow(id: uuid) -> Note
+
+  // Not audited: the hook is not called.
+  get "/quiet/{id}" quiet(id: uuid) -> Note
+}

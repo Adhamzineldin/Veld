@@ -60,6 +60,9 @@ impl Layout {
     pub fn build(src: &str, file: &ast::File, comments: &[Comment]) -> Layout {
         let mut kids: Vec<Node> = file.uses.iter().map(use_node).collect();
         kids.extend(file.decls.iter().map(decl_node));
+        kids.extend(file.examples.iter().map(example_node));
+        kids.extend(file.policies.iter().map(policy_node));
+        kids.extend(file.principals.iter().map(principal_node));
         kids.sort_by_key(|n| n.start);
         let mut b = Builder {
             src,
@@ -205,21 +208,9 @@ fn leaf(start: u32, kw: u32, end: u32) -> Node {
 
 fn decl_kids(d: &ast::Decl) -> (bool, Vec<Node>) {
     match &d.kind {
-        DeclKind::Model(m) => (true, m.fields.iter().map(field_node).collect()),
-        DeclKind::Error(e) => (true, e.fields.iter().map(field_node).collect()),
-        DeclKind::Enum(e) => (
-            true,
-            e.variants
-                .iter()
-                .map(|v| {
-                    leaf(
-                        first_start(v.span.start, &v.docs, &v.annotations),
-                        v.span.start,
-                        v.span.end,
-                    )
-                })
-                .collect(),
-        ),
+        DeclKind::Model(m) => (true, member_nodes(&m.fields, &m.rules)),
+        DeclKind::Error(e) => (true, member_nodes(&e.fields, &e.rules)),
+        DeclKind::Enum(e) => (true, enum_nodes(e)),
         DeclKind::Union(u) => (
             true,
             u.arms
@@ -227,21 +218,264 @@ fn decl_kids(d: &ast::Decl) -> (bool, Vec<Node>) {
                 .map(|a| leaf(a.span.start, a.span.start, a.span.end))
                 .collect(),
         ),
-        DeclKind::Service(s) => (
-            true,
-            s.endpoints
-                .iter()
-                .map(|e| {
-                    leaf(
-                        first_start(e.span.start, &e.docs, &e.annotations),
-                        e.span.start,
-                        e.span.end,
-                    )
-                })
-                .collect(),
-        ),
+        DeclKind::Service(s) => (true, service_nodes(s)),
+        DeclKind::Event(e) => (true, member_nodes(&e.fields, &e.rules)),
+        DeclKind::Channel(c) => (true, channel_nodes(c)),
         DeclKind::Const(_) => (false, vec![]),
     }
+}
+
+/// Endpoints, `publishes` lines and `subscribes` blocks of a service, in source order (the
+/// printer regroups them).
+fn service_nodes(s: &ast::ServiceDecl) -> Vec<Node> {
+    let mut nodes: Vec<Node> = s.endpoints.iter().map(endpoint_node).collect();
+    nodes.extend(
+        s.publishes
+            .iter()
+            .map(|p| leaf(p.span.start, p.span.start, p.span.end)),
+    );
+    nodes.extend(s.subscribes.iter().map(subscribes_node));
+    nodes.sort_by_key(|n| n.start);
+    nodes
+}
+
+/// A subscription is a braced node whose children are its `on` lines.
+fn subscribes_node(s: &ast::Subscribes) -> Node {
+    Node {
+        start: s.span.start,
+        kw: s.span.start,
+        anchor: s.span.start,
+        end: s.span.end,
+        braced: true,
+        kids: s
+            .handlers
+            .iter()
+            .map(|h| leaf(on_key(h), h.span.start, h.span.end))
+            .collect(),
+    }
+}
+
+pub(super) fn on_key(h: &ast::OnLine) -> u32 {
+    first_start(h.span.start, &h.docs, &[])
+}
+
+/// The `carries` and `key` lines of a channel, in source order.
+fn channel_nodes(c: &ast::ChannelDecl) -> Vec<Node> {
+    let mut nodes: Vec<Node> = c
+        .carries
+        .iter()
+        .map(|x| leaf(x.span.start, x.span.start, x.span.end))
+        .collect();
+    nodes.extend(
+        c.keys
+            .iter()
+            .map(|k| leaf(k.span.start, k.span.start, k.span.end)),
+    );
+    nodes.sort_by_key(|n| n.start);
+    nodes
+}
+
+/// Variants, flows and finals of an enum body, in source order (the printer regroups them).
+fn enum_nodes(e: &ast::EnumDecl) -> Vec<Node> {
+    let mut nodes: Vec<Node> = e
+        .variants
+        .iter()
+        .map(|v| {
+            leaf(
+                first_start(v.span.start, &v.docs, &v.annotations),
+                v.span.start,
+                v.span.end,
+            )
+        })
+        .collect();
+    nodes.extend(
+        e.flows
+            .iter()
+            .map(|f| leaf(f.span.start, f.span.start, f.span.end)),
+    );
+    nodes.extend(
+        e.finals
+            .iter()
+            .map(|f| leaf(f.span.start, f.span.start, f.span.end)),
+    );
+    nodes.sort_by_key(|n| n.start);
+    nodes
+}
+
+/// An endpoint is a leaf, or a braced node holding the statements of its block. The header
+/// comment of the block is the one on the line of its `{`.
+fn endpoint_node(e: &ast::Endpoint) -> Node {
+    let start = first_start(e.span.start, &e.docs, &e.annotations);
+    if let Some(saga) = &e.saga {
+        return saga_node(start, e, saga);
+    }
+    let Some(block) = &e.block else {
+        return leaf(start, e.span.start, e.span.end);
+    };
+    Node {
+        start,
+        kw: e.span.start,
+        anchor: block.span.start,
+        end: e.span.end,
+        braced: true,
+        kids: block
+            .stmts
+            .iter()
+            .map(|s| leaf(s.start(), stmt_kw(s), stmt_end(s)))
+            .collect(),
+    }
+}
+
+/// A saga endpoint: a braced node whose children are its steps and its `timeout`. The header
+/// comment of the block is the one on the line of its `{`.
+fn saga_node(start: u32, e: &ast::Endpoint, saga: &ast::SagaDecl) -> Node {
+    let mut kids: Vec<Node> = saga
+        .steps
+        .iter()
+        .map(|s| leaf(s.span.start, s.span.start, s.span.end))
+        .collect();
+    if let Some(t) = &saga.timeout {
+        kids.push(leaf(t.span.start, t.span.start, t.span.end));
+    }
+    Node {
+        start,
+        kw: e.span.start,
+        anchor: saga.open.start,
+        end: e.span.end,
+        braced: true,
+        kids,
+    }
+}
+
+fn stmt_kw(s: &ast::Stmt) -> u32 {
+    match s {
+        ast::Stmt::Fact(f) => f.span.start,
+        ast::Stmt::Require(r) => r.span.start,
+        ast::Stmt::Ensure(e) => e.span.start,
+        ast::Stmt::Transition(t) => t.span.start,
+        ast::Stmt::Allow(a) => a.span.start,
+    }
+}
+
+fn stmt_end(s: &ast::Stmt) -> u32 {
+    match s {
+        ast::Stmt::Fact(f) => f.span.end,
+        ast::Stmt::Require(r) => r.span.end,
+        ast::Stmt::Ensure(e) => e.span.end,
+        ast::Stmt::Transition(t) => t.span.end,
+        ast::Stmt::Allow(a) => a.span.end,
+    }
+}
+
+/// A policy: a braced node whose children are its clauses.
+fn policy_node(p: &ast::PolicyDecl) -> Node {
+    Node {
+        start: policy_key(p),
+        kw: p.span.start,
+        anchor: p.span.start,
+        end: p.span.end,
+        braced: true,
+        kids: p
+            .clauses
+            .iter()
+            .map(|c| leaf(c.span.start, c.span.start, c.span.end))
+            .collect(),
+    }
+}
+
+pub(super) fn policy_key(p: &ast::PolicyDecl) -> u32 {
+    first_start(p.span.start, &p.docs, &[])
+}
+
+fn principal_node(p: &ast::PrincipalDecl) -> Node {
+    leaf(principal_key(p), p.span.start, p.span.end)
+}
+
+pub(super) fn principal_key(p: &ast::PrincipalDecl) -> u32 {
+    first_start(p.span.start, &p.docs, &[])
+}
+
+/// An example: a braced node whose children are its givens, principal, clock and call.
+fn example_node(x: &ast::Example) -> Node {
+    let mut kids: Vec<Node> = x
+        .givens
+        .iter()
+        .map(|g| leaf(g.span.start, g.span.start, g.span.end))
+        .collect();
+    if let Some(s) = &x.saga {
+        kids.extend(
+            s.givens
+                .iter()
+                .map(|g| leaf(g.span.start, g.span.start, g.span.end)),
+        );
+        if let Some(e) = &s.expect {
+            kids.push(leaf(e.span.start, e.span.start, e.span.end));
+        }
+    }
+    if let Some(p) = &x.principal {
+        kids.push(leaf(p.span.start, p.span.start, p.span.end));
+    }
+    if let Some(a) = &x.at {
+        kids.push(leaf(a.span.start, a.span.start, a.span.end));
+    }
+    match &x.body {
+        ast::ExampleBody::Call(c) => {
+            if let Some(i) = &c.if_match {
+                kids.push(leaf(i.span.start, i.span.start, i.span.end));
+            }
+            if let Some(k) = &c.key {
+                kids.push(leaf(k.span.start, k.span.start, k.span.end));
+            }
+            kids.push(leaf(c.span.start, c.span.start, c.span.end));
+            kids.extend(
+                c.emitted
+                    .iter()
+                    .map(|x| leaf(x.span.start, x.span.start, x.span.end)),
+            );
+        }
+        ast::ExampleBody::Event(e) => {
+            let given_end = e
+                .channel
+                .as_ref()
+                .map_or(e.value.span.end, |c| c.span.end.max(e.value.span.end));
+            kids.push(leaf(e.span.start, e.span.start, given_end));
+            kids.extend(
+                e.expects
+                    .iter()
+                    .map(|x| leaf(x.span.start, x.span.start, x.span.end)),
+            );
+        }
+    }
+    kids.sort_by_key(|n| n.start);
+    Node {
+        start: example_key(x),
+        kw: x.span.start,
+        anchor: x.span.start,
+        end: x.span.end,
+        braced: true,
+        kids,
+    }
+}
+
+pub(super) fn example_key(x: &ast::Example) -> u32 {
+    first_start(x.span.start, &x.docs, &[])
+}
+
+/// Fields and rules of a body, in source order (the printer regroups them, the comments stay
+/// with their own item).
+fn member_nodes(fields: &[ast::Field], rules: &[ast::Rule]) -> Vec<Node> {
+    let mut nodes: Vec<Node> = fields.iter().map(field_node).collect();
+    nodes.extend(rules.iter().map(rule_node));
+    nodes.sort_by_key(|n| n.start);
+    nodes
+}
+
+fn rule_node(r: &ast::Rule) -> Node {
+    leaf(
+        first_start(r.span.start, &r.docs, &r.annotations),
+        r.span.start,
+        r.span.end,
+    )
 }
 
 fn field_node(f: &ast::Field) -> Node {
@@ -277,6 +511,10 @@ pub(super) fn decl_key(d: &ast::Decl) -> u32 {
 
 pub(super) fn field_key(f: &ast::Field) -> u32 {
     field_node(f).start
+}
+
+pub(super) fn rule_key(r: &ast::Rule) -> u32 {
+    rule_node(r).start
 }
 
 pub(super) fn variant_key(v: &ast::Variant) -> u32 {

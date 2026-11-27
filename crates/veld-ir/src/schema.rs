@@ -23,6 +23,10 @@ pub enum T {
     Nullable(&'static T),
     /// The key may be absent.
     Optional(&'static T),
+    /// Any one of these types.
+    Union(&'static [T]),
+    /// Exactly this string.
+    Lit(&'static str),
 }
 
 pub type Fields = &'static [(&'static str, T)];
@@ -66,9 +70,14 @@ impl Def {
 const ORIGIN: T = T::Ref("Origin");
 const DECL_ID: T = T::Ref("DeclId");
 const OPT_STR: T = T::Nullable(&T::Str);
+/// Omitted from the JSON when empty (`spec/rules.md` section 13).
+const RULES: T = T::Optional(&T::List(&T::Ref("Rule")));
+const EXPR: T = T::Ref("Expr");
 const MODEL_FIELDS: Fields = &[
     ("parent", T::Nullable(&DECL_ID)),
     ("fields", T::List(&T::Ref("Field"))),
+    ("rules", RULES),
+    ("retain", T::Optional(&T::Ref("Retain"))),
 ];
 
 const DECL_COMMON: Fields = &[
@@ -91,9 +100,17 @@ const DECL_KINDS: &[(&str, Fields)] = &[
             ("default_status", T::Nullable(&T::Num)),
             ("parent", T::Nullable(&DECL_ID)),
             ("fields", T::List(&T::Ref("Field"))),
+            ("rules", RULES),
         ],
     ),
-    ("enum", &[("variants", T::List(&T::Ref("Variant")))]),
+    (
+        "enum",
+        &[
+            ("variants", T::List(&T::Ref("Variant"))),
+            ("flows", T::Optional(&T::List(&T::Ref("Flow")))),
+            ("finals", T::Optional(&T::List(&T::Str))),
+        ],
+    ),
     (
         "union",
         &[
@@ -105,6 +122,14 @@ const DECL_KINDS: &[(&str, Fields)] = &[
         "const",
         &[("type", T::Ref("Type")), ("value", T::Ref("Literal"))],
     ),
+    (
+        "event",
+        &[
+            ("fields", T::List(&T::Ref("Field"))),
+            ("rules", RULES),
+            ("rules_digest", T::Optional(&T::Str)),
+        ],
+    ),
 ];
 
 const FIELD: Fields = &[
@@ -114,6 +139,15 @@ const FIELD: Fields = &[
     ("optional", T::Bool),
     ("default", T::Nullable(&T::Ref("Literal"))),
     ("readonly", T::Bool),
+    ("version", T::Optional(&T::Bool)),
+    ("derived", T::Optional(&EXPR)),
+    ("derived_id", T::Optional(&T::Str)),
+    ("pii", T::Optional(&T::Bool)),
+    ("secret", T::Optional(&T::Bool)),
+    ("visible", T::Optional(&EXPR)),
+    ("visible_principal", T::Optional(&DECL_ID)),
+    ("tenant", T::Optional(&T::Bool)),
+    ("tenant_id", T::Optional(&T::Str)),
     ("inherited_from", T::Nullable(&DECL_ID)),
     ("constraints", T::Ref("Constraints")),
     ("example", T::Nullable(&T::Ref("Literal"))),
@@ -134,6 +168,13 @@ const ENDPOINT: Fields = &[
     ("params", T::List(&T::Ref("Param"))),
     ("success", T::Ref("Success")),
     ("errors", T::List(&T::Ref("ErrorResponse"))),
+    ("rules", T::Optional(&T::Ref("EndpointRules"))),
+    ("idempotency", T::Optional(&T::Ref("Idempotency"))),
+    ("saga", T::Optional(&T::Ref("Saga"))),
+    ("timeout_ms", T::Optional(&T::Str)),
+    ("slo", T::Optional(&T::Ref("Slo"))),
+    ("audited", T::Optional(&T::Bool)),
+    ("limit", T::Optional(&T::Ref("Limit"))),
     ("origin", ORIGIN),
 ];
 
@@ -147,6 +188,14 @@ const SERVICE: Fields = &[
     ("auth", T::Ref("Auth")),
     ("middleware", T::List(&T::Str)),
     ("endpoints", T::List(&T::Ref("Endpoint"))),
+    ("facts", T::Optional(&T::List(&T::Ref("ServiceFact")))),
+    ("rules_digest", T::Optional(&T::Str)),
+    ("principal", T::Optional(&T::Ref("ServicePrincipal"))),
+    ("publishes", T::Optional(&T::List(&T::Ref("Publication")))),
+    (
+        "subscriptions",
+        T::Optional(&T::List(&T::Ref("Subscription"))),
+    ),
     ("origin", ORIGIN),
 ];
 
@@ -160,17 +209,24 @@ pub const DEFS: &[Def] = &[
             ("decls", T::List(&T::Ref("Decl"))),
             ("services", T::List(&T::Ref("Service"))),
             ("consumes", T::Map(&T::List(&T::Str))),
+            ("examples", T::Optional(&T::List(&T::Ref("Example")))),
+            ("policies", T::Optional(&T::List(&T::Ref("Policy")))),
+            ("channels", T::Optional(&T::List(&T::Ref("Channel")))),
         ],
     ),
     Def::Alias("PackageId", T::Num),
     Def::Alias("DeclId", T::Num),
     Def::Alias("ServiceId", T::Num),
+    Def::Alias("PolicyId", T::Num),
+    Def::Alias("ChannelId", T::Num),
     Def::Object(
         "Package",
         &[
             ("id", T::Ref("PackageId")),
             ("name", T::Str),
             ("kind", T::Ref("PackageKind")),
+            ("messages", T::Optional(&T::Map(&T::Map(&T::Str)))),
+            ("messages_dir", T::Optional(&T::Str)),
         ],
     ),
     Def::Strings(
@@ -194,6 +250,16 @@ pub const DEFS: &[Def] = &[
             ("wire", T::Str),
             ("docs", OPT_STR),
             ("deprecated", OPT_STR),
+        ],
+    ),
+    Def::Object(
+        "Flow",
+        &[
+            ("from", T::Str),
+            ("to", T::Str),
+            ("after_ms", T::Optional(&T::Str)),
+            ("flag", T::Optional(&T::Str)),
+            ("emits", T::Optional(&DECL_ID)),
         ],
     ),
     Def::Object("UnionArm", &[("label", T::Str), ("decl", DECL_ID)]),
@@ -245,6 +311,517 @@ pub const DEFS: &[Def] = &[
         ],
     },
     Def::Object("EnumVariantLiteral", &[("name", T::Str), ("wire", T::Str)]),
+    // --- rules (spec/rules.md section 13) ---
+    Def::Strings("Rollout", &["audit"]),
+    Def::Object(
+        "Rule",
+        &[
+            ("name", T::Str),
+            ("id", T::Str),
+            ("expr", EXPR),
+            ("message", OPT_STR),
+            ("reads", T::List(&T::Str)),
+            ("reads_readonly", T::Bool),
+            ("inherited_from", T::Nullable(&DECL_ID)),
+            ("docs", OPT_STR),
+            ("deprecated", OPT_STR),
+            ("rollout", T::Optional(&T::Ref("Rollout"))),
+            ("flag", T::Optional(&T::Str)),
+            ("origin", ORIGIN),
+        ],
+    ),
+    Def::Object(
+        "Expr",
+        &[("t", T::Ref("ExprType")), ("e", T::Ref("ExprKind"))],
+    ),
+    Def::Alias("ExprType", T::Union(&[T::Ref("Type"), T::Lit("duration")])),
+    Def::External(
+        "ExprKind",
+        &[
+            ("lit", T::Ref("ExprLit")),
+            ("path", T::Ref("PathRef")),
+            ("now", T::Bool),
+            ("not", EXPR),
+            ("neg", EXPR),
+            ("bin", T::Ref("BinExpr")),
+            ("has", T::Ref("PathRef")),
+            ("call", T::Ref("CallExpr")),
+            ("quant", T::Ref("QuantExpr")),
+            ("list", T::List(&EXPR)),
+            ("widen", EXPR),
+            ("old", EXPR),
+        ],
+    ),
+    Def::External(
+        "ExprLit",
+        &[
+            ("bool", T::Bool),
+            ("int", T::Num),
+            ("long", T::Str),
+            ("float", T::Num),
+            ("decimal", T::Str),
+            ("string", T::Str),
+            ("enum", T::Ref("EnumLit")),
+        ],
+    ),
+    Def::Object(
+        "EnumLit",
+        &[("decl", DECL_ID), ("name", T::Str), ("wire", T::Str)],
+    ),
+    Def::Object(
+        "PathRef",
+        &[
+            ("root", T::Ref("Root")),
+            ("steps", T::List(&T::Ref("Step"))),
+        ],
+    ),
+    Def::Object(
+        "Step",
+        &[("name", T::Str), ("wire", T::Str), ("optional", T::Bool)],
+    ),
+    Def::Alias(
+        "Root",
+        T::Union(&[
+            T::Lit("self"),
+            T::Lit("principal"),
+            T::Lit("result"),
+            T::Ref("RootRef"),
+        ]),
+    ),
+    Def::External(
+        "RootRef",
+        &[("var", T::Str), ("param", T::Str), ("fact", T::Str)],
+    ),
+    Def::Object("BinExpr", &[("op", T::Ref("Op")), ("l", EXPR), ("r", EXPR)]),
+    Def::Strings(
+        "Op",
+        &[
+            "and", "or", "implies", "eq", "ne", "lt", "le", "gt", "ge", "in", "add", "sub", "mul",
+            "div", "rem",
+        ],
+    ),
+    Def::Object(
+        "CallExpr",
+        &[("f", T::Ref("Builtin")), ("args", T::List(&EXPR))],
+    ),
+    Def::Strings(
+        "Builtin",
+        &[
+            "len",
+            "matches",
+            "starts_with",
+            "ends_with",
+            "contains",
+            "days",
+            "hours",
+            "minutes",
+            "seconds",
+            "ms",
+        ],
+    ),
+    Def::Object(
+        "QuantExpr",
+        &[
+            ("q", T::Ref("Quantifier")),
+            ("list", EXPR),
+            ("var", T::Str),
+            ("body", EXPR),
+        ],
+    ),
+    Def::Strings("Quantifier", &["all", "any", "count", "sum"]),
+    // --- endpoint rules and examples (spec/rules.md section 13.1) ---
+    Def::Object(
+        "EndpointRules",
+        &[
+            ("facts", T::List(&T::Ref("EndpointFact"))),
+            ("requires", T::List(&T::Ref("EndpointRequire"))),
+            ("ensures", T::List(&T::Ref("EndpointEnsure"))),
+            ("transition", T::Optional(&T::Ref("EndpointTransition"))),
+            ("allows", T::Optional(&T::List(&T::Ref("EndpointAllow")))),
+            ("version", T::Optional(&T::Ref("EndpointVersion"))),
+        ],
+    ),
+    Def::Object(
+        "EndpointVersion",
+        &[
+            ("id", T::Str),
+            ("fact", T::Str),
+            ("field", T::Str),
+            ("wire", T::Str),
+            ("origin", ORIGIN),
+        ],
+    ),
+    Def::Object(
+        "Limit",
+        &[
+            ("count", T::Num),
+            ("per", T::Ref("LimitWindow")),
+            ("by", T::Ref("LimitSubject")),
+        ],
+    ),
+    Def::Strings("LimitWindow", &["second", "minute", "hour", "day"]),
+    Def::Strings("LimitSubject", &["user", "tenant", "ip"]),
+    Def::Object(
+        "Slo",
+        &[
+            ("p50_ms", T::Optional(&T::Str)),
+            ("p90_ms", T::Optional(&T::Str)),
+            ("p95_ms", T::Optional(&T::Str)),
+            ("p99_ms", T::Optional(&T::Str)),
+            ("errors", T::Optional(&T::Str)),
+        ],
+    ),
+    Def::Object(
+        "Idempotency",
+        &[
+            ("header", T::Str),
+            ("required", T::Bool),
+            ("caller", T::Bool),
+            ("origin", ORIGIN),
+        ],
+    ),
+    Def::Object(
+        "EndpointTransition",
+        &[
+            ("id", T::Str),
+            ("fact", T::Str),
+            ("steps", T::List(&T::Ref("Step"))),
+            ("decl", DECL_ID),
+            ("from", T::List(&T::Str)),
+            ("to", T::Str),
+            ("since", T::Optional(&T::List(&T::Ref("Step")))),
+            ("emits", T::Optional(&T::List(&T::Ref("TransitionEmit")))),
+            ("origin", ORIGIN),
+        ],
+    ),
+    Def::Object(
+        "TransitionEmit",
+        &[("event", DECL_ID), ("channel", T::Ref("ChannelId"))],
+    ),
+    Def::Object(
+        "EndpointAllow",
+        &[
+            ("policy", T::Ref("PolicyId")),
+            ("args", T::List(&EXPR)),
+            ("reads", T::List(&T::Str)),
+            ("origin", ORIGIN),
+        ],
+    ),
+    Def::Object(
+        "Policy",
+        &[
+            ("name", T::Str),
+            ("package", T::Ref("PackageId")),
+            ("module", T::Str),
+            ("qualified", T::Str),
+            ("id", T::Str),
+            ("params", T::List(&T::Ref("PolicyParam"))),
+            ("clauses", T::List(&T::Ref("PolicyClause"))),
+            ("docs", OPT_STR),
+            ("origin", ORIGIN),
+        ],
+    ),
+    Def::Object("PolicyParam", &[("name", T::Str), ("type", T::Ref("Type"))]),
+    Def::Object(
+        "PolicyClause",
+        &[
+            ("effect", T::Ref("PolicyEffect")),
+            ("expr", EXPR),
+            ("message", OPT_STR),
+            ("flag", T::Optional(&T::Str)),
+            ("origin", ORIGIN),
+        ],
+    ),
+    Def::Strings("PolicyEffect", &["permit", "forbid"]),
+    Def::Object("ServicePrincipal", &[("decl", DECL_ID), ("name", T::Str)]),
+    Def::Object(
+        "EndpointFact",
+        &[
+            ("name", T::Str),
+            ("type", T::Ref("Type")),
+            ("optional", T::Bool),
+            ("key", T::Nullable(&EXPR)),
+            ("origin", ORIGIN),
+        ],
+    ),
+    Def::Object(
+        "EndpointRequire",
+        &[
+            ("name", OPT_STR),
+            ("id", T::Str),
+            ("expr", EXPR),
+            ("message", OPT_STR),
+            ("reads", T::List(&T::Str)),
+            ("else", T::Nullable(&T::Ref("ElseError"))),
+            ("rollout", T::Optional(&T::Ref("Rollout"))),
+            ("flag", T::Optional(&T::Str)),
+            ("docs", OPT_STR),
+            ("origin", ORIGIN),
+        ],
+    ),
+    Def::Object(
+        "ElseError",
+        &[
+            ("decl", DECL_ID),
+            ("status", T::Num),
+            ("fields", T::List(&T::Ref("ElseField"))),
+        ],
+    ),
+    Def::Object(
+        "ElseField",
+        &[("name", T::Str), ("wire", T::Str), ("value", EXPR)],
+    ),
+    Def::Object(
+        "EndpointEnsure",
+        &[
+            ("name", OPT_STR),
+            ("id", T::Str),
+            ("expr", EXPR),
+            ("message", OPT_STR),
+            ("reads", T::List(&T::Str)),
+            ("rollout", T::Optional(&T::Ref("Rollout"))),
+            ("flag", T::Optional(&T::Str)),
+            ("docs", OPT_STR),
+            ("origin", ORIGIN),
+        ],
+    ),
+    Def::Object(
+        "Retain",
+        &[
+            ("after_ms", T::Str),
+            ("since", T::Str),
+            ("then", T::Ref("RetainThen")),
+        ],
+    ),
+    Def::Strings("RetainThen", &["delete", "anonymize"]),
+    Def::Object(
+        "ServiceFact",
+        &[
+            ("name", T::Str),
+            ("type", T::Ref("Type")),
+            ("key", T::Nullable(&T::Ref("Type"))),
+            ("optional", T::Bool),
+        ],
+    ),
+    Def::Object(
+        "Example",
+        &[
+            ("name", T::Str),
+            ("package", T::Ref("PackageId")),
+            ("service", T::Optional(&T::Ref("ServiceId"))),
+            ("endpoint", T::Optional(&T::Str)),
+            ("givens", T::List(&T::Ref("ExampleGiven"))),
+            ("principal", T::Nullable(&T::Ref("ExampleValue"))),
+            ("now", OPT_STR),
+            ("args", T::List(&T::Ref("ExampleArg"))),
+            ("returns", T::Nullable(&T::Ref("ExampleValue"))),
+            ("if_match", T::Optional(&T::Ref("ExampleIfMatch"))),
+            ("key", T::Optional(&T::Ref("ExampleKey"))),
+            ("saga", T::Optional(&T::Ref("ExampleSaga"))),
+            ("flags", T::Optional(&T::List(&T::Str))),
+            ("outcome", T::Optional(&T::Ref("ExampleOutcome"))),
+            ("event", T::Optional(&T::Ref("ExampleEvent"))),
+            ("expect", T::Optional(&T::Ref("EventExpect"))),
+            ("emitted", T::Optional(&T::List(&DECL_ID))),
+            ("docs", OPT_STR),
+            ("origin", ORIGIN),
+        ],
+    ),
+    Def::Object(
+        "ExampleGiven",
+        &[
+            ("fact", T::Str),
+            ("value", T::Nullable(&T::Ref("ExampleValue"))),
+        ],
+    ),
+    Def::Object(
+        "ExampleArg",
+        &[("param", T::Str), ("value", T::Ref("ExampleValue"))],
+    ),
+    Def::External(
+        "ExampleOutcome",
+        &[
+            ("ok", T::Nullable(&T::Ref("ExampleValue"))),
+            ("error", T::Ref("ExampleErrorOutcome")),
+        ],
+    ),
+    Def::Object(
+        "ExampleErrorOutcome",
+        &[
+            ("decl", DECL_ID),
+            ("pattern", T::Nullable(&T::Ref("ExampleValue"))),
+        ],
+    ),
+    Def::External(
+        "ExampleValue",
+        &[
+            ("json", T::Any),
+            ("ref", T::Ref("ExampleRef")),
+            ("object", T::List(&T::Ref("ExampleField"))),
+            ("list", T::List(&T::Ref("ExampleValue"))),
+            ("absent", T::Bool),
+        ],
+    ),
+    Def::Object(
+        "ExampleRef",
+        &[("given", T::Str), ("path", T::List(&T::Str))],
+    ),
+    Def::Object(
+        "ExampleField",
+        &[
+            ("name", T::Str),
+            ("wire", T::Str),
+            ("value", T::Ref("ExampleValue")),
+        ],
+    ),
+    Def::Alias(
+        "ExampleIfMatch",
+        T::Union(&[T::Lit("any"), T::Ref("IfMatchVersion")]),
+    ),
+    Def::Object("IfMatchVersion", &[("version", T::Str)]),
+    Def::Object(
+        "ExampleKey",
+        &[
+            ("value", T::Str),
+            ("store", T::Optional(&T::Ref("KeyStore"))),
+        ],
+    ),
+    Def::Alias(
+        "KeyStore",
+        T::Union(&[T::Lit("other"), T::Lit("running"), T::Ref("KeyStored")]),
+    ),
+    Def::Object("KeyStored", &[("stored", T::Ref("ExampleOutcome"))]),
+    Def::Object(
+        "Saga",
+        &[
+            ("steps", T::List(&T::Ref("SagaStep"))),
+            ("timeout_ms", T::Str),
+            ("passes", T::Optional(&T::List(&DECL_ID))),
+        ],
+    ),
+    Def::Object(
+        "SagaStep",
+        &[
+            ("name", T::Str),
+            ("call", T::Ref("SagaCall")),
+            ("compensate", T::Optional(&T::Ref("SagaCall"))),
+            ("origin", ORIGIN),
+        ],
+    ),
+    Def::Object(
+        "SagaCall",
+        &[
+            ("service", T::Ref("ServiceId")),
+            ("endpoint", T::Str),
+            ("args", T::List(&T::Ref("SagaArg"))),
+        ],
+    ),
+    Def::Object(
+        "SagaArg",
+        &[("name", T::Str), ("value", T::Ref("SagaValue"))],
+    ),
+    Def::Alias(
+        "SagaValue",
+        T::Union(&[T::Ref("Expr"), T::Ref("SagaObject")]),
+    ),
+    Def::Object("SagaObject", &[("object", T::List(&T::Ref("SagaField")))]),
+    Def::Object(
+        "SagaField",
+        &[
+            ("name", T::Str),
+            ("wire", T::Str),
+            ("value", T::Ref("SagaValue")),
+        ],
+    ),
+    Def::Object(
+        "ExampleSaga",
+        &[
+            ("steps", T::Optional(&T::List(&T::Ref("SagaGiven")))),
+            ("undos", T::Optional(&T::List(&T::Ref("SagaGiven")))),
+            ("expect", T::Optional(&T::Ref("SagaExpect"))),
+        ],
+    ),
+    Def::Object(
+        "SagaGiven",
+        &[("step", T::Str), ("answer", T::Ref("SagaAnswer"))],
+    ),
+    Def::Alias(
+        "SagaAnswer",
+        T::Union(&[T::Lit("unavailable"), T::Ref("SagaAnswered")]),
+    ),
+    Def::Object("SagaAnswered", &[("answer", T::Ref("ExampleOutcome"))]),
+    Def::Alias(
+        "SagaExpect",
+        T::Union(&[T::Lit("stuck"), T::Ref("SagaCompensated")]),
+    ),
+    Def::Object("SagaCompensated", &[("compensated", T::List(&T::Str))]),
+    Def::Object(
+        "ExampleEvent",
+        &[
+            ("decl", DECL_ID),
+            ("channel", T::Ref("ChannelId")),
+            ("value", T::Ref("ExampleValue")),
+        ],
+    ),
+    Def::Alias(
+        "EventExpect",
+        T::Union(&[T::Lit("rejected"), T::List(&T::Ref("ExpectedCall"))]),
+    ),
+    Def::Object(
+        "ExpectedCall",
+        &[
+            ("service", T::Ref("ServiceId")),
+            ("handler", T::Str),
+            ("called", T::Bool),
+            ("once", T::Optional(&T::Bool)),
+        ],
+    ),
+    Def::Object(
+        "Channel",
+        &[
+            ("name", T::Str),
+            ("package", T::Ref("PackageId")),
+            ("module", T::Str),
+            ("qualified", T::Str),
+            ("topic", T::Str),
+            ("events", T::List(&DECL_ID)),
+            ("key", T::Nullable(&T::Ref("ChannelKey"))),
+            ("docs", OPT_STR),
+            ("deprecated", OPT_STR),
+            ("retry", T::Optional(&T::Ref("Retry"))),
+            ("dead_letter", T::Optional(&T::Bool)),
+            ("ordered", T::Optional(&T::Bool)),
+            ("origin", ORIGIN),
+        ],
+    ),
+    Def::Object("Retry", &[("max", T::Num), ("backoff", T::Ref("Backoff"))]),
+    Def::Strings("Backoff", &["fixed", "exponential"]),
+    Def::Object(
+        "ChannelKey",
+        &[("name", T::Str), ("wire", T::Str), ("type", T::Ref("Type"))],
+    ),
+    Def::Object(
+        "Publication",
+        &[("channel", T::Ref("ChannelId")), ("origin", ORIGIN)],
+    ),
+    Def::Object(
+        "Subscription",
+        &[
+            ("channel", T::Ref("ChannelId")),
+            ("group", T::Str),
+            ("handlers", T::List(&T::Ref("Handler"))),
+            ("origin", ORIGIN),
+        ],
+    ),
+    Def::Object(
+        "Handler",
+        &[
+            ("event", DECL_ID),
+            ("name", T::Str),
+            ("docs", OPT_STR),
+            ("origin", ORIGIN),
+        ],
+    ),
     Def::Object("Service", SERVICE),
     Def::Strings(
         "Method",
@@ -294,6 +871,28 @@ pub const DEFS: &[Def] = &[
             "page",
             "consts",
             "bytes",
+            "rules_invariants",
+            "rules_endpoint",
+            "rules_transitions",
+            "rules_policies",
+            "rules_rollout",
+            "rules_version",
+            "idempotency",
+            "rules_derived",
+            "sagas",
+            "events",
+            "events_delivery",
+            "rules_timed",
+            "rules_flags",
+            "timeouts",
+            "slo",
+            "messages",
+            "retention",
+            "events_outbox",
+            "visibility",
+            "tenancy",
+            "audit",
+            "limits",
         ],
     ),
     Def::Strings("Role", &["server", "client"]),
@@ -413,13 +1012,16 @@ fn ts_type(t: &T) -> String {
         T::Ref(n) => (*n).to_string(),
         T::List(i) => match **i {
             T::Nullable(_) | T::Optional(_) => format!("({})[]", ts_type(i)),
-            T::Str | T::Num | T::Bool | T::Any | T::Ref(_) | T::List(_) | T::Map(_) => {
+            T::Union(_) => format!("({})[]", ts_type(i)),
+            T::Str | T::Num | T::Bool | T::Any | T::Lit(_) | T::Ref(_) | T::List(_) | T::Map(_) => {
                 format!("{}[]", ts_type(i))
             }
         },
         T::Map(i) => format!("Record<string, {}>", ts_type(i)),
         T::Nullable(i) => format!("{} | null", ts_type(i)),
         T::Optional(i) => ts_type(i),
+        T::Union(items) => items.iter().map(ts_type).collect::<Vec<_>>().join(" | "),
+        T::Lit(s) => format!("\"{s}\""),
     }
 }
 
@@ -635,6 +1237,15 @@ fn check_ty(t: &T, v: &Value, path: &str) -> Result<(), String> {
         T::Str => wrong("a string"),
         T::Num => wrong("a number"),
         T::Bool => wrong("a boolean"),
+        T::Lit(s) if v.as_str() == Some(*s) => Ok(()),
+        T::Lit(s) => wrong(&format!("the string \"{s}\"")),
+        T::Union(items) => {
+            if items.iter().any(|t| check_ty(t, v, path).is_ok()) {
+                Ok(())
+            } else {
+                wrong("one of the union's types")
+            }
+        }
         T::Ref(n) => check_ref(n, v, path),
         T::Nullable(_) if v.is_null() => Ok(()),
         T::Nullable(i) | T::Optional(i) => check_ty(i, v, path),

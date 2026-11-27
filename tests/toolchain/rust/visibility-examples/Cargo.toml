@@ -1,0 +1,20 @@
+[package]
+name = "visibility-examples"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "visibility-serve-bookings"
+path = "src/bin/bookings.rs"
+
+[[bin]]
+name = "visibility-serve-notices"
+path = "src/bin/notices.rs"
+
+[dependencies]
+guests-server = { path = "../server" }
+guests-client = { path = "../client" }
+axum = "0.8"
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time"] }

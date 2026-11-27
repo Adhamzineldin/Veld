@@ -486,20 +486,13 @@ mod tests {
             std::fs::create_dir_all(dir.join("app")).unwrap();
             std::fs::write(dir.join("app").join(name), "").unwrap();
         }
-        let service = if role == "server" {
-            "service = \"s\"
-"
-        } else {
-            ""
-        };
         let text = format!(
-            "[project]
+            "[service]
 name = \"s\"
-[[targets]]
+[{role}]
 name = \"j\"
-role = \"{role}\"
 emitter = \"java\"
-{service}out = \"app/src/gen\"
+out = \"app/src/gen\"
 app = \"app\"
 "
         );

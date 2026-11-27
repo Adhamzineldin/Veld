@@ -1,0 +1,15 @@
+---
+source: crates/emitters/node/tests/endpoint_rules.rs
+expression: "server.paths().collect::<Vec<_>>().join(\"\\n\")"
+---
+README.md
+errors/bookings.ts
+index.ts
+models/bookings.ts
+package.json
+prelude.ts
+runtime/rules.ts
+runtime/veld.ts
+server/adapters.ts
+server/bookings-test-handler.ts
+server/bookings.ts

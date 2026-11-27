@@ -1,6 +1,6 @@
-//! `veld export <openapi|ir>`.
+//! `veld export <openapi|asyncapi|rules|runtime-schema|slo|retention|ir>`.
 //!
-//! Both exports print to stdout, or to `-o FILE`. A file is written with
+//! The exports print to stdout, or to `-o FILE`. A file is written with
 //! `output::write_unmanaged`: staged and contained like generated output, but never tracked in a
 //! manifest, so `generate` and `clean` leave it alone, and a differing existing file is refused
 //! unless `--force`.
@@ -26,9 +26,37 @@ pub fn run(ui: &Ui, config: Option<&Path>, cmd: &ExportCommand) -> Result<Exit> 
     let ir = &done.ir;
     match cmd {
         ExportCommand::Ir { output } => export_ir(ui, ir, output.as_deref()),
+        ExportCommand::Rules(out) => {
+            let text = veld_tools::rule_book(ir, &selected_services(ir, &out.service)?);
+            document(ui, out, "rules.md", &text)
+        }
+        ExportCommand::RuntimeSchema(args) => super::runtime_schema::run(ui, &done, args),
+        ExportCommand::Retention(out) => {
+            let out = DocOut {
+                output: out.output.clone(),
+                service: Vec::new(),
+                force: out.force,
+            };
+            document(ui, &out, "retention.md", &veld_tools::retention_report(ir))
+        }
+        ExportCommand::Asyncapi(out) => {
+            let services = selected_services(ir, &out.service)?;
+            let value = veld_tools::asyncapi(ir, &services)
+                .map_err(|e| user(format!("E0803: `export asyncapi`: {e}")))?;
+            document(ui, out, "asyncapi.json", &pretty(&value)?)
+        }
         ExportCommand::Openapi(out) => {
             let value = veld_tools::openapi(ir, &selected_services(ir, &out.service)?);
             document(ui, out, "openapi.json", &pretty(&value)?)
+        }
+        ExportCommand::Slo(out) => {
+            let services = selected_services(ir, &out.service)?;
+            let Some(text) = veld_tools::openslo(ir, &services) else {
+                return Err(user(
+                    "E0803: no endpoint of the selected services has an `@slo`, so there is nothing to export",
+                ));
+            };
+            document(ui, out, "slo.yaml", &text)
         }
     }
 }
@@ -73,7 +101,7 @@ fn selected_services(ir: &Ir, names: &[String]) -> Result<Vec<ServiceId>> {
 
 /// Prints `text`, or writes it to `-o FILE` (`default_name` is only used when the path has no
 /// file name).
-fn document(ui: &Ui, out: &DocOut, default_name: &str, text: &str) -> Result<Exit> {
+pub(super) fn document(ui: &Ui, out: &DocOut, default_name: &str, text: &str) -> Result<Exit> {
     let Some(path) = &out.output else {
         print!("{text}");
         return Ok(Exit::Ok);

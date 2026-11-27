@@ -1,0 +1,150 @@
+// `@rollout(audit)` on invariants, `require` and `ensure` (spec/rules.md section 17.1). The rules
+// of `watched` are audited and the same rules of `enforced` are not, so that the contrast is in
+// one file. An audited rule is evaluated where it would be, never rejects, and never answers:
+// the request goes on as if it held. What it would have said goes to the hook, not to the
+// caller, and an example does not name it.
+
+model Room {
+  id: uuid
+  capacity: int @min(1)
+  closed: bool
+}
+
+/// The audited invariant.
+model Party {
+  roomId: uuid
+  guests: int @min(1)
+
+  @rollout(audit)
+  rule smallParty: guests <= 6
+}
+
+/// The same invariant, enforced.
+model Strict {
+  roomId: uuid
+  guests: int @min(1)
+
+  rule smallParty: guests <= 6
+}
+
+/// An audited rule next to an enforced one.
+model Mixed {
+  roomId: uuid
+  guests: int @min(1)
+
+  @rollout(audit)
+  rule smallParty: guests <= 6
+  rule atMostTen: guests <= 10
+    message "A party is at most ten"
+}
+
+/// An answer with an audited invariant.
+model Booking {
+  id: uuid
+  guests: int
+
+  @rollout(audit)
+  rule sane: guests <= 100
+}
+
+/// An answer with the same invariant, enforced.
+model Receipt {
+  id: uuid
+  guests: int
+
+  rule sane: guests <= 100
+}
+
+error RoomFull 409 { capacity: int }
+error RoomClosed 409 {}
+
+service Parties at "/parties" {
+  post "/watched" watched(body: Party) -> 201 Booking | RoomFull | RoomClosed {
+    fact room: Room = body.roomId
+    @rollout(audit)
+    require body.guests <= room.capacity else RoomFull { capacity: room.capacity }
+    require not room.closed else RoomClosed
+    @rollout(audit)
+    ensure result.guests == body.guests
+  }
+
+  post "/enforced" enforced(body: Strict) -> 201 Receipt | RoomFull | RoomClosed {
+    fact room: Room = body.roomId
+    require body.guests <= room.capacity else RoomFull { capacity: room.capacity }
+    require not room.closed else RoomClosed
+    ensure result.guests == body.guests
+  }
+
+  post "/mixed" mixed(body: Mixed) -> 201 Booking
+
+  post "/booking" booking(body: Party) -> 201 Booking
+
+  post "/receipt" receipt(body: Party) -> 201 Receipt
+}
+
+// --- an audited invariant ---
+
+example "an audited invariant that is violated does not reject the request" {
+  given room = { capacity: 10, closed: false }
+  watched(body: { roomId: room.id, guests: 7 }) -> ok
+}
+
+example "the same invariant enforced rejects it" {
+  given room = { capacity: 10, closed: false }
+  enforced(body: { roomId: room.id, guests: 7 }) -> ValidationError
+}
+
+example "an audited rule that holds changes nothing" {
+  given room = { capacity: 10, closed: false }
+  watched(body: { roomId: room.id, guests: 3 }) -> ok
+}
+
+example "an audited invariant next to an enforced one that is violated: only the enforced one rejects" {
+  mixed(body: { guests: 12 })
+    -> ValidationError { issues: [{ path: "body", code: "rule", message: "A party is at most ten" }] }
+}
+
+// --- an audited require ---
+
+example "an audited require with else that is violated is not answered" {
+  given room = { capacity: 2, closed: false }
+  watched(body: { roomId: room.id, guests: 3 }) -> ok
+}
+
+example "the same require enforced answers its error" {
+  given room = { capacity: 2, closed: false }
+  enforced(body: { roomId: room.id, guests: 3 }) -> RoomFull { capacity: 2 }
+}
+
+example "an enforced require after an audited one that is violated still answers" {
+  given room = { capacity: 2, closed: true }
+  watched(body: { roomId: room.id, guests: 3 }) -> RoomClosed
+}
+
+// --- an audited ensure and an audited invariant of the result ---
+
+example "an audited ensure that the result breaks leaves the outcome ok" {
+  given room = { capacity: 10, closed: false }
+  watched(body: { roomId: room.id, guests: 2 })
+    returns { id: "00000000-0000-4000-8000-000000000009", guests: 3 }
+    -> ok
+}
+
+example "the same ensure enforced is an internal error" {
+  given room = { capacity: 10, closed: false }
+  enforced(body: { roomId: room.id, guests: 2 })
+    returns { id: "00000000-0000-4000-8000-000000000009", guests: 3 }
+    -> Internal
+}
+
+example "an audited invariant of the result that it breaks leaves the outcome ok" {
+  booking(body: { guests: 2 })
+    returns { id: "00000000-0000-4000-8000-000000000009", guests: 101 }
+    -> ok
+}
+
+example "the same invariant of the result enforced is an internal error" {
+  receipt(body: { guests: 2 })
+    returns { id: "00000000-0000-4000-8000-000000000009", guests: 101 }
+    -> Internal
+}

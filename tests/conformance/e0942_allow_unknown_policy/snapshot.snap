@@ -1,0 +1,20 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0942]: unknown policy `ManageBookin`
+ --> app/app.veld:13:11
+   |
+13 |     allow ManageBookin(user)
+   |           ^^^^^^^^^^^^
+  = help: did you mean `ManageBooking`?
+
+error[E0942]: unknown policy `Missing`
+ --> app/app.veld:14:11
+   |
+14 |     allow Missing(user)
+   |           ^^^^^^^
+  = help: policies in scope: ManageBooking
+
+== ir ==
+(no IR: compilation failed)

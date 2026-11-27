@@ -9,6 +9,7 @@ mod error;
 mod fsutil;
 mod pipeline;
 mod registry;
+mod selection;
 mod setup;
 mod ui;
 

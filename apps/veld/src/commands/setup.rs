@@ -13,7 +13,10 @@ use crate::ui::{Style, Ui};
 pub fn run(ui: &Ui, config: Option<&Path>, args: &SetupArgs) -> Result<Exit> {
     ui.header("setup", "");
     let project = pipeline::load_project(config)?;
-    let targets = pipeline::select_targets(&project, args.target.as_deref())?;
+    let Some(selection) = crate::selection::resolve(ui, &project, &args.select)? else {
+        return Ok(Exit::Ok);
+    };
+    let targets = pipeline::select_targets(&project, &selection, args.target.as_deref())?;
     apply_to(ui, &project, &targets, args.dry_run)?;
     Ok(Exit::Ok)
 }

@@ -1,0 +1,15 @@
+// `after` and `since` are words only on the line of a `flow` or a `transition`.
+
+model Gap { after: int, since: datetime }
+
+enum Phase {
+  after, since, done
+  flow after -> since
+  flow since -> done
+  final done
+}
+
+service Words at "/words" {
+  get "/a" since(@query after: int) -> Gap
+  get "/b" after() -> Gap
+}

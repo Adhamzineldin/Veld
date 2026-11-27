@@ -33,7 +33,7 @@ fn module(i: usize) -> String {
 #[test]
 fn a_two_thousand_line_workspace_analyses_within_budget() {
     let tmp = tempfile::tempdir().unwrap();
-    fs::write(tmp.path().join("veld.toml"), "[project]\nname = \"big\"\n").unwrap();
+    fs::write(tmp.path().join("veld.toml"), "[service]\nname = \"big\"\n").unwrap();
     fs::create_dir_all(tmp.path().join("contracts")).unwrap();
     let mut lines = 0;
     for i in 0..10 {

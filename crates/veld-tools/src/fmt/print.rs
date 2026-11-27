@@ -2,14 +2,19 @@
 
 use veld_compiler::Comment;
 use veld_compiler::syntax::ast::{
-    Annotation, Decl, DeclKind, Doc, Endpoint, EnumDecl, Field, File, HttpMethod, Param, RespItem,
-    ServiceDecl, UnionDecl, Use, Variant,
+    self, Annotation, Decl, DeclKind, Doc, Endpoint, EnumDecl, Example, ExampleBody, Field, File,
+    HttpMethod, Param, PolicyDecl, PrincipalDecl, RespItem, Rule, Stmt, UnionDecl, Use, Variant,
 };
 use veld_compiler::syntax::lexer::CommentKind;
 
 use super::WIDTH;
+use super::expr::{derived_text, expr_text, rule_lines};
 use super::layout::{self, Attached, Layout, Lead, ROOT};
+use super::saga;
+use super::stmt;
 use super::text::{annotation, literal, quote, type_expr};
+
+mod events;
 
 pub(super) fn print_file(file: &File, lay: &Layout) -> String {
     let mut p = Printer {
@@ -97,9 +102,35 @@ impl Printer<'_> {
             self.out.push_str(&use_line(u));
             self.end_line(u.span.start, 0);
         }
-        for d in &f.decls {
+        let mut items: Vec<(u32, Item<'_>)> = f
+            .decls
+            .iter()
+            .map(|d| (layout::decl_key(d), Item::Decl(d)))
+            .chain(
+                f.examples
+                    .iter()
+                    .map(|x| (layout::example_key(x), Item::Example(x))),
+            )
+            .chain(
+                f.policies
+                    .iter()
+                    .map(|x| (layout::policy_key(x), Item::Policy(x))),
+            )
+            .chain(
+                f.principals
+                    .iter()
+                    .map(|x| (layout::principal_key(x), Item::Principal(x))),
+            )
+            .collect();
+        items.sort_by_key(|(k, _)| *k);
+        for (_, item) in items {
             self.blank_line();
-            self.decl(d);
+            match item {
+                Item::Decl(d) => self.decl(d),
+                Item::Example(x) => self.example(x),
+                Item::Policy(x) => self.policy(x),
+                Item::Principal(x) => self.principal(x),
+            }
         }
         let tail = self.att(ROOT).map(|a| a.tail.clone()).unwrap_or_default();
         if !tail.is_empty() {
@@ -119,6 +150,9 @@ impl Printer<'_> {
             .iter()
             .map(|u| u.span.start)
             .chain(f.decls.iter().map(layout::decl_key))
+            .chain(f.examples.iter().map(layout::example_key))
+            .chain(f.policies.iter().map(layout::policy_key))
+            .chain(f.principals.iter().map(layout::principal_key))
             .min();
         let Some(key) = first else { return };
         let list = self.att(key).map(|a| a.leading.clone()).unwrap_or_default();
@@ -202,7 +236,11 @@ impl Printer<'_> {
         let key = layout::decl_key(d);
         self.leading(key, 0);
         self.docs(&d.docs, 0);
-        self.annotations_own_lines(&d.annotations, 0);
+        if matches!(d.kind, DeclKind::Channel(_)) {
+            self.annotations_own_lines(&channel_annotations(&d.annotations), 0);
+        } else {
+            self.annotations_own_lines(&d.annotations, 0);
+        }
         match &d.kind {
             DeclKind::Model(m) => {
                 let ext = m
@@ -210,20 +248,45 @@ impl Printer<'_> {
                     .as_ref()
                     .map_or_else(String::new, |e| format!(" extends {}", type_expr(e)));
                 let head = format!("model {}{ext}", m.name.name);
-                self.block(key, &head, 0, m.fields.is_empty(), |p| {
-                    p.fields(&m.fields, 2);
-                });
+                self.block(
+                    key,
+                    &head,
+                    0,
+                    m.fields.is_empty() && m.rules.is_empty(),
+                    |p| {
+                        p.members(&m.fields, &m.rules, 2);
+                    },
+                );
             }
             DeclKind::Error(e) => {
                 let status = e.status.map_or_else(String::new, |(s, _)| format!(" {s}"));
                 let head = format!("error {}{status}", e.name.name);
-                self.block(key, &head, 0, e.fields.is_empty(), |p| {
-                    p.fields(&e.fields, 2);
-                });
+                self.block(
+                    key,
+                    &head,
+                    0,
+                    e.fields.is_empty() && e.rules.is_empty(),
+                    |p| {
+                        p.members(&e.fields, &e.rules, 2);
+                    },
+                );
             }
             DeclKind::Enum(e) => self.enum_decl(key, e),
             DeclKind::Union(u) => self.union_decl(key, u),
             DeclKind::Service(s) => self.service(key, s),
+            DeclKind::Event(e) => {
+                let head = format!("event {}", e.name.name);
+                self.block(
+                    key,
+                    &head,
+                    0,
+                    e.fields.is_empty() && e.rules.is_empty(),
+                    |p| {
+                        p.members(&e.fields, &e.rules, 2);
+                    },
+                );
+            }
+            DeclKind::Channel(c) => self.channel(key, c),
             DeclKind::Const(c) => {
                 let text = format!(
                     "const {}: {} = {}",
@@ -278,6 +341,22 @@ impl Printer<'_> {
         }
     }
 
+    /// Fields first, one blank line, then the rules, each in source order (`spec/rules.md` 4).
+    fn members(&mut self, fields: &[Field], rules: &[Rule], ind: usize) {
+        self.fields(fields, ind);
+        if !fields.is_empty() && !rules.is_empty() {
+            self.out.push('\n');
+        }
+        for r in rules {
+            let key = layout::rule_key(r);
+            self.leading(key, ind);
+            self.docs(&r.docs, ind);
+            self.annotations_own_lines(&r.annotations, ind);
+            self.out.push_str(&rule_lines(r, ind).join("\n"));
+            self.end_line(key, ind);
+        }
+    }
+
     fn has_comments(&self, keys: &[u32]) -> bool {
         keys.iter().any(|k| {
             self.att(*k)
@@ -302,7 +381,9 @@ impl Printer<'_> {
         } else {
             format!("enum {} {{ {} }}", e.name.name, items.join(", "))
         };
+        let machine = !e.flows.is_empty() || !e.finals.is_empty();
         if plain
+            && !machine
             && self.node_quiet(key)
             && !self.has_comments(&keys)
             && one.chars().count() <= WIDTH
@@ -312,11 +393,45 @@ impl Printer<'_> {
             return;
         }
         let head = format!("enum {}", e.name.name);
-        self.block(key, &head, 0, items.is_empty(), |p| {
+        self.block(key, &head, 0, items.is_empty() && !machine, |p| {
             for (v, k) in e.variants.iter().zip(&keys) {
                 p.list_item(*k, &v.docs, &v.annotations, &variant_text(v), 2);
             }
+            p.machine(e);
         });
+    }
+
+    /// The flows, then the finals of an enum, each in source order, after a blank line.
+    fn machine(&mut self, e: &EnumDecl) {
+        if e.flows.is_empty() && e.finals.is_empty() {
+            return;
+        }
+        if !e.variants.is_empty() {
+            self.out.push('\n');
+        }
+        let flows = e.flows.iter().map(|f| {
+            let mut suffix = f
+                .after
+                .as_ref()
+                .map_or(String::new(), |d| format!(" after {}", expr_text(d)));
+            suffix.extend(f.emits.as_ref().map(|i| format!(" emits {}", i.name)));
+            suffix.extend(f.flag.as_ref().map(stmt::flag_text));
+            (f.span.start, "flow", " -> ", &f.states, Some(suffix))
+        });
+        let finals = e
+            .finals
+            .iter()
+            .map(|f| (f.span.start, "final", ", ", &f.states, None));
+        for (key, word, sep, states, suffix) in flows.chain(finals) {
+            let names: Vec<&str> = states.iter().map(|s| s.name.as_str()).collect();
+            self.leading(key, 2);
+            self.out.push_str(&format!(
+                "  {word} {}{}",
+                names.join(sep),
+                suffix.unwrap_or_default()
+            ));
+            self.end_line(key, 2);
+        }
     }
 
     fn list_item(&mut self, key: u32, docs: &[Doc], anns: &[Annotation], text: &str, ind: usize) {
@@ -361,40 +476,147 @@ impl Printer<'_> {
 
     // ---- services ---------------------------------------------------------
 
-    fn service(&mut self, key: u32, s: &ServiceDecl) {
-        let head = format!("service {} at {}", s.name.name, quote(&s.prefix.value));
-        let rendered: Vec<Vec<String>> = s.endpoints.iter().map(|e| endpoint_lines(e, 2)).collect();
-        let heavy: Vec<bool> = s
-            .endpoints
-            .iter()
-            .zip(&rendered)
-            .map(|(e, r)| {
-                !e.docs.is_empty()
-                    || !e.annotations.is_empty()
-                    || r.len() > 1
-                    || self
-                        .att(layout::endpoint_key(e))
-                        .is_some_and(|a| !a.leading.is_empty())
-            })
-            .collect();
-        self.block(key, &head, 0, s.endpoints.is_empty(), |p| {
-            for (i, e) in s.endpoints.iter().enumerate() {
-                if i > 0 && (heavy[i] || heavy[i - 1]) {
-                    p.out.push('\n');
-                }
-                p.endpoint(e, &rendered[i], 2);
-            }
-        });
-    }
-
     fn endpoint(&mut self, e: &Endpoint, lines: &[String], ind: usize) {
         let key = layout::endpoint_key(e);
         self.leading(key, ind);
         self.docs(&e.docs, ind);
         self.annotations_own_lines(&e.annotations, ind);
-        self.out.push_str(&lines.join("\n"));
-        self.end_line(key, ind);
+        if let Some(saga) = &e.saga {
+            let joined = lines.join("\n");
+            let head = joined.strip_prefix(&pad(ind)).unwrap_or(&joined);
+            let empty = saga.steps.is_empty() && saga.timeout.is_none();
+            self.block(key, head, ind, empty, |p| p.saga_lines(saga, ind + 2));
+            return;
+        }
+        let Some(block) = &e.block else {
+            self.out.push_str(&lines.join("\n"));
+            self.end_line(key, ind);
+            return;
+        };
+        let joined = lines.join("\n");
+        let head = joined.strip_prefix(&pad(ind)).unwrap_or(&joined);
+        self.block(key, head, ind, block.stmts.is_empty(), |p| {
+            p.statements(&block.stmts, ind + 2);
+        });
     }
+
+    /// The steps of a saga in source order, then its `timeout` (`spec/platform.md` section 17).
+    fn saga_lines(&mut self, saga: &ast::SagaDecl, ind: usize) {
+        for s in &saga.steps {
+            let key = s.span.start;
+            self.leading(key, ind);
+            self.out.push_str(&saga::step_lines(s, ind).join("\n"));
+            self.end_line(key, ind);
+        }
+        if let Some(t) = &saga.timeout {
+            let key = t.span.start;
+            self.leading(key, ind);
+            self.out.push_str(&saga::timeout_line(t, ind));
+            self.end_line(key, ind);
+        }
+    }
+
+    /// Facts, `allow`, `transition`, `require`, then `ensure`, each group in source order (`spec/rules.md` 9).
+    fn statements(&mut self, stmts: &[Stmt], ind: usize) {
+        for group in 0..5 {
+            for s in stmts.iter().filter(|s| stmt::stmt_group(s) == group) {
+                let key = s.start();
+                self.leading(key, ind);
+                self.docs(stmt::stmt_docs(s), ind);
+                self.annotations_own_lines(stmt::stmt_annotations(s), ind);
+                self.out.push_str(&stmt::stmt_lines(s, ind).join("\n"));
+                self.end_line(key, ind);
+            }
+        }
+    }
+
+    fn example(&mut self, x: &Example) {
+        let key = layout::example_key(x);
+        self.leading(key, 0);
+        self.docs(&x.docs, 0);
+        self.block(key, &stmt::example_head(x), 0, false, |p| {
+            for g in &x.givens {
+                p.example_lines(g.span.start, &stmt::given_lines(g, 2));
+            }
+            for g in x.saga.iter().flat_map(|s| &s.givens) {
+                p.example_lines(g.span.start, &saga::given_lines(g, 2));
+            }
+            if let Some(a) = &x.principal {
+                p.example_lines(a.span.start, &stmt::principal_lines(&a.value, 2));
+            }
+            if let Some(a) = &x.at {
+                p.example_line(a.span.start, &format!("at {}", quote(&a.time.value)));
+            }
+            match &x.body {
+                ExampleBody::Call(c) => {
+                    if let Some(i) = &c.if_match {
+                        p.example_line(i.span.start, &stmt::if_match_line(i));
+                    }
+                    if let Some(k) = &c.key {
+                        p.example_line(k.span.start, &stmt::key_line(k));
+                    }
+                    let key = c.span.start;
+                    p.leading(key, 2);
+                    p.out.push_str(&stmt::call_lines(c, 2).join("\n"));
+                    p.end_line(key, 2);
+                    if let Some(e) = x.saga.as_ref().and_then(|s| s.expect.as_ref()) {
+                        p.example_line(e.span.start, &saga::expect_line(e));
+                    }
+                    for x in &c.emitted {
+                        p.example_line(x.span.start, &stmt::emitted_line(x));
+                    }
+                }
+                ExampleBody::Event(e) => p.event_example(e),
+            }
+        });
+    }
+
+    fn policy(&mut self, p: &PolicyDecl) {
+        let key = layout::policy_key(p);
+        self.leading(key, 0);
+        self.docs(&p.docs, 0);
+        self.block(key, &stmt::policy_head(p), 0, p.clauses.is_empty(), |s| {
+            for c in &p.clauses {
+                let ck = c.span.start;
+                s.leading(ck, 2);
+                s.out.push_str(&stmt::clause_lines(c, 2).join("\n"));
+                s.end_line(ck, 2);
+            }
+        });
+    }
+
+    fn principal(&mut self, p: &PrincipalDecl) {
+        let key = layout::principal_key(p);
+        self.leading(key, 0);
+        self.docs(&p.docs, 0);
+        self.out.push_str(&stmt::principal_line(p));
+        self.end_line(key, 0);
+    }
+
+    fn example_line(&mut self, key: u32, text: &str) {
+        self.leading(key, 2);
+        self.line_no_newline(2, text);
+        self.end_line(key, 2);
+    }
+
+    /// Lines that carry their own indentation, the first of them at 2.
+    fn example_lines(&mut self, key: u32, lines: &[String]) {
+        self.leading(key, 2);
+        self.out.push_str(&lines.join("\n"));
+        self.end_line(key, 2);
+    }
+
+    fn line_no_newline(&mut self, ind: usize, text: &str) {
+        self.out.push_str(&pad(ind));
+        self.out.push_str(text);
+    }
+}
+
+enum Item<'a> {
+    Decl(&'a Decl),
+    Example(&'a Example),
+    Policy(&'a PolicyDecl),
+    Principal(&'a PrincipalDecl),
 }
 
 fn field_line(f: &Field) -> String {
@@ -407,6 +629,10 @@ fn field_line(f: &Field) -> String {
     if let Some(d) = &f.default {
         s.push_str(" = ");
         s.push_str(&literal(d));
+    }
+    if let Some(e) = &f.derived {
+        s.push_str(" = ");
+        s.push_str(&derived_text(e));
     }
     for a in &f.annotations {
         s.push(' ');
@@ -459,8 +685,9 @@ fn response_text(r: &RespItem) -> String {
 fn endpoint_lines(e: &Endpoint, ind: usize) -> Vec<String> {
     let params: Vec<String> = e.params.iter().map(param_text).collect();
     let head = format!(
-        "{}{} {} {}({})",
+        "{}{}{} {} {}({})",
         pad(ind),
+        if e.saga.is_some() { "saga " } else { "" },
         method_word(e.method),
         quote(&e.path.value),
         e.name.name,
@@ -490,4 +717,22 @@ fn method_word(m: HttpMethod) -> &'static str {
         HttpMethod::Options => "options",
         HttpMethod::Ws => "ws",
     }
+}
+
+/// The order of the annotations of a channel (`spec/events.md` section 15): `@topic`, `@retry`,
+/// `@deadLetter`, `@ordered`. The four take the places that the four had, so a channel with any
+/// other annotation (`@deprecated`) keeps it where it was.
+fn channel_annotations(anns: &[Annotation]) -> Vec<Annotation> {
+    const ORDER: [&str; 4] = ["topic", "retry", "deadLetter", "ordered"];
+    let rank = |a: &Annotation| ORDER.iter().position(|n| *n == a.name.name);
+    let mut slots: Vec<usize> = (0..anns.len())
+        .filter(|i| rank(&anns[*i]).is_some())
+        .collect();
+    let mut known: Vec<&Annotation> = slots.iter().map(|i| &anns[*i]).collect();
+    known.sort_by_key(|a| rank(a));
+    let mut out: Vec<Annotation> = anns.to_vec();
+    for (slot, a) in slots.drain(..).zip(known) {
+        out[slot] = a.clone();
+    }
+    out
 }

@@ -1,0 +1,10 @@
+# The web app uses every service (the default). One TypeScript client with React hooks covers
+# them all. Importable as `@veld/web` after `veld setup`.
+[app]
+owners = ["team-web"]
+
+[client]
+name = "web"
+emitter = "typescript"
+framework = "react"
+out = "src/generated"

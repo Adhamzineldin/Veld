@@ -1,0 +1,25 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+assertion_line: 195
+---
+== diagnostics ==
+error[E1002]: channel `Twice` carries `Paid` twice
+ --> app/app.veld:4:31
+  |
+4 | channel Twice { carries Paid, Paid }
+  |                               ^^^^
+
+error[E1002]: `NotAnEvent` is not an event
+ --> app/app.veld:5:29
+  |
+5 | channel NotEvents { carries NotAnEvent }
+  |                             ^^^^^^^^^^
+
+error[E1002]: channel `Nothing` carries nothing
+ --> app/app.veld:6:9
+  |
+6 | channel Nothing { }
+  |         ^^^^^^^
+
+== ir ==
+(no IR: compilation failed)

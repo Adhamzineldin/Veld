@@ -62,7 +62,9 @@ const hooks: srv.OrdersHooks = {
   middleware: { RateLimit: async () => {} },
 };
 
-const server = http.createServer(srv.toNodeHttp(srv.createOrdersHandler(impl, hooks)));
+const runtime = { services: { iam: { url: 'http://iam.test' } } };
+
+const server = http.createServer(srv.toNodeHttp(srv.createOrdersHandler(impl, hooks, runtime)));
 server.listen(0, '127.0.0.1', () => {
   process.stdout.write(`PORT=${String((server.address() as AddressInfo).port)}\n`);
 });

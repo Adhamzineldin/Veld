@@ -1,0 +1,10 @@
+// `limit`, `per` and `by` are ordinary names.
+
+model Quota {
+  limit: int
+  per: string
+  by: string
+  minute: int
+  user: bool
+  ip: string
+}

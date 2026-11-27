@@ -5,13 +5,32 @@
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 
+pub mod brokers;
+pub mod can;
 pub mod client;
+pub mod conditional;
+pub mod config;
+pub mod derived;
+pub mod endpoint;
+pub mod events;
+pub mod flags;
 pub mod frameworks;
+pub mod machine;
+pub mod messages;
 pub mod models;
+pub mod outbox;
+pub mod platform;
+pub mod policy;
 pub mod readme;
+pub mod retention;
+pub mod rule_expr;
+pub mod rules;
 pub mod runtime;
 pub mod server;
+pub mod slo;
 pub mod spec;
+pub mod testing;
+pub mod timed;
 pub mod tree;
 pub mod types;
 pub mod util;
@@ -32,17 +51,59 @@ pub const JAVA_VERSIONS: [&str; 2] = ["17", "21"];
 
 /// Options of the `java` generator.
 #[derive(Debug, Default, Clone, Deserialize)]
-#[serde(default, deny_unknown_fields)]
+#[serde(default, deny_unknown_fields, rename_all = "kebab-case")]
 pub struct Options {
     /// The base Java package. Default: `dev.veld.generated.<package of the first service>`.
     pub package: Option<String>,
     /// `false` skips runtime request validation by default (the types stay). Default: `true`.
     pub validate: Option<bool>,
+    /// `true` also writes `<Service>TestHandler` for each service with endpoint rules, an
+    /// `@idempotent` endpoint, a version guard or an endpoint that owes an `ETag`: a handler that
+    /// takes facts, principal, clock, result and the state of the idempotency store from request
+    /// headers. It must never be mounted in production. Default: `false`.
+    pub testing: Option<bool>,
+    /// The prefix of the Spring properties of the runtime config (`veld.services.iam.url`), for
+    /// the `spring` framework. Default: `veld`.
+    pub runtime_prefix: Option<String>,
+    /// The broker adapters a server gets (`spec/events.md` section 10.7): `"kafka"`, `"rabbitmq"` or
+    /// a list of both. Without it only the memory transport is generated.
+    pub messaging: Option<brokers::Messaging>,
+    /// `true` adds a capture of the request to the event of `onRuleViolation` (`spec/rules.md`
+    /// section 17.3, `spec/targets/java.md` section 18.2), with the values of `@pii` and `@secret`
+    /// fields left out. A capture contains whatever the caller sent. Default: `false`.
+    pub capture_violations: Option<bool>,
 }
 
 /// The Java generator (roles `server` and `client`).
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Java;
+
+/// What the generator supports for `role`: everything. A server generates events
+/// (`spec/targets/java.md` section 12); a client supports the feature by generating nothing for it
+/// (`spec/events.md` section 14).
+fn events_capabilities(role: Role) -> Capabilities {
+    let caps = Capabilities::all_except(&[])
+        .with(Feature::RulesRollout)
+        .with(Feature::RulesVersion)
+        .with(Feature::Idempotency)
+        .with(Feature::RulesDerived)
+        .with(Feature::EventsDelivery)
+        .with(Feature::RulesTimed)
+        .with(Feature::Slo)
+        .with(Feature::Timeouts)
+        .with(Feature::RulesFlags)
+        .with(Feature::EventsOutbox)
+        .with(Feature::Messages);
+    match role {
+        Role::Server => caps
+            .with(Feature::Visibility)
+            .with(Feature::Tenancy)
+            .with(Feature::Audit)
+            .with(Feature::Limits)
+            .with(Feature::Retention),
+        Role::Client => caps.with(Feature::Tenancy).with(Feature::Limits),
+    }
+}
 
 fn precheck(req: &GenRequest<'_>, caps: &Capabilities) -> Result<(), Vec<GenDiagnostic>> {
     if req.services.is_empty() {
@@ -131,8 +192,13 @@ impl Generator for Java {
         })
     }
 
-    fn capabilities(&self, _role: Role) -> Capabilities {
-        Capabilities::all_except(&[])
+    fn capabilities(&self, role: Role) -> Capabilities {
+        // Every rules feature is enforced (`spec/targets/java.md` sections 8 to 11).
+        events_capabilities(role)
+    }
+
+    fn warnings(&self, req: &GenRequest<'_>, opts: &Options) -> Vec<GenDiagnostic> {
+        validation_off_warnings(req, opts)
     }
 
     fn generate(
@@ -142,38 +208,356 @@ impl Generator for Java {
         profile: &Profile,
     ) -> Result<FileSet, Vec<GenDiagnostic>> {
         precheck(req, &self.capabilities(req.role))?;
+        // An audited endpoint that streams is refused at the endpoint, before anything about the
+        // framework (`spec/platform.md` section 9.1).
+        if req.role == Role::Server {
+            let refused = platform::refusals(req.ir, &req.services);
+            if !refused.is_empty() {
+                return Err(refused);
+            }
+        }
         check_framework_features(req, profile)?;
         let base = base_package(req, opts)?;
         let runtime_package = runtime::package(&base);
+        let runtime_config = runtime_config_of(req, opts, profile, &base)?;
         let mut files = FileSet::new();
         let mut used = req.services.clone();
         used.extend(req.consumes.iter().copied());
-        let streaming = runtime::Streaming::of(&req.ir.features_used(&used));
-        runtime::emit(&mut files, &base, streaming)?;
+        let features = req.ir.http_features_used(&used);
+        let streaming = runtime::Streaming::of(&features);
         let tree = Tree::new(req.ir, &base, &runtime_package, req.services.clone())
             .with_validate(opts.validate != Some(false));
+        // A server also emits the events of its services; a client generates nothing for them.
+        let tree = if req.role == Role::Server {
+            tree.with_events()
+        } else {
+            tree
+        };
+        let brokers = brokers::choose(opts.messaging.as_ref(), &tree)?;
+        let endpoint = req.role == Role::Server
+            && req
+                .ir
+                .features_used(&req.services)
+                .contains(&Feature::RulesEndpoint);
+        // The events runtime reports violations and needs the rule classes, so a server with
+        // events carries them also for events without a rule.
+        let rules = features.contains(&Feature::RulesInvariants)
+            || features.contains(&Feature::RulesEndpoint)
+            || tree.events
+            || declares_rules(&tree)
+            || (req.role == Role::Server
+                && req.consumes.iter().any(|sid| {
+                    declares_rules(&Tree::new(req.ir, &base, &runtime_package, vec![*sid]))
+                }));
+        // A model, an error or an event with a derived field, reached by an endpoint or not (a fact
+        // is not reached by one): the output then carries `Derive`, which needs the rule classes.
+        let derived = declares_derived(&tree)
+            || (req.role == Role::Server
+                && req.consumes.iter().any(|sid| {
+                    declares_derived(&Tree::new(req.ir, &base, &runtime_package, vec![*sid]))
+                }));
+        // What a server uses of platform phase P1; a service that uses it and has a principal gets
+        // typed hooks (the caller is a value of the principal's model), as a service with policies.
+        let mut p1 = if req.role == Role::Server {
+            platform::uses(req.ir, &req.services)
+        } else {
+            platform::Uses::default()
+        };
+        // The capture of a violation (`capture-violations`) is carried where the rule classes are:
+        // a server whose event of `onRuleViolation` exists. It keeps the state of a request, so the
+        // services have a typed caller and a clock of their own, as with the audit log.
+        p1.capture = req.role == Role::Server
+            && opts.capture_violations == Some(true)
+            && (rules
+                || features.contains(&Feature::RulesPolicies)
+                || features.contains(&Feature::RulesRollout)
+                || declares_audited(&tree)
+                || runtime_config
+                    .as_ref()
+                    .is_some_and(config::Info::has_rules_output)
+                || derived
+                || p1.any());
+        let typed_principal = req.role == Role::Server
+            && req.services.iter().any(|s| {
+                let svc = req.ir.service(*s);
+                svc.principal.is_some() && (p1.capture || platform::service_uses(req.ir, svc))
+            });
+        let policies = features.contains(&Feature::RulesPolicies) || typed_principal;
+        // A declaration that no endpoint reaches is emitted too, and it calls `Audit` for its audited
+        // rules: the class is emitted for every audited rule the output has, reached or not.
+        let rollout = features.contains(&Feature::RulesRollout)
+            || declares_audited(&tree)
+            || (req.role == Role::Server
+                && req.consumes.iter().any(|sid| {
+                    declares_audited(&Tree::new(req.ir, &base, &runtime_package, vec![*sid]))
+                }));
+        // The output mode of the runtime config is the mode of the rule classes: a target that has
+        // `rules.output` carries them, whatever the generator's own predicate says.
+        let output_mode = runtime_config
+            .as_ref()
+            .is_some_and(config::Info::has_rules_output);
+        // A server whose services subscribe also gets a test handler (`spec/events.md` section 10.9).
+        let subscribing = req.role == Role::Server
+            && req
+                .services
+                .iter()
+                .any(|s| !req.ir.service(*s).subscriptions.is_empty());
+        let conditional_server =
+            req.role == Role::Server && conditional::services_use(req.ir, &req.services);
+        let messages_own = tree.uses_messages();
+        let messages_any = messages_own
+            || (req.role == Role::Server
+                && req.consumes.iter().any(|sid| {
+                    Tree::new(req.ir, &base, &runtime_package, vec![*sid]).uses_messages()
+                }));
+        let messages_server = req.role == Role::Server
+            && messages_own
+            && (rules || policies || rollout || output_mode || derived || p1.any());
+        let flags = runtime::Flags {
+            rules: rules || policies || rollout || output_mode || derived || p1.any(),
+            visibility: p1.visibility,
+            tenancy: p1.tenancy,
+            // The capture keeps the parameters and the facts of a request the way the audit log does.
+            audit: p1.audit || p1.capture,
+            capture: p1.capture,
+            // A member with catalogs: the violations have a `messageKey`, and a server answers in the
+            // language of the request. The consumed clients of a server have catalogs of their own.
+            messages: messages_any,
+            messages_server,
+            limits_server: p1.limits,
+            // A client that gets `429` waits and sends again (a server's consumed clients too).
+            limits: !(if req.role == Role::Client {
+                &req.services
+            } else {
+                &req.consumes
+            })
+            .is_empty()
+                && req
+                    .ir
+                    .http_features_used(if req.role == Role::Client {
+                        &req.services
+                    } else {
+                        &req.consumes
+                    })
+                    .contains(&Feature::Limits),
+            tenant_events: tree.events && p1.tenant_events,
+            // A declaration with a `@tenant` field, of the tree or of a consumed service: a request
+            // may lack it (`spec/platform.md` section 3).
+            tenant_fields: declares_tenant(&tree)
+                || (req.role == Role::Server
+                    && req.consumes.iter().any(|sid| {
+                        declares_tenant(&Tree::new(req.ir, &base, &runtime_package, vec![*sid]))
+                    })),
+            derived,
+            runtime_config: runtime_config.is_some(),
+            endpoint,
+            // A service that has endpoint rules, or only a guard, a key or an `ETag`, gets a test
+            // handler (`spec/rules.md` 11.12).
+            testing: (endpoint || conditional_server || subscribing || p1.any())
+                && opts.testing == Some(true),
+            machine: endpoint && endpoint::services_have_transition(req.ir, &req.services),
+            timed: endpoint && machine::services_have_timed(req.ir, &req.services),
+            slo: req.role == Role::Server && slo::services_have_slo(req.ir, &req.services),
+            timeouts: req
+                .ir
+                .features_used(&req.services)
+                .contains(&Feature::Timeouts),
+            // A flagged invariant of a declaration no endpoint reaches is emitted too, and calls `Flags`.
+            flags: (rules || policies || rollout || output_mode || derived)
+                && (req.ir.features_used(&used).contains(&Feature::RulesFlags)
+                    || !flags::invariant_flags(&tree).is_empty()
+                    || (req.role == Role::Server
+                        && req.consumes.iter().any(|sid| {
+                            !flags::invariant_flags(&Tree::new(
+                                req.ir,
+                                &base,
+                                &runtime_package,
+                                vec![*sid],
+                            ))
+                            .is_empty()
+                        }))),
+            policies,
+            rollout,
+            events: tree.events,
+            // A server with a move that emits an event (`spec/events.md` section 11).
+            outbox: req.role == Role::Server
+                && req
+                    .ir
+                    .features_used(&req.services)
+                    .contains(&Feature::EventsOutbox),
+            conditional: conditional_server,
+            preconditions: conditional::services_use(
+                req.ir,
+                if req.role == Role::Client {
+                    &req.services
+                } else {
+                    &req.consumes
+                },
+            ),
+        };
+        runtime::emit_with(&mut files, &base, streaming, flags)?;
+        let tree = tree
+            .with_runtime(runtime_config.clone())
+            .with_rules(flags.rules)
+            .with_testing(flags.testing)
+            .with_policies(uses_policies(req.ir, &req.services) || typed_principal)
+            .with_rollout(flags.rollout)
+            .with_platform(p1)
+            .with_messages_server(flags.messages_server);
         models::emit(&mut files, &tree)?;
+        messages::emit(&mut files, &tree)?;
         match req.role {
             Role::Client => client::emit(&mut files, &tree)?,
             Role::Server => {
                 let model = frameworks::ServerModel {
                     base: base.clone(),
                     services: server::service_models(&tree),
+                    runtime: runtime_config.clone(),
                 };
                 frameworks::emit(&mut files, &model, profile)?;
                 server::emit(&mut files, &tree)?;
+                retention::emit(&mut files, &tree, profile)?;
+                events::emit(&mut files, &tree)?;
+                brokers::emit(&mut files, &base, &brokers)?;
                 emit_consumed(
                     &mut files,
                     req,
                     &base,
                     &runtime_package,
                     opts.validate != Some(false),
+                    flags.rules,
                 )?;
             }
         }
-        readme::emit(&mut files, &base, req)?;
+        if let Some(info) = &runtime_config {
+            let clients = config::client_refs(req, &info.model, &base, &runtime_package);
+            config::emit(&mut files, &tree, info, &clients)?;
+        }
+        readme::emit(&mut files, &base, req, runtime_config.as_ref(), &brokers)?;
         Ok(files)
     }
+}
+
+/// The runtime config of the target (`spec/runtime-config.md`), or `None` when the target has no
+/// setting and keeps the bytes it had.
+fn runtime_config_of(
+    req: &GenRequest<'_>,
+    opts: &Options,
+    profile: &Profile,
+    base: &str,
+) -> Result<Option<config::Info>, Vec<GenDiagnostic>> {
+    let prefix = opts
+        .runtime_prefix
+        .as_deref()
+        .unwrap_or(config::DEFAULT_PREFIX);
+    if !config::valid_prefix(prefix) {
+        return Err(vec![GenDiagnostic::new(
+            "E0802",
+            format!(
+                "invalid options for generator `java`: `runtime-prefix` is `{prefix}`, which is not a Spring property prefix (lower-case words of letters and digits, joined by `.` or `-`)"
+            ),
+        )]);
+    }
+    let model = veld_codegen::runtime_config::RuntimeModel::for_request(req, profile)
+        .map_err(|d| vec![d])?;
+    Ok(model.map(|m| config::Info::new(m, base, prefix)))
+}
+
+/// The base package of the client tree of a consumed service: `<base>.clients.<service>`.
+pub(crate) fn consumed_base(base: &str, svc: &veld_ir::Service) -> String {
+    let mut dir = util::segment(&naming::snake(&svc.name));
+    if dir.is_empty() {
+        dir.push('_');
+    }
+    format!("{base}.clients.{dir}")
+}
+
+/// `W0904` (`spec/rules.md` section 5.3): with `validate = false` request validation is off, and
+/// with it the rules on what callers send. Reported when the target emits a declaration with
+/// rules or an endpoint with rules, naming the first one. Empty when validation is on.
+fn validation_off_warnings(req: &GenRequest<'_>, opts: &Options) -> Vec<GenDiagnostic> {
+    if opts.validate != Some(false) {
+        return Vec::new();
+    }
+    let Ok(base) = base_package(req, opts) else {
+        return Vec::new();
+    };
+    let runtime_package = runtime::package(&base);
+    let mut ruled: Vec<(String, veld_ir::Origin)> = Vec::new();
+    for sid in &req.services {
+        let svc = req.ir.service(*sid);
+        for ep in svc.endpoints.iter().filter(|e| !e.rules.is_empty()) {
+            if let Some(origin) = ep.rules.first_origin() {
+                ruled.push((format!("{}.{}", svc.name, ep.name), origin.clone()));
+            }
+        }
+    }
+    for group in [&req.services, &req.consumes] {
+        if group.is_empty() {
+            continue;
+        }
+        let tree = Tree::new(req.ir, &base, &runtime_package, group.clone());
+        for id in tree.decls() {
+            let d = req.ir.decl(*id);
+            if let Some(rule) = d.rules().first()
+                && !ruled.iter().any(|(name, _)| *name == d.qualified)
+            {
+                ruled.push((d.qualified.clone(), rule.origin.clone()));
+            }
+        }
+    }
+    let Some((first, origin)) = ruled.first() else {
+        return Vec::new();
+    };
+    let more = match ruled.len() {
+        1 => String::new(),
+        n => format!(" and {} more", n - 1),
+    };
+    vec![GenDiagnostic {
+        code: "W0904",
+        message: format!(
+            "request validation is off (`validate = false`), so the rules of `{first}`{more} are not enforced on requests, WebSocket messages or by the client's local check"
+        ),
+        origin: Some(origin.clone()),
+    }]
+}
+
+/// Whether the services use policies: an `allow`, or a statement that reads the principal.
+fn uses_policies(ir: &veld_ir::Ir, services: &[veld_ir::ServiceId]) -> bool {
+    ir.features_used(services).contains(&Feature::RulesPolicies)
+}
+
+/// Whether a declaration the tree emits has invariants, reachable from a service or not.
+fn declares_rules(tree: &Tree<'_>) -> bool {
+    tree.decls()
+        .iter()
+        .any(|id| rules::has_rules(tree.ir.decl(*id)))
+}
+
+/// Whether a declaration the tree emits has a derived field (`spec/rules.md` section 17.2).
+fn declares_derived(tree: &Tree<'_>) -> bool {
+    tree.decls()
+        .iter()
+        .any(|id| derived::has_derived(tree.ir.decl(*id)))
+}
+
+/// Whether a declaration the tree emits has a `@tenant` field (`spec/platform.md` section 3).
+fn declares_tenant(tree: &Tree<'_>) -> bool {
+    tree.decls()
+        .iter()
+        .any(|id| tree.ir.decl(*id).tenant_field().is_some())
+}
+
+/// Whether a declaration the tree emits has an audited invariant (`@rollout(audit)`), reachable from a
+/// service or not.
+fn declares_audited(tree: &Tree<'_>) -> bool {
+    tree.decls().iter().any(|id| {
+        tree.ir
+            .decl(*id)
+            .rules()
+            .iter()
+            .any(veld_ir::Rule::is_audited)
+    })
 }
 
 /// Emits a client tree under `<base>.clients.<service>` for each consumed service.
@@ -183,21 +567,21 @@ fn emit_consumed(
     base: &str,
     runtime_package: &str,
     validate: bool,
+    rules: bool,
 ) -> Result<(), Vec<GenDiagnostic>> {
     for sid in &req.consumes {
         let svc = req.ir.service(*sid);
-        let mut dir = util::segment(&naming::snake(&svc.name));
-        if dir.is_empty() {
-            dir.push('_');
-        }
         let tree = Tree::new(
             req.ir,
-            &format!("{base}.clients.{dir}"),
+            &consumed_base(base, svc),
             runtime_package,
             vec![*sid],
         )
-        .with_validate(validate);
+        .with_validate(validate)
+        .with_rules(rules)
+        .with_policies(uses_policies(req.ir, &[*sid]));
         models::emit(files, &tree)?;
+        messages::emit(files, &tree)?;
         client::emit(files, &tree)?;
     }
     Ok(())

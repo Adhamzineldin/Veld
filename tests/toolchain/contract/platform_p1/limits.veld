@@ -1,0 +1,54 @@
+// Rate limits (spec/platform.md section 5), the contract of the shared toolchain tests of the Node,
+// Java and Rust servers and clients. Every endpoint says which case it is for.
+
+model User {
+  id: uuid
+  // The caller's tenant, for `by: tenant`. Optional: a caller without one is counted with the others.
+  tenantId?: uuid @tenant
+}
+
+principal User
+
+model Room {
+  id: uuid
+}
+
+@auth(bearer)
+service Rooms at "/rooms" {
+  // By caller: the caller-identity hook names the caller. A `get`, so a client waits and sends again.
+  // It is audited as well, so that a refused call is seen in the audit log.
+  @audited
+  @limit(2, per: minute, by: user)
+  get "/{id}" byUser(id: uuid) -> Room
+
+  // By tenant: the tenant text of the principal; a caller with no tenant has the empty identity.
+  @limit(3, per: hour, by: tenant)
+  get "/tenant" byTenant() -> Room[]
+
+  // By address, a `post` that is not idempotent: a client raises the typed error at once.
+  @limit(1, per: second, by: ip)
+  post "/{id}/archive" archive(id: uuid) -> 204
+
+  // By address, an `@idempotent` `post`: a client waits and sends again, with the same key.
+  @limit(1, per: second, by: ip)
+  @idempotent
+  post "/" create(body: Room) -> 201 Room
+
+  // No limit: counted by nobody.
+  get "/free" free() -> Room[]
+}
+
+// A limit that a service gives its endpoints.
+@limit(2, per: second, by: ip)
+@auth(none)
+service Public at "/public" {
+  get "/" listing() -> Room[]
+}
+
+// By caller in a service with no `@idempotent` endpoint: the caller-identity hook is a hook of its
+// own (`caller`), next to `limiter`.
+@auth(bearer)
+service Desks at "/desks" {
+  @limit(1, per: minute, by: user)
+  get "/" mine() -> Room[]
+}

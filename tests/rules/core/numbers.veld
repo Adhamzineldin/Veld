@@ -1,0 +1,44 @@
+// Integer, long and widening semantics (spec/rules.md 3.3, 3.4, 3.7).
+
+model AddInt {
+  a: int
+  b: int
+  rule small: a + b < 100
+}
+
+model MulInt {
+  a: int
+  b: int
+  rule nonNegative: a * b >= 0
+}
+
+model DivInt {
+  a: int
+  b: int
+  rule half: a / b == -3
+  rule rest: a % b == -1
+}
+
+model LongMath {
+  a: long
+  b: long
+  rule exact: a + 1 == b
+  rule bounded: a * 2 > 0
+}
+
+model Widen {
+  n: int
+  big: long
+  price: decimal
+  ratio: float
+  rule intToLong: n < big
+  rule intToDecimal: n * price <= 100
+  rule intToFloat: n * ratio < 1.5
+}
+
+model Guarded {
+  a: int
+  b: int
+  rule safe: b != 0 && a / b > 1
+  rule alt: b == 0 || a % b == 0
+}

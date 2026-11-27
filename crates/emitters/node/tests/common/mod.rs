@@ -1,6 +1,8 @@
 //! Shared helpers: compile the realistic contract and run the generators.
 #![allow(dead_code)]
 
+pub mod toolchain;
+
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
@@ -91,9 +93,25 @@ fn run(
     let caps = generator.capabilities(role);
     let diags = check_capabilities(ir, &req, &caps);
     assert!(diags.is_empty(), "capability errors: {diags:?}");
+    // A target with settings must be named (`E0802`): the client target is `web`, the server `api`.
+    let options = named(role, options);
     generator
-        .generate_dyn(&req, options)
+        .generate_dyn(&req, &options)
         .unwrap_or_else(|d| panic!("generation failed: {d:?}"))
+}
+
+/// The name the tests give the target they generate: `WebRuntime` for a client, `ApiRuntime` for
+/// a server.
+pub fn target_name(role: Role) -> &'static str {
+    match role {
+        Role::Client => "web",
+        Role::Server => "api",
+    }
+}
+
+/// `options` with the target's name, for a test that calls a generator directly (`E0802` otherwise).
+pub fn named(role: Role, options: &serde_json::Value) -> serde_json::Value {
+    veld_codegen::with_target_name(options, target_name(role))
 }
 
 /// The language versions every toolchain test compiles for: the target option `typescript` and
@@ -144,6 +162,25 @@ pub fn gen_server_with(
     gen_server_fw(ir, service, consumes, options, None)
 }
 
+/// Server files for several services of one package, with target options.
+pub fn gen_servers_with(
+    ir: &Ir,
+    services: &[&str],
+    consumes: &[&str],
+    options: &serde_json::Value,
+) -> FileSet {
+    let consumed = consumes.iter().map(|n| service_id(ir, n)).collect();
+    run(
+        &Node,
+        ir,
+        Role::Server,
+        services.iter().map(|n| service_id(ir, n)).collect(),
+        consumed,
+        options,
+        None,
+    )
+}
+
 /// Server files for `service`, with clients for `consumes`, target options and a framework.
 pub fn gen_server_fw(
     ir: &Ir,
@@ -171,6 +208,56 @@ pub fn text<'a>(files: &'a FileSet, path: &str) -> &'a str {
             .unwrap_or_else(|| panic!("missing generated file {path}")),
     )
     .unwrap_or_default()
+}
+
+/// The rules fixture: invariants on a body, a query object and a response
+/// (`tests/toolchain/contract/rules`).
+pub fn rules_ir() -> Ir {
+    let path = repo_root().join("tests/toolchain/contract/rules/bookings.veld");
+    let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    let out = compile(&CompileInput {
+        packages: vec![PackageInput {
+            name: "bookings".into(),
+            kind: PackageKind::Service,
+            files: vec![SourceFile {
+                path: "bookings.veld".into(),
+                text,
+            }],
+            base_url: None,
+        }],
+        consumes: BTreeMap::new(),
+    });
+    assert!(
+        out.ir.is_some(),
+        "rules fixture failed to compile:\n{}",
+        out.render()
+    );
+    out.ir.unwrap_or_else(|| unreachable!())
+}
+
+/// The rules fixture for errors and streams: a declared error with a rule, an SSE endpoint and a
+/// WebSocket endpoint whose messages have rules (`tests/toolchain/contract/rules_live`).
+pub fn rules_live_ir() -> Ir {
+    let path = repo_root().join("tests/toolchain/contract/rules_live/live.veld");
+    let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    let out = compile(&CompileInput {
+        packages: vec![PackageInput {
+            name: "live".into(),
+            kind: PackageKind::Service,
+            files: vec![SourceFile {
+                path: "live.veld".into(),
+                text,
+            }],
+            base_url: None,
+        }],
+        consumes: BTreeMap::new(),
+    });
+    assert!(
+        out.ir.is_some(),
+        "rules_live fixture failed to compile:\n{}",
+        out.render()
+    );
+    out.ir.unwrap_or_else(|| unreachable!())
 }
 
 /// The hazard fixture: every identifier that is dangerous in TypeScript, JavaScript or Java,
@@ -250,6 +337,16 @@ pub fn streaming_ir() -> Ir {
 
 /// Server files for several services of one package.
 pub fn gen_server_services(ir: &Ir, services: &[&str], options: &serde_json::Value) -> FileSet {
+    gen_server_services_fw(ir, services, options, None)
+}
+
+/// Server files for several services of one package, with a framework.
+pub fn gen_server_services_fw(
+    ir: &Ir,
+    services: &[&str],
+    options: &serde_json::Value,
+    framework: Option<&str>,
+) -> FileSet {
     let ids = services.iter().map(|n| service_id(ir, n)).collect();
-    run(&Node, ir, Role::Server, ids, vec![], options, None)
+    run(&Node, ir, Role::Server, ids, vec![], options, framework)
 }

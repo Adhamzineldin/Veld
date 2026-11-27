@@ -45,7 +45,13 @@ fn the_expected_examples_exist() {
         .iter()
         .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
         .collect();
-    for want in ["hello", "library-package", "microservices", "rust-catalog"] {
+    for want in [
+        "bookings",
+        "hello",
+        "library-package",
+        "microservices",
+        "rust-catalog",
+    ] {
         assert!(names.iter().any(|n| n == want), "missing example {want}");
     }
 }
@@ -99,6 +105,38 @@ fn generating_twice_from_scratch_gives_the_committed_bytes() {
             &format!("{}: regeneration", example.display()),
         );
     }
+}
+
+/// The `example` blocks of the bookings contract are documentation that runs: all of them pass offline.
+#[test]
+fn bookings_examples_pass_offline() {
+    let work = tempdir().unwrap();
+    copy_tree(&examples_dir().join("bookings"), work.path());
+    let out = veld(work.path())
+        .arg("test")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let text = String::from_utf8(out).unwrap();
+    // Every `example` block of the contract ran and passed (the count comes from the file, so a
+    // new example needs no change here, and a block that silently did not run is noticed).
+    let contract =
+        fs::read_to_string(examples_dir().join("bookings/contracts/bookings.veld")).unwrap();
+    let count = contract
+        .lines()
+        .filter(|l| l.starts_with("example \""))
+        .count();
+    assert!(
+        count > 30,
+        "the contract should state the state machine and policy examples too"
+    );
+    assert!(
+        text.contains(&format!(" {count} passed")),
+        "expected {count} passed: {text}"
+    );
+    assert!(!text.contains("FAIL") && !text.contains("skip"), "{text}");
 }
 
 /// The README's "Using it in your code" section quotes the hello example verbatim.

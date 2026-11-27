@@ -16,6 +16,17 @@ public final class ClientOptions {
    */
   public record Basic(String username, String password) {}
 
+  // #if rules
+  /**
+   * A server answered with another rules digest than this client was generated with.
+   *
+   * @param service the service name
+   * @param clientDigest the digest of the client
+   * @param serverDigest the digest the server sent
+   */
+  public record ContractMismatch(String service, String clientDigest, String serverDigest) {}
+
+  // #endif
   private final String baseUrl;
   private final HttpClient httpClient;
   private final Supplier<Map<String, String>> headers;
@@ -24,6 +35,17 @@ public final class ClientOptions {
   private final Supplier<String> apiKey;
   private final Boolean validate;
   private final Duration timeout;
+  // #if timeouts
+  private final boolean timeoutSet;
+  // #endif
+  // #if limits
+  private final boolean retryOnLimit;
+  private final Sleeper sleeper;
+  // #endif
+  // #if rules
+  private final boolean localRules;
+  private final java.util.function.Consumer<ContractMismatch> onContractMismatch;
+  // #endif
   // veld:streaming
   private final Reconnect reconnect;
   // veld:end
@@ -37,11 +59,31 @@ public final class ClientOptions {
     this.apiKey = b.apiKey;
     this.validate = b.validate;
     this.timeout = b.timeout;
+    // #if timeouts
+    this.timeoutSet = b.timeoutSet;
+    // #endif
+    // #if limits
+    this.retryOnLimit = b.retryOnLimit;
+    this.sleeper = b.sleeper;
+    // #endif
+    // #if rules
+    this.localRules = b.localRules;
+    this.onContractMismatch = b.onContractMismatch;
+    // #endif
     // veld:streaming
     this.reconnect = b.reconnect;
     // veld:end
   }
 
+  // #if limits
+  /** Waits for {@code millis} milliseconds: a client that gets {@code 429} waits through this, so a test does not. */
+  @FunctionalInterface
+  public interface Sleeper {
+    /** Waits. */
+    void sleep(long millis) throws InterruptedException;
+  }
+
+  // #endif
   /** Options with everything at its default. */
   public static ClientOptions defaults() {
     return builder().build();
@@ -55,6 +97,38 @@ public final class ClientOptions {
   String baseUrl() {
     return baseUrl;
   }
+  // #if runtimecfg
+
+  /** These options with another base URL (the runtime config gives each client its own). */
+  public ClientOptions withBaseUrl(String value) {
+    Builder b = new Builder();
+    b.baseUrl = value;
+    b.httpClient = httpClient;
+    b.headers = headers;
+    b.bearer = bearer;
+    b.basic = basic;
+    b.apiKey = apiKey;
+    b.validate = validate;
+    b.timeout = timeout;
+  // #endif
+  // #if timeouts_runtimecfg
+    b.timeoutSet = timeoutSet;
+  // #endif
+  // #if limits_runtimecfg
+    b.retryOnLimit = retryOnLimit;
+    b.sleeper = sleeper;
+  // #endif
+  // #if runtimecfg_rules
+    b.localRules = localRules;
+    b.onContractMismatch = onContractMismatch;
+  // #endif
+  // #if runtimecfg
+  // veld:streaming
+    b.reconnect = reconnect;
+  // veld:end
+    return b.build();
+  }
+  // #endif
 
   HttpClient httpClient() {
     return httpClient;
@@ -76,6 +150,16 @@ public final class ClientOptions {
     return apiKey;
   }
 
+  // #if limits
+  boolean retryOnLimit() {
+    return retryOnLimit;
+  }
+
+  Sleeper sleeper() {
+    return sleeper;
+  }
+
+  // #endif
   boolean validate(boolean fallback) {
     return validate == null ? fallback : validate;
   }
@@ -83,6 +167,23 @@ public final class ClientOptions {
   Duration timeout() {
     return timeout;
   }
+  // #if timeouts
+
+  /** Whether the caller chose a timeout: without one, the deadline of an endpoint is its default. */
+  boolean timeoutSet() {
+    return timeoutSet;
+  }
+  // #endif
+  // #if rules
+
+  java.util.function.Consumer<ContractMismatch> onContractMismatch() {
+    return onContractMismatch;
+  }
+
+  boolean localRules() {
+    return localRules;
+  }
+  // #endif
 
   // veld:streaming
   Reconnect reconnect() {
@@ -100,13 +201,29 @@ public final class ClientOptions {
     private Supplier<String> apiKey;
     private Boolean validate;
     private Duration timeout = Duration.ofSeconds(30);
+    // #if timeouts
+    private boolean timeoutSet;
+    // #endif
+    // #if limits
+    private boolean retryOnLimit = true;
+    private Sleeper sleeper = Thread::sleep;
+    // #endif
+    // #if rules
+    private boolean localRules = true;
+    private java.util.function.Consumer<ContractMismatch> onContractMismatch;
+    // #endif
     // veld:streaming
     private Reconnect reconnect;
     // veld:end
 
     private Builder() {}
 
+    // #if legacy
     /** The base URL; overrides the {@code VELD_<SERVICE>_URL} variable and the contract's default. */
+    // #endif
+    // #if runtimecfg
+    /** The base URL of the service. A client requires it. */
+    // #endif
     public Builder baseUrl(String value) {
       this.baseUrl = value;
       return this;
@@ -158,9 +275,34 @@ public final class ClientOptions {
     /** The per-request timeout (default 30 seconds). */
     public Builder timeout(Duration value) {
       this.timeout = value;
+      // #if timeouts
+      this.timeoutSet = true;
+      // #endif
       return this;
     }
 
+    // #if rules
+    /**
+     * Checks the rules of a request body and of a query object before sending (default true). A
+     * violation is thrown as the typed {@code ValidationError} without sending anything. Needs
+     * {@link #validate} to be on.
+     */
+    public Builder localRules(boolean value) {
+      this.localRules = value;
+      return this;
+    }
+
+    /**
+     * Called once for every rules digest a server answers with that differs from the one this
+     * client was generated with: the server's rules changed, so the local check is switched off
+     * (spec/rules.md section 9.7).
+     */
+    public Builder onContractMismatch(java.util.function.Consumer<ContractMismatch> callback) {
+      this.onContractMismatch = callback;
+      return this;
+    }
+
+    // #endif
     // veld:streaming
     /**
      * Reconnects Server-Sent Events and WebSocket calls after a connection failure (default: off).
@@ -171,6 +313,24 @@ public final class ClientOptions {
     }
     // veld:end
 
+    // #if limits
+    /**
+     * Whether a call that gets {@code 429} with {@code retryAfter} waits that long and sends again,
+     * once, when the endpoint is a {@code get} or {@code @idempotent} (default true). With {@code
+     * false} the typed error is raised at once.
+     */
+    public Builder retryOnLimit(boolean value) {
+      this.retryOnLimit = value;
+      return this;
+    }
+
+    /** What the client waits through before it sends again after a {@code 429} (default {@code Thread.sleep}). */
+    public Builder sleeper(Sleeper value) {
+      this.sleeper = value;
+      return this;
+    }
+
+    // #endif
     /** The finished options. */
     public ClientOptions build() {
       return new ClientOptions(this);

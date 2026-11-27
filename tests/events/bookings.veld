@@ -1,0 +1,131 @@
+// Events, channels and subscriptions (spec/events.md). The examples are the vectors: the
+// reference evaluator, and later every server target, must give exactly the stated outcome.
+// The outcomes were written by hand from the spec, before any implementation.
+// `cargo test -p veld-rules --test events` runs them.
+
+enum Reason { guest, hotel, fraud }
+
+/// Published when a booking is paid.
+event BookingPaid {
+  bookingId: uuid
+  amount: decimal
+  paidAt: datetime
+  nights: int = 1
+  rule positive: amount > 0
+  rule shortStay: nights <= 30
+    message "A stay is at most 30 nights"
+}
+
+/// Published when a booking is cancelled.
+event BookingCancelled {
+  bookingId: uuid
+  reason: Reason
+  note?: string
+  rule noteNotEmpty: has(note) implies len(note) > 0
+}
+
+/// Carried by the channel, handled by nobody (`W1002`).
+event BookingArchived {
+  bookingId: uuid
+}
+
+@topic("shop.bookings.v1")
+channel BookingEvents {
+  carries BookingPaid, BookingCancelled, BookingArchived
+  key bookingId
+}
+
+// `BookingPaid` is carried by two channels, so its examples must say `on`.
+channel Audit {
+  carries BookingPaid
+}
+
+@auth(none)
+service Bookings at "/bookings" {
+  publishes BookingEvents, Audit
+  get "/ping" ping() -> 204
+}
+
+// A service without `at`: it only consumes.
+service Notifications {
+  subscribes BookingEvents as "notifications" {
+    on BookingPaid      -> sendReceipt
+    on BookingCancelled -> sendApology
+  }
+}
+
+service Ledger {
+  subscribes BookingEvents as "ledger" {
+    on BookingPaid -> recordPayment
+  }
+  subscribes Audit as "ledger-audit" {
+    on BookingPaid -> auditPayment
+  }
+}
+
+// --- one event, every subscription of its channel ---
+
+example "a paid booking reaches every subscriber that handles it" {
+  given event BookingPaid { amount: 120.00 } on BookingEvents
+  expect Notifications.sendReceipt called
+  expect Ledger.recordPayment called
+  expect Notifications.sendApology not called
+}
+
+example "the same event on another channel reaches that channel's subscribers" {
+  given event BookingPaid { amount: 120.00 } on Audit
+  expect Ledger.auditPayment called
+}
+
+// --- invariants on consume ---
+
+example "an event that breaks a rule reaches no handler" {
+  given event BookingPaid { amount: 0.00 } on BookingEvents
+  expect rejected
+}
+
+example "a rule is checked on every channel that carries the event" {
+  given event BookingPaid { amount: -5.00 } on Audit
+  expect rejected
+}
+
+example "a left-out field takes its default, which passes" {
+  given event BookingPaid { amount: 1.00 } on BookingEvents
+  expect Notifications.sendReceipt called
+}
+
+example "a stay of exactly thirty nights passes" {
+  given event BookingPaid { amount: 1.00, nights: 30 } on BookingEvents
+  expect Ledger.recordPayment called
+}
+
+example "a stay of thirty-one nights is rejected" {
+  given event BookingPaid { amount: 1.00, nights: 31 } on BookingEvents
+  expect rejected
+}
+
+// --- a subscription handles only what it has an `on` line for ---
+
+example "a cancellation reaches the one subscription that handles it" {
+  given event BookingCancelled { reason: .guest }
+  expect Notifications.sendApology called
+  expect Notifications.sendReceipt not called
+  expect Ledger.recordPayment not called
+}
+
+example "an optional field that is present is checked" {
+  given event BookingCancelled { reason: .fraud, note: "" }
+  expect rejected
+}
+
+example "an optional field with a value passes" {
+  given event BookingCancelled { reason: .hotel, note: "overbooked" }
+  expect Notifications.sendApology called
+}
+
+example "an event nobody handles is ignored by every subscription" {
+  given event BookingArchived { }
+  expect Notifications.sendReceipt not called
+  expect Notifications.sendApology not called
+  expect Ledger.recordPayment not called
+}

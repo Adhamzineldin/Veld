@@ -10,7 +10,7 @@ use anyhow::{Context, Result};
 use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
 use veld_project::config::{CONFIG_FILE, Project};
 
-use crate::cli::{GenerateArgs, WatchArgs};
+use crate::cli::{GenerateArgs, SelectArgs, WatchArgs};
 use crate::commands::generate;
 use crate::error::{self, Exit};
 use crate::pipeline;
@@ -25,6 +25,7 @@ const LOCK_FILE: &str = "veld.lock";
 #[derive(Debug, Clone)]
 pub struct Options {
     pub target: Option<String>,
+    pub select: SelectArgs,
     pub force: bool,
     pub dry_run: bool,
     /// Quiet period after the last change before regenerating.
@@ -35,6 +36,7 @@ impl From<&WatchArgs> for Options {
     fn from(a: &WatchArgs) -> Self {
         Options {
             target: a.target.clone(),
+            select: a.select.clone(),
             force: a.force,
             dry_run: a.dry_run,
             debounce: Duration::from_millis(a.debounce),
@@ -46,6 +48,7 @@ impl From<&GenerateArgs> for Options {
     fn from(a: &GenerateArgs) -> Self {
         Options {
             target: a.target.clone(),
+            select: a.select.clone(),
             force: a.force,
             dry_run: a.dry_run,
             debounce: Duration::from_millis(300),
@@ -85,17 +88,28 @@ pub fn run(ui: &Ui, config: Option<&Path>, opts: &Options) -> Result<Exit> {
 /// Paths one watch cycle depends on.
 struct Watched {
     base: PathBuf,
-    config: PathBuf,
+    /// The `veld.toml` files: the one the run started from, the root and every member's.
+    configs: Vec<PathBuf>,
     roots: Vec<PathBuf>,
     outs: Vec<PathBuf>,
 }
 
 impl Watched {
     fn of(config: &Path, project: Option<&Project>) -> Self {
-        let base = config.parent().unwrap_or(Path::new(".")).to_path_buf();
+        let base = project.map_or_else(
+            || config.parent().unwrap_or(Path::new(".")).to_path_buf(),
+            |p| p.root.clone(),
+        );
+        let mut configs = vec![config.to_path_buf()];
+        if let Some(p) = project {
+            configs.push(p.file.clone());
+            configs.extend(p.members.iter().map(|m| m.file.clone()));
+        }
+        configs.sort();
+        configs.dedup();
         Watched {
             base,
-            config: config.to_path_buf(),
+            configs,
             roots: project
                 .map(|p| p.packages.iter().map(|pkg| pkg.root.clone()).collect())
                 .unwrap_or_default(),
@@ -132,6 +146,7 @@ fn print_header(ui: &Ui, file: &Path, project: Option<&Project>, w: &Watched) {
 fn run_once(ui: &Ui, project: Result<Project>, opts: &Options, rerun: bool) {
     let args = GenerateArgs {
         target: opts.target.clone(),
+        select: opts.select.clone(),
         dry_run: opts.dry_run,
         force: opts.force,
         // A watch never prompts or blocks: it shows the breaking list and carries on.
@@ -182,10 +197,16 @@ fn watch(w: &Watched) -> Result<(RecommendedWatcher, Receiver<notify::Result<Eve
         let _ = tx.send(res);
     })
     .context("cannot start the file watcher")?;
-    let parent = w.config.parent().unwrap_or(Path::new("."));
-    watcher
-        .watch(parent, RecursiveMode::NonRecursive)
-        .with_context(|| format!("cannot watch `{}`", parent.display()))?;
+    let parents: BTreeSet<&Path> = w
+        .configs
+        .iter()
+        .map(|c| c.parent().unwrap_or(Path::new(".")))
+        .collect();
+    for parent in parents {
+        watcher
+            .watch(parent, RecursiveMode::NonRecursive)
+            .with_context(|| format!("cannot watch `{}`", parent.display()))?;
+    }
     for root in &w.roots {
         if root.is_dir() {
             watcher
@@ -280,6 +301,7 @@ mod tests {
     fn options_come_from_either_command() {
         let w = WatchArgs {
             target: Some("api".into()),
+            select: SelectArgs::default(),
             force: true,
             dry_run: false,
             debounce: 50,

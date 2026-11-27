@@ -51,11 +51,22 @@ fn init_flags_describe_a_workspace_without_a_tty() {
         .assert()
         .success()
         .stdout(predicate::str::contains("veld setup"));
-    let toml = read(tmp.path(), "veld.toml");
-    assert!(toml.contains("framework = \"fastify\"") && toml.contains("framework = \"spring\""));
-    assert!(toml.contains("framework = \"react\"") && toml.contains("consumes = [\"users\"]"));
-    assert!(toml.contains("base-url = \"https://users.example.com\""));
-    assert!(tmp.path().join("contracts/billing/billing.veld").is_file());
+    // The root lists the members; each member's file holds its own settings.
+    let root = read(tmp.path(), "veld.toml");
+    assert!(root.contains("[workspace]") && root.contains("members = [\"services/*\", \"web\"]"));
+    let users = read(tmp.path(), "services/users/veld.toml");
+    let billing = read(tmp.path(), "services/billing/veld.toml");
+    let web = read(tmp.path(), "web/veld.toml");
+    assert!(
+        users.contains("framework = \"fastify\"") && billing.contains("framework = \"spring\"")
+    );
+    assert!(web.contains("framework = \"react\"") && billing.contains("consumes = [\"users\"]"));
+    assert!(users.contains("base-url = \"https://users.example.com\""));
+    assert!(
+        tmp.path()
+            .join("services/billing/contracts/billing.veld")
+            .is_file()
+    );
     assert!(tmp.path().join("services/users/package.json").is_file());
     assert!(tmp.path().join("web/package.json").is_file());
     veld(tmp.path())
@@ -103,7 +114,11 @@ fn init_yes_and_defaults_match_and_bad_values_are_errors() {
         .args(["init", "--server", "none", "--client", "none"])
         .assert()
         .success();
-    assert!(!read(tmp.path(), "veld.toml").contains("[[targets]]"));
+    let toml = read(tmp.path(), "veld.toml");
+    assert!(
+        !toml.contains("[server]") && !toml.contains("[client]"),
+        "{toml}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -209,7 +224,7 @@ fn the_app_key_picks_the_package_json() {
 // setup: Maven and Gradle
 // ---------------------------------------------------------------------------
 
-const JAVA_TOML: &str = "[project]\nname = \"svc\"\ncontracts = \"contracts\"\n\n[[targets]]\nname = \"api\"\nrole = \"server\"\nemitter = \"java\"\nservice = \"svc\"\nout = \"gen/java\"\n\n[targets.options]\npackage = \"com.acme.svc\"\n";
+const JAVA_TOML: &str = "[service]\nname = \"svc\"\ncontracts = \"contracts\"\n\n[server]\nname = \"api\"\nemitter = \"java\"\nout = \"gen/java\"\n\n[server.options]\npackage = \"com.acme.svc\"\n";
 const CONTRACT: &str =
     "model Ping {\n  ok: bool\n}\n\nservice Svc at \"/svc\" {\n  get \"/ping\" ping() -> Ping\n}\n";
 

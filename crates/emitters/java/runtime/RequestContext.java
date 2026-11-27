@@ -48,6 +48,81 @@ public final class RequestContext {
   void setPrincipal(Object value) {
     this.principal = value;
   }
+  // #if conditional
+
+  private volatile Long ifMatchVersion;
+
+  /** Records the version of the {@code If-Match} tag the request carried (step 5). */
+  void setIfMatchVersion(Long value) {
+    this.ifMatchVersion = value;
+  }
+
+  /** The version of the tag the request carried, or {@code null}: no header, or {@code *}. */
+  Long ifMatchVersion() {
+    return ifMatchVersion;
+  }
+  // #endif
+  // #if flags
+
+  private volatile Flags.View flagView;
+
+  void setFlags(Flags.View view) {
+    this.flagView = view;
+  }
+
+  /** The flags this request read, for the checks that run outside its thread (the items of a stream). */
+  Flags.View flags() {
+    return flagView;
+  }
+  // #endif
+  // #if platform
+
+  private volatile Platform.State platformState;
+
+  void setPlatform(Platform.State state) {
+    this.platformState = state;
+  }
+
+  /** What the platform features keep for this request: the clock reading, the dropped paths, the audit trail. */
+  Platform.State platform() {
+    return platformState;
+  }
+
+  /**
+   * The clock reading of this request in epoch milliseconds: the one the router took when it
+   * matched the request, else {@code clock}'s.
+   */
+  public long clockReading(java.util.function.ToLongFunction<RequestContext> clock) {
+    Platform.State state = platformState;
+    return state != null ? state.now() : clock.applyAsLong(this);
+  }
+  // #endif
+  // #if timeouts
+
+  private volatile Deadline bound;
+
+  void setDeadline(Deadline value) {
+    this.bound = value;
+  }
+
+  /**
+   * The instant by which the endpoint must have answered (the arrival of the request plus its
+   * {@code @timeout}), or {@code null} for an endpoint without a deadline. The handler runs on a
+   * thread that cannot be stopped: when the deadline passes the server answers {@code 504
+   * DeadlineExceeded}, drops the answer the handler gives later and interrupts the handler's thread
+   * once. A handler that writes must watch {@link #expired()} or the interrupt.
+   */
+  public java.time.Instant deadline() {
+    Deadline d = bound;
+    return d == null ? null : d.at();
+  }
+
+  /** Whether the deadline has passed (or the server has answered {@code 504}); {@code false} without one. */
+  public boolean expired() {
+    Deadline d = bound;
+    return d != null && d.expired();
+  }
+  // #endif
 
   /** The framework's request object (for example an {@code HttpExchange}). */
   public Object raw() {

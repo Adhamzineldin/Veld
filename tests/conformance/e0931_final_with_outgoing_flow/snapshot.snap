@@ -1,0 +1,20 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0931]: `paid` is final but the flow `paid -> cancelled` leaves it
+ --> app/app.veld:5:19
+  |
+5 |   flow pending -> paid -> cancelled
+  |                   ^^^^^^^^^^^^^^^^^
+  = help: a final state has no way out
+
+error[E0931]: `paid` is final but the flow `paid -> pending` leaves it
+ --> app/app.veld:6:8
+  |
+6 |   flow paid -> pending
+  |        ^^^^^^^^^^^^^^^
+  = help: a final state has no way out
+
+== ir ==
+(no IR: compilation failed)

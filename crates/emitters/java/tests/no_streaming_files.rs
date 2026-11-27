@@ -42,7 +42,10 @@ fn generate(
         framework: framework.map(str::to_string),
     };
     generator
-        .generate_dyn(&req, &serde_json::Value::Null)
+        .generate_dyn(
+            &req,
+            &veld_codegen::with_target_name(&serde_json::Value::Null, "t"),
+        )
         .map_err(|d| format!("{d:?}"))
 }
 
@@ -76,8 +79,16 @@ fn contracts_without_streaming_generate_no_streaming_files() {
         if streaming_features(&ir, &services) != (false, false) {
             continue;
         }
+        let used = ir.features_used(&services);
         for generator in generators {
             for (role, framework) in targets(generator) {
+                // A generator that does not declare a feature of the contract refuses it
+                // (`E0801`, as a server refuses events today): it writes no file to look at.
+                // Any other failure to generate still fails the test below.
+                let caps = generator.capabilities(role);
+                if used.iter().any(|f| !caps.supports(*f)) {
+                    continue;
+                }
                 let files =
                     generate(generator, &ir, role, framework.as_deref()).unwrap_or_else(|e| {
                         panic!(

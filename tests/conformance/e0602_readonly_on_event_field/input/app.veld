@@ -1,0 +1,4 @@
+event Paid {
+  id: uuid @readonly
+  amount: decimal
+}

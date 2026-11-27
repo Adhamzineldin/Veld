@@ -1,0 +1,159 @@
+// Tenancy (spec/platform.md section 3). The examples are the vectors: every server target and
+// the reference evaluator must give exactly the stated outcome. A fact of another tenant is not
+// found (`404`, or absent for an optional fact); a value of another tenant in a response is
+// never sent (`500 Internal`); a caller with no tenant sees nothing. A `@tenant` field that an
+// example leaves out is the tenant of its principal: the one `as` writes, else
+// `00000000-0000-4000-8000-00000000fe01`. The file waits under a `.pending` suffix until a
+// generator declares `tenancy`; the reference evaluator runs it already.
+
+model User {
+  id: uuid
+  tenantId?: uuid @tenant
+}
+
+principal User
+
+model Booking {
+  id: uuid
+  tenantId: uuid @tenant
+  title: string
+  open: bool
+}
+
+model Summary {
+  title: string
+}
+
+model Copy {
+  copy: Booking
+}
+
+error Dup 409 {
+  copy: Booking
+}
+
+@auth(bearer)
+service Bookings at "/bookings" {
+  get "/{id}" getBooking(id: uuid) -> Booking {
+    fact booking: Booking = id
+  }
+  get "/{id}/seen" seen(id: uuid) -> Summary | NotFound {
+    fact held?: Booking = id
+    require has(held) else NotFound { resource: "held" }
+  }
+  get "/" listBookings() -> Booking[]
+  get "/page" pageBookings() -> Page<Booking>
+  get "/me" me() -> User
+  post "/{id}/copy" copyBooking(id: uuid, body: Copy) -> Booking | Dup {
+    fact booking: Booking = id
+    require booking.open else Dup { copy: body.copy }
+  }
+}
+
+// --- a fact of another tenant is not found ---
+
+example "a fact of the caller's tenant is loaded" {
+  given booking = { tenantId: "00000000-0000-4000-8000-0000000000aa" }
+  as { id: "00000000-0000-4000-8000-0000000000c1", tenantId: "00000000-0000-4000-8000-0000000000aa" }
+  getBooking(id: booking.id) -> ok
+}
+
+example "a fact of another tenant is not found, not forbidden" {
+  given booking = { tenantId: "00000000-0000-4000-8000-0000000000bb" }
+  as { id: "00000000-0000-4000-8000-0000000000c1", tenantId: "00000000-0000-4000-8000-0000000000aa" }
+  getBooking(id: booking.id) -> NotFound { resource: "booking" }
+}
+
+example "an uuid is the same tenant in any case" {
+  given booking = { tenantId: "00000000-0000-4000-8000-0000000000AA" }
+  as { id: "00000000-0000-4000-8000-0000000000c1", tenantId: "00000000-0000-4000-8000-0000000000aa" }
+  getBooking(id: booking.id) -> ok
+}
+
+example "an optional fact of another tenant is absent" {
+  given held = { tenantId: "00000000-0000-4000-8000-0000000000bb", title: "t" }
+  as { id: "00000000-0000-4000-8000-0000000000c1", tenantId: "00000000-0000-4000-8000-0000000000aa" }
+  seen(id: held.id) returns { title: "t" } -> NotFound { resource: "held" }
+}
+
+example "an optional fact of the caller's tenant is there" {
+  given held = { tenantId: "00000000-0000-4000-8000-0000000000aa", title: "t" }
+  as { id: "00000000-0000-4000-8000-0000000000c1", tenantId: "00000000-0000-4000-8000-0000000000aa" }
+  seen(id: held.id) returns { title: "t" } -> ok { title: "t" }
+}
+
+// --- a value of another tenant is never sent ---
+
+example "a response of the caller's tenant is sent" {
+  as { id: "00000000-0000-4000-8000-0000000000c1", tenantId: "00000000-0000-4000-8000-0000000000aa" }
+  listBookings() returns [ { tenantId: "00000000-0000-4000-8000-0000000000aa", title: "a" } ]
+    -> ok [ { title: "a" } ]
+}
+
+example "one value of another tenant in a list makes the answer a 500" {
+  as { id: "00000000-0000-4000-8000-0000000000c1", tenantId: "00000000-0000-4000-8000-0000000000aa" }
+  listBookings() returns [
+    { tenantId: "00000000-0000-4000-8000-0000000000aa", title: "a" },
+    { tenantId: "00000000-0000-4000-8000-0000000000bb", title: "b" }
+  ] -> Internal
+}
+
+example "one item of another tenant in a page makes the answer a 500" {
+  as { id: "00000000-0000-4000-8000-0000000000c1", tenantId: "00000000-0000-4000-8000-0000000000aa" }
+  pageBookings() returns { items: [ { tenantId: "00000000-0000-4000-8000-0000000000bb" } ], total: 1, page: 1, size: 1 }
+    -> Internal
+}
+
+example "a value of another tenant inside a declared error is never sent" {
+  given booking = { tenantId: "00000000-0000-4000-8000-0000000000aa", open: false }
+  as { id: "00000000-0000-4000-8000-0000000000c1", tenantId: "00000000-0000-4000-8000-0000000000aa" }
+  copyBooking(id: booking.id, body: { copy: { tenantId: "00000000-0000-4000-8000-0000000000bb" } }) -> Internal
+}
+
+example "a declared error that holds the caller's own tenant is sent" {
+  given booking = { tenantId: "00000000-0000-4000-8000-0000000000aa", open: false }
+  as { id: "00000000-0000-4000-8000-0000000000c1", tenantId: "00000000-0000-4000-8000-0000000000aa" }
+  copyBooking(id: booking.id, body: { copy: { tenantId: "00000000-0000-4000-8000-0000000000aa", title: "c" } }) -> Dup { copy: { title: "c" } }
+}
+
+// --- the principal is a tenant-scoped value too ---
+
+example "the caller may be returned" {
+  as { id: "00000000-0000-4000-8000-0000000000c1", tenantId: "00000000-0000-4000-8000-0000000000aa" }
+  me() returns { id: "00000000-0000-4000-8000-0000000000c1", tenantId: "00000000-0000-4000-8000-0000000000aa" } -> ok
+}
+
+example "another user of another tenant is not" {
+  as { id: "00000000-0000-4000-8000-0000000000c1", tenantId: "00000000-0000-4000-8000-0000000000aa" }
+  me() returns { id: "00000000-0000-4000-8000-0000000000c2", tenantId: "00000000-0000-4000-8000-0000000000bb" } -> Internal
+}
+
+// --- a caller without a tenant ---
+
+example "a caller without a tenant finds no fact" {
+  given booking = { title: "t" }
+  as { id: "00000000-0000-4000-8000-0000000000c1" }
+  getBooking(id: booking.id) -> NotFound { resource: "booking" }
+}
+
+example "a caller without a tenant is sent no tenant-scoped value" {
+  as { id: "00000000-0000-4000-8000-0000000000c1" }
+  listBookings() returns [ { title: "a" } ] -> Internal
+}
+
+example "a caller without a tenant may still get an empty list" {
+  as { id: "00000000-0000-4000-8000-0000000000c1" }
+  listBookings() returns [] -> ok []
+}
+
+// --- what an example leaves out is the principal's tenant ---
+
+example "without as the principal and every left-out tenant are the same filled-in tenant" {
+  given booking = { title: "t" }
+  getBooking(id: booking.id) returns { title: "t" } -> ok { tenantId: "00000000-0000-4000-8000-00000000fe01" }
+}
+
+example "a left-out tenant takes the tenant that as writes" {
+  as { id: "00000000-0000-4000-8000-0000000000c1", tenantId: "00000000-0000-4000-8000-0000000000dd" }
+  listBookings() returns [ { title: "a" } ] -> ok [ { tenantId: "00000000-0000-4000-8000-0000000000dd" } ]
+}

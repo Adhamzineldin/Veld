@@ -1,0 +1,28 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+assertion_line: 195
+---
+== diagnostics ==
+error[E1001]: event `Paid` cannot be used as a type
+ --> app/app.veld:4:22
+  |
+4 | model Holder { paid: Paid }
+  |                      ^^^^
+  = help: an event is named only in `carries`, `on`, `emits` and `given event`
+
+error[E1001]: event `Paid` cannot be used as a type
+ --> app/app.veld:8:10
+  |
+8 |   inner: Paid
+  |          ^^^^
+  = help: an event is named only in `carries`, `on`, `emits` and `given event`
+
+error[E1001]: event `Paid` cannot be used as a type
+ --> app/app.veld:12:19
+   |
+12 |   get "/p" p() -> Paid
+   |                   ^^^^
+  = help: an event is named only in `carries`, `on`, `emits` and `given event`
+
+== ir ==
+(no IR: compilation failed)

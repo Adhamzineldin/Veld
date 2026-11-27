@@ -1,0 +1,37 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0904]: `result` is only available in `ensure`
+ --> app/app.veld:9:26
+  |
+9 |     fact copy: Booking = result.id
+  |                          ^^^^^^
+
+error[E0904]: `old(...)` is only available in `ensure`
+ --> app/app.veld:10:13
+   |
+10 |     require old(body.guests) > 0
+   |             ^^^
+
+error[E0904]: `result` is only available in `ensure`
+ --> app/app.veld:11:13
+   |
+11 |     require result.guests > 0
+   |             ^^^^^^
+
+error[E0904]: `old(...)` cannot be nested
+ --> app/app.veld:12:16
+   |
+12 |     ensure old(old(body.guests)) > 0
+   |                ^^^
+
+error[E0904]: `result` is not available: this endpoint has no success body to read
+ --> app/app.veld:16:12
+   |
+16 |     ensure result.id == id
+   |            ^^^^^^
+  = help: give the endpoint a success type, e.g. `-> 200 Booking`
+
+== ir ==
+(no IR: compilation failed)

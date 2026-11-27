@@ -1,0 +1,20 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0901]: unknown name `booking`
+ --> app/app.veld:11:15
+   |
+11 |   permit when booking.owner == user.id
+   |               ^^^^^^^
+  = help: names in scope: user, now
+
+error[E0901]: unknown name `caller`
+ --> app/app.veld:12:15
+   |
+12 |   permit when caller.id == user.id
+   |               ^^^^^^
+  = help: names in scope: user, now
+
+== ir ==
+(no IR: compilation failed)

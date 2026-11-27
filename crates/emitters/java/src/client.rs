@@ -4,6 +4,7 @@ use veld_codegen::naming;
 use veld_codegen::{CodeWriter, FileSet, GenDiagnostic};
 use veld_ir::{Endpoint, Service};
 
+use crate::can;
 use crate::spec::{
     RequestNames, emit_requests, endpoint_docs, endpoint_docs_note, is_sse, is_ws, method_name,
     spec_const, write_spec_const, ws_incoming,
@@ -23,18 +24,25 @@ pub fn emit(files: &mut FileSet, tree: &Tree<'_>) -> Result<(), Vec<GenDiagnosti
             .filter(|s| tree.ir.service(**s).package == pkg)
         {
             let svc = tree.ir.service(*sid);
-            emit_requests(files, tree, &package, &names, svc)?;
+            let refused = crate::conditional::refusals(svc);
+            if !refused.is_empty() {
+                return Err(refused);
+            }
+            emit_requests(files, tree, &package, (&names, true), svc)?;
             let class = class_name(svc);
             let mut fc = FileCtx::new(tree, &package, &class);
             let mut w = CodeWriter::new();
-            write_client(&mut w, &mut fc, &names, svc, &class);
+            let problems = write_client(&mut w, &mut fc, &names, svc, &class);
+            if !problems.is_empty() {
+                return Err(problems);
+            }
             add_file(files, &java_path(&package, &class), fc.finish(&w.finish()))?;
         }
     }
     Ok(())
 }
 
-fn class_name(svc: &Service) -> String {
+pub(crate) fn class_name(svc: &Service) -> String {
     format!("{}Client", naming::pascal(&svc.name))
 }
 
@@ -44,10 +52,10 @@ fn write_client(
     names: &RequestNames,
     svc: &Service,
     class: &str,
-) {
+) -> Vec<GenDiagnostic> {
+    let mut problems = Vec::new();
     let core = fc.rt("ClientCore");
     let options = fc.rt("ClientOptions");
-    let env = format!("VELD_{}_URL", naming::screaming_snake(&svc.name));
     let docs = svc
         .docs
         .clone()
@@ -55,7 +63,7 @@ fn write_client(
     doc_comment(
         w,
         Some(&format!(
-            "{docs}\n\nBlocking. The base URL is the `baseUrl` option, else the environment variable `{env}`, else the contract's `base-url`."
+            "{docs}\n\nBlocking. The `baseUrl` option is required; the runtime config of the target gives it (`spec/runtime-config.md`), and `<Target>Clients.create` builds every client with it."
         )),
         &[],
         None,
@@ -68,30 +76,26 @@ fn write_client(
     }
     w.line(format!("private final {core} core;"));
     w.blank();
-    w.line("/** Creates a client with default options. */");
-    w.open(format!("public {class}()"));
-    w.line(format!("this({options}.defaults());"));
-    w.close();
-    w.blank();
-    w.line("/** Creates a client. */");
+    w.line("/** Creates a client. `options` must set `baseUrl`. */");
     w.open(format!("public {class}({options} options)"));
-    write_constructor_body(w, fc, svc, &env);
+    write_constructor_body(w, fc, svc);
     w.close();
     for ep in &svc.endpoints {
         w.blank();
         write_method(w, fc, &names.get(svc.id, &ep.name), ep);
     }
+    for ep in svc.endpoints.iter().filter(|e| can::wanted(e)) {
+        w.blank();
+        can::write_can(w, fc, svc, ep, &mut problems);
+    }
     w.close();
+    problems
 }
 
-fn write_constructor_body(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service, env: &str) {
+fn write_constructor_body(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Service) {
     let core = fc.rt("ClientCore");
     let defaults = fc.rt("ClientDefaults");
     let router = fc.rt("Router");
-    let base = svc
-        .base_url
-        .as_deref()
-        .map_or_else(|| "null".to_string(), java_str);
     let validation = match fc.tree.prelude_decl("ValidationError") {
         Some(id) => format!(
             "{}.fromWire({router}.issuesToWire(issues), 422, null)",
@@ -107,11 +111,32 @@ fn write_constructor_body(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, svc: &Se
     open_call(w, format!("this.core = new {core}"));
     w.line("options,");
     w.line(format!(
-        "new {defaults}({}, {base}, issues -> {validation}{}));",
-        java_str(env),
+        "new {defaults}(issues -> {validation}{}));",
         if fc.tree.validate { "" } else { ", false" }
     ));
     end_call(w);
+    for ep in svc.endpoints.iter().filter(|e| {
+        e.limit.is_some() && (e.method == veld_ir::Method::Get || e.idempotency.is_some())
+    }) {
+        // A call that gets `429` with `retryAfter` waits and sends again, once (`spec/platform.md` 5).
+        w.line(format!("this.core.retryOnLimit({});", java_str(&ep.sig)));
+    }
+    if let Some(line) = crate::messages::client_registration(fc, svc) {
+        // The violations of the local check have the key of their rule (`spec/platform.md` 22).
+        w.line(line);
+    }
+    for ep in svc.endpoints.iter().filter(|e| e.timeout_ms.is_some()) {
+        // The deadline of an endpoint is the default timeout of its calls (`spec/platform.md` 12).
+        let ms = ep.timeout_ms.as_deref().unwrap_or_default();
+        w.line(format!("this.core.deadline({}, {ms}L);", java_str(&ep.sig)));
+    }
+    if let (Some(digest), true) = (&svc.rules_digest, fc.tree.rules) {
+        w.line(format!(
+            "this.core.digest({}, {});",
+            java_str(&svc.name),
+            java_str(digest)
+        ));
+    }
 }
 
 fn write_method(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, request: &str, ep: &Endpoint) {
@@ -133,14 +158,16 @@ fn write_method(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, request: &str, ep:
     };
     endpoint_docs(w, ep);
     w.open(format!("public {ret} {method}({request} request)"));
+    let call = match crate::conditional::client_headers(fc, ep) {
+        Some(headers) => format!("core.call({konst}, request.toWire(), {headers})"),
+        None => format!("core.call({konst}, request.toWire())"),
+    };
     match decode {
-        Some(c) => w.line(format!(
-            "return {c}.decode(core.call({konst}, request.toWire()));"
-        )),
-        None => w.line(format!("core.call({konst}, request.toWire());")),
+        Some(c) => w.line(format!("return {c}.decode({call});")),
+        None => w.line(format!("{call};")),
     };
     w.close();
-    if ep.params.is_empty() {
+    if ep.params.is_empty() && crate::conditional::client_headers(fc, ep).is_none() {
         w.blank();
         w.line(format!("/** Calls `{}` without parameters. */", ep.name));
         w.open(format!("public {ret} {method}()"));

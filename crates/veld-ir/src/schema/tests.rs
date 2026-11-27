@@ -45,6 +45,197 @@ fn all_types() -> Vec<Type> {
     v
 }
 
+fn expr(t: ExprType, e: ExprKind) -> Expr {
+    Expr { t, e }
+}
+
+fn int_lit(n: i64) -> Expr {
+    expr(
+        ExprType::Type(Type::Scalar(Scalar::Int)),
+        ExprKind::Lit(ExprLit::Int(n)),
+    )
+}
+
+fn path_expr(root: Root) -> Expr {
+    expr(
+        ExprType::Type(Type::Scalar(Scalar::Int)),
+        ExprKind::Path(PathRef {
+            root,
+            steps: vec![Step {
+                name: "a".into(),
+                wire: "a".into(),
+                optional: true,
+            }],
+        }),
+    )
+}
+
+/// Every literal, root, operator, builtin and quantifier, so a new variant must be added to the
+/// schema before this sample (and the test that validates it) passes.
+fn rule_exprs() -> Vec<Expr> {
+    // Adding a variant breaks these matches, which points here.
+    match ExprKind::Now(Always) {
+        ExprKind::Lit(_)
+        | ExprKind::Path(_)
+        | ExprKind::Now(_)
+        | ExprKind::Not(_)
+        | ExprKind::Neg(_)
+        | ExprKind::Bin(_)
+        | ExprKind::Has(_)
+        | ExprKind::Call(_)
+        | ExprKind::Quant(_)
+        | ExprKind::List(_)
+        | ExprKind::Widen(_)
+        | ExprKind::Old(_) => {}
+    }
+    match ExprLit::Bool(true) {
+        ExprLit::Bool(_)
+        | ExprLit::Int(_)
+        | ExprLit::Long(_)
+        | ExprLit::Float(_)
+        | ExprLit::Decimal(_)
+        | ExprLit::String(_)
+        | ExprLit::Enum(_) => {}
+    }
+    match Root::Principal {
+        Root::SelfValue
+        | Root::Principal
+        | Root::Result
+        | Root::Var(_)
+        | Root::Param(_)
+        | Root::Fact(_) => {}
+    }
+    let boolean = || ExprType::Type(Type::Scalar(Scalar::Bool));
+    let lits = [
+        ExprLit::Bool(true),
+        ExprLit::Int(5),
+        ExprLit::Long(9_007_199_254_740_993),
+        ExprLit::Float(0.5),
+        ExprLit::Decimal("120.00".into()),
+        ExprLit::String("x".into()),
+        ExprLit::Enum(EnumLit {
+            decl: DeclId(3),
+            name: "A".into(),
+            wire: "a".into(),
+        }),
+    ]
+    .into_iter()
+    .map(|l| expr(boolean(), ExprKind::Lit(l)));
+    let roots = [
+        Root::SelfValue,
+        Root::Principal,
+        Root::Result,
+        Root::Var("i".into()),
+        Root::Param("body".into()),
+        Root::Fact("room".into()),
+    ]
+    .into_iter()
+    .map(path_expr);
+    let ops = [
+        Op::And,
+        Op::Or,
+        Op::Implies,
+        Op::Eq,
+        Op::Ne,
+        Op::Lt,
+        Op::Le,
+        Op::Gt,
+        Op::Ge,
+        Op::In,
+        Op::Add,
+        Op::Sub,
+        Op::Mul,
+        Op::Div,
+        Op::Rem,
+    ]
+    .into_iter()
+    .map(|op| {
+        let node = BinExpr {
+            op,
+            l: int_lit(1),
+            r: int_lit(2),
+        };
+        expr(boolean(), ExprKind::Bin(Box::new(node)))
+    });
+    let calls = [
+        Builtin::Len,
+        Builtin::Matches,
+        Builtin::StartsWith,
+        Builtin::EndsWith,
+        Builtin::Contains,
+        Builtin::Days,
+        Builtin::Hours,
+        Builtin::Minutes,
+        Builtin::Seconds,
+        Builtin::Ms,
+    ]
+    .into_iter()
+    .map(|f| {
+        let call = CallExpr {
+            f,
+            args: vec![int_lit(1)],
+        };
+        expr(ExprType::Duration, ExprKind::Call(call))
+    });
+    let quants = [
+        Quantifier::All,
+        Quantifier::Any,
+        Quantifier::Count,
+        Quantifier::Sum,
+    ]
+    .into_iter()
+    .map(|q| {
+        let node = QuantExpr {
+            q,
+            list: expr(boolean(), ExprKind::List(vec![int_lit(1)])),
+            var: "i".into(),
+            body: int_lit(1),
+        };
+        expr(boolean(), ExprKind::Quant(Box::new(node)))
+    });
+    let rest = [
+        expr(boolean(), ExprKind::Now(Always)),
+        expr(boolean(), ExprKind::Not(Box::new(int_lit(1)))),
+        expr(boolean(), ExprKind::Neg(Box::new(int_lit(1)))),
+        expr(
+            boolean(),
+            ExprKind::Has(PathRef {
+                root: Root::SelfValue,
+                steps: vec![],
+            }),
+        ),
+        expr(boolean(), ExprKind::Widen(Box::new(int_lit(1)))),
+        expr(boolean(), ExprKind::Old(Box::new(int_lit(1)))),
+    ];
+    lits.chain(roots)
+        .chain(ops)
+        .chain(calls)
+        .chain(quants)
+        .chain(rest)
+        .collect()
+}
+
+fn sample_rule() -> Rule {
+    let all = expr(
+        ExprType::Type(Type::Scalar(Scalar::Bool)),
+        ExprKind::List(rule_exprs()),
+    );
+    Rule {
+        flag: Some("shortStays".into()),
+        name: "r".into(),
+        id: "veld:p/m.B.r@0".into(),
+        expr: all,
+        message: Some("m".into()),
+        reads: vec!["f0".into()],
+        reads_readonly: true,
+        inherited_from: Some(DeclId(0)),
+        docs: Some("d".into()),
+        deprecated: Some("x".into()),
+        rollout: Some(Rollout::Audit),
+        origin: origin(),
+    }
+}
+
 fn field(name: &str, ty: Type, lit: Literal) -> Field {
     Field {
         name: name.into(),
@@ -53,6 +244,15 @@ fn field(name: &str, ty: Type, lit: Literal) -> Field {
         optional: true,
         default: Some(lit.clone()),
         readonly: false,
+        version: true,
+        derived: Some(int_lit(1)),
+        derived_id: Some("veld:p/m.B.f@0".into()),
+        pii: true,
+        secret: true,
+        visible: Some(int_lit(1)),
+        visible_principal: Some(DeclId(0)),
+        tenant: true,
+        tenant_id: Some("veld:p/m.B.tenant@0".into()),
         inherited_from: Some(DeclId(0)),
         constraints: Constraints {
             min: Some(0.0),
@@ -85,13 +285,14 @@ fn decl(id: u32, name: &str, kind: DeclKind) -> Decl {
 }
 
 fn decls() -> Vec<Decl> {
-    let probe = DeclKind::Enum(Enum { variants: vec![] });
+    let probe = DeclKind::Enum(Enum::plain(vec![]));
     match probe {
         DeclKind::Model(_)
         | DeclKind::Error(_)
         | DeclKind::Enum(_)
         | DeclKind::Union(_)
-        | DeclKind::Const(_) => {}
+        | DeclKind::Const(_)
+        | DeclKind::Event(_) => {}
     }
     let fields: Vec<Field> = all_types()
         .into_iter()
@@ -102,6 +303,12 @@ fn decls() -> Vec<Decl> {
     let model = Model {
         parent: Some(DeclId(0)),
         fields,
+        rules: vec![sample_rule()],
+        retain: Some(crate::retention::Retain {
+            after_ms: 2_592_000_000,
+            since: "checkedOutAt".into(),
+            then: crate::retention::RetainThen::Anonymize,
+        }),
     };
     let variant = Variant {
         name: "A".into(),
@@ -116,6 +323,8 @@ fn decls() -> Vec<Decl> {
             DeclKind::Model(Model {
                 parent: None,
                 fields: vec![],
+                rules: vec![],
+                retain: None,
             }),
         ),
         decl(1, "B", DeclKind::Model(model.clone())),
@@ -132,6 +341,14 @@ fn decls() -> Vec<Decl> {
             "En",
             DeclKind::Enum(Enum {
                 variants: vec![variant],
+                flows: vec![Flow {
+                    flag: Some("shortStays".into()),
+                    from: "A".into(),
+                    to: "A".into(),
+                    after_ms: Some("86400000".into()),
+                    emits: None,
+                }],
+                finals: vec!["A".into()],
             }),
         ),
         decl(
@@ -153,21 +370,45 @@ fn decls() -> Vec<Decl> {
                 value: Literal::Int(1),
             }),
         ),
+        decl(
+            6,
+            "Ev",
+            DeclKind::Event(Event {
+                fields: vec![field(
+                    "amount",
+                    Type::Scalar(Scalar::Decimal),
+                    Literal::Int(1),
+                )],
+                rules: vec![sample_rule()],
+                rules_digest: Some("3fa9c2e1b7d04a55".into()),
+            }),
+        ),
     ]
 }
 
 fn endpoint(method: Method, binding: Binding, auth: AuthKind) -> Endpoint {
     Endpoint {
+        slo: Some(Slo {
+            p50_ms: Some("120".into()),
+            p90_ms: Some("200".into()),
+            p95_ms: Some("250".into()),
+            p99_ms: Some("300".into()),
+            errors: Some("0.1".into()),
+        }),
+        timeout_ms: Some("2000".into()),
+        audited: true,
+        limit: Some(Limit {
+            count: 10,
+            per: LimitWindow::Minute,
+            by: LimitSubject::User,
+        }),
         name: "op".into(),
         method,
         path: "/x".into(),
         sig: "veld:p/S.op@0".into(),
         docs: Some("d".into()),
         deprecated: Some("x".into()),
-        auth: Auth {
-            kind: auth,
-            header: Some("X-Key".into()),
-        },
+        auth: Auth::new(auth, Some("X-Key".into())),
         middleware: vec!["m".into()],
         params: vec![Param {
             name: "p".into(),
@@ -187,7 +428,27 @@ fn endpoint(method: Method, binding: Binding, auth: AuthKind) -> Endpoint {
             status: 404,
             decl: DeclId(2),
         }],
+        rules: EndpointRules {
+            allows: crate::endpoint_rules::tests::sample_allows(),
+            ..crate::endpoint_rules::tests::sample_rules()
+        },
+        idempotency: Some(Idempotency {
+            header: "Idempotency-Key".into(),
+            required: true,
+            caller: true,
+            origin: origin(),
+        }),
+        saga: Some(crate::saga::tests::sample_saga()),
         origin: origin(),
+    }
+}
+
+/// An example that states what the calls of a saga answer.
+fn saga_example() -> Example {
+    Example {
+        name: "a saga example".into(),
+        saga: Some(crate::saga::tests::sample_saga_example()),
+        ..crate::endpoint_rules::tests::sample_examples()[1].clone()
     }
 }
 
@@ -263,6 +524,12 @@ fn full_ir() -> Ir {
             id: PackageId(i as u32),
             name: format!("p{i}"),
             kind,
+            messages: [(
+                "ar".to_owned(),
+                [("p/m.B.r".to_owned(), "m".to_owned())].into(),
+            )]
+            .into(),
+            messages_dir: Some("messages".into()),
         })
         .collect();
     Ir {
@@ -279,11 +546,61 @@ fn full_ir() -> Ir {
             auth: Auth::none(),
             middleware: vec!["m".into()],
             endpoints,
+            facts: crate::endpoint_rules::tests::sample_service_facts(),
+            rules_digest: Some("3fa9c2e1b7d04a55".into()),
+            principal: Some(ServicePrincipal {
+                decl: DeclId(0),
+                name: "user".into(),
+            }),
+            publishes: vec![Publication {
+                channel: ChannelId(0),
+                origin: origin(),
+            }],
+            subscriptions: vec![Subscription {
+                channel: ChannelId(0),
+                group: "g".into(),
+                handlers: vec![Handler {
+                    event: DeclId(6),
+                    name: "h".into(),
+                    docs: Some("d".into()),
+                    origin: origin(),
+                }],
+                origin: origin(),
+            }],
             origin: origin(),
         }],
         consumes: [("S".to_string(), vec!["T".to_string()])]
             .into_iter()
             .collect(),
+        examples: [
+            crate::endpoint_rules::tests::sample_examples(),
+            crate::endpoint_rules::tests::sample_event_examples(),
+            vec![saga_example()],
+        ]
+        .concat(),
+        policies: crate::endpoint_rules::tests::sample_policies(),
+        channels: vec![Channel {
+            name: "C".into(),
+            package: PackageId(0),
+            module: "m".into(),
+            qualified: "p:m.C".into(),
+            topic: "t".into(),
+            events: vec![DeclId(6)],
+            key: Some(ChannelKey {
+                name: "amount".into(),
+                wire: "amount".into(),
+                ty: Type::Scalar(Scalar::Int),
+            }),
+            docs: Some("d".into()),
+            deprecated: Some("x".into()),
+            retry: Some(Retry {
+                max: 5,
+                backoff: Backoff::Exponential,
+            }),
+            dead_letter: true,
+            ordered: true,
+            origin: origin(),
+        }],
     }
 }
 
@@ -343,6 +660,16 @@ fn the_schema_lists_every_string_variant_of_the_rust_enums() {
         names("StringFormat"),
         ["email", "uri", "hostname", "ipv4", "ipv6"]
     );
+}
+
+#[test]
+fn rules_are_described_by_the_schema_and_checked() {
+    let v = serde_json::to_value(full_ir()).unwrap();
+    assert!(v["decls"][1]["rules"][0]["expr"]["e"]["list"].is_array());
+    let mut bad = v;
+    bad["decls"][1]["rules"][0]["expr"]["e"] = json!({"nope": 1});
+    let err = check("Ir", &bad).unwrap_err();
+    assert!(err.contains("unknown variant `nope`"), "{err}");
 }
 
 #[test]
@@ -413,6 +740,10 @@ fn typescript_is_deterministic_and_complete() {
         "      kind: \"model\";",
         "      sig: string;",
         "  options_schema?: unknown;",
+        "export type ExprType = Type | \"duration\";",
+        "export type Root = \"self\" | \"principal\" | \"result\" | RootRef;",
+        "  rules?: Rule[];",
+        "  | { now: boolean }",
         "  consumes: Record<string, string[]>;",
         "  default_status: number | null;",
         "export interface GenerateRequest {",

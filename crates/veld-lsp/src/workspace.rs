@@ -49,6 +49,27 @@ pub struct Sigs {
     pub decls: BTreeMap<String, String>,
     /// (service, endpoint) to the operation `sig`.
     pub ops: BTreeMap<(String, String), String>,
+    /// Rule identities, by the keys `rule_key`, `statement_key` and `policy_key` build.
+    pub rule_ids: BTreeMap<String, String>,
+}
+
+/// The key of an invariant: its declaration (qualified) and its name.
+#[must_use]
+pub fn rule_key(qualified: &str, rule: &str) -> String {
+    format!("rule {qualified}.{rule}")
+}
+
+/// The key of a `require`, an `ensure` or a `transition` of an endpoint: `kind` is the word and
+/// `index` the position among the statements of that kind (0 for a `transition`).
+#[must_use]
+pub fn statement_key(service: &str, endpoint: &str, kind: &str, index: usize) -> String {
+    format!("{service}.{endpoint} {kind} {index}")
+}
+
+/// The key of a policy: its package and its name.
+#[must_use]
+pub fn policy_key(package: &str, name: &str) -> String {
+    format!("policy {package}:{name}")
 }
 
 impl Sigs {
@@ -67,8 +88,45 @@ impl Sigs {
                     .map(|e| ((s.name.clone(), e.name.clone()), e.sig.clone()))
             })
             .collect();
-        Self { decls, ops }
+        Self {
+            decls,
+            ops,
+            rule_ids: rule_ids(ir),
+        }
     }
+}
+
+fn rule_ids(ir: &veld_ir::Ir) -> BTreeMap<String, String> {
+    let mut out = BTreeMap::new();
+    for d in &ir.decls {
+        for r in d.rules().iter().filter(|r| r.inherited_from.is_none()) {
+            out.insert(rule_key(&d.qualified, &r.name), r.id.clone());
+        }
+    }
+    for s in &ir.services {
+        for e in &s.endpoints {
+            let rules = &e.rules;
+            for (i, r) in rules.requires.iter().enumerate() {
+                out.insert(statement_key(&s.name, &e.name, "require", i), r.id.clone());
+            }
+            for (i, r) in rules.ensures.iter().enumerate() {
+                out.insert(statement_key(&s.name, &e.name, "ensure", i), r.id.clone());
+            }
+            if let Some(t) = &rules.transition {
+                out.insert(
+                    statement_key(&s.name, &e.name, "transition", 0),
+                    t.id.clone(),
+                );
+            }
+        }
+    }
+    for p in &ir.policies {
+        out.insert(
+            policy_key(&ir.package(p.package).name, &p.name),
+            p.id.clone(),
+        );
+    }
+    out
 }
 
 /// One analysis of the whole workspace.
@@ -194,11 +252,8 @@ impl Workspace {
         let Ok(path) = config::find_config(root) else {
             return (None, None, None);
         };
-        let dir = path.parent().map(Path::to_path_buf).unwrap_or_default();
-        let result = match self.buffer_text(&path) {
-            Some(text) => config::load_str(&dir, text),
-            None => config::load(&path),
-        };
+        // An open, unsaved `veld.toml` (the root's or a member's) wins over the disk.
+        let result = config::load_with(&path, &|p| self.buffer_text(p).map(str::to_string));
         match result {
             Ok(p) => (Some(p), Some(path), None),
             Err(e) => (None, Some(path), Some(e.to_string())),
@@ -369,7 +424,13 @@ mod tests {
         write(
             d,
             "veld.toml",
-            "[project]\nname = \"shop\"\n[services.iam]\ncontracts = \"iam\"\n[services.app]\ncontracts = \"app\"\nconsumes = [\"iam\"]\n",
+            "[workspace]\nname = \"shop\"\nmembers = [\"iam\", \"app\"]\n",
+        );
+        write(d, "iam/veld.toml", "[service]\ncontracts = \".\"\n");
+        write(
+            d,
+            "app/veld.toml",
+            "[service]\ncontracts = \".\"\nconsumes = [\"iam\"]\n",
         );
         write(d, "iam/users.veld", "model User { id: uuid }\n");
         write(

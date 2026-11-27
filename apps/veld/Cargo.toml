@@ -17,6 +17,9 @@ veld-compiler.workspace = true
 veld-codegen.workspace = true
 veld-project.workspace = true
 veld-tools.workspace = true
+veld-rules.workspace = true
+veld-prove.workspace = true
+veld-testing.workspace = true
 veld-lsp = { path = "../../crates/veld-lsp" }
 veld-plugin-host.workspace = true
 veld-registry-client.workspace = true

@@ -14,7 +14,14 @@ Run them in that order, cheapest first. `veld check` includes the lint rules, th
 lint command. `veld generate --check` and `veld diff --strict` need the output and snapshot you
 committed, which is why the examples commit them.
 
-> **Never prompts.** On a terminal, `veld generate` asks before it writes over a breaking change.
+In a workspace with many members, `veld generate --check --affected --since origin/master` checks
+only the members that the change can have affected (the changed ones and everything that consumes
+or imports them) and prints why each one is on the list, so the work of a pull request follows the
+size of the change. `[lint]` and `[hooks]` live in the root `veld.toml`; `[hooks] post-generate`
+runs once per `veld generate` from the root directory, whatever members were selected. See
+[Workspaces](workspaces.md).
+
+> **Never prompts.** On a terminal, `veld generate` asks before it writes over a breaking change or a possibly breaking one (a rule that changed).
 > In CI there is no terminal, so it fails instead; `veld generate --strict` makes that explicit and
 > `--accept-breaking` continues. `veld generate --check` and `--dry-run` only report the breaking
 > list (on stderr) and never block. `veld doctor` diagnoses a
@@ -109,6 +116,29 @@ request type, a removed field breaks a response type), so the same edit can be b
 and not in another. Additions, loosened constraints, docs and deprecations are reported as
 non-breaking. A deliberate break is accepted by merging it (the next `generate` rewrites the
 snapshot), usually together with a new service version or a coordinated release of consumers.
+
+### Rules
+
+`veld diff` also compares business rules (`spec/rules.md`). A rule is identified by its declaration
+and its name, and it counts as changed when its id changes, which happens exactly when its
+expression changes. Expressions are printed back as Veld text, old and new, in the report.
+
+| Change | Report |
+|---|---|
+| invariant added | breaking where the type is used in requests; a note where it is used only in responses |
+| invariant removed | breaking where the type is used in responses; non-breaking where it is used only in requests |
+| invariant expression changed | **possibly breaking**, in any position |
+| `require` added | breaking; removed: non-breaking; expression changed: possibly breaking; `else` error or payload changed: breaking |
+| `ensure` removed | breaking; added: a note; expression changed: possibly breaking |
+| fact added, removed or retyped | a note: not a wire change, the server implementation must change |
+| flow removed (also what making a state final does) | breaking; flow added: non-breaking |
+| `transition` with fewer source states, another target or a new guard | breaking; more source states, or the guard removed: non-breaking |
+| message of a rule changed | a note |
+
+Without a solver the tool cannot tell whether a changed expression is tighter or looser, so it
+reports it as **possibly breaking** with both expressions, and never guesses. `--strict` fails on
+possibly breaking changes too: passing a tightened rule silently is the worse error. `veld generate` stops on them as well, like on a breaking change: it asks on a terminal, fails off a terminal or with `--strict`, and `--accept-breaking` continues. Its message says that the change is only possibly breaking and that the tool cannot tell the direction. A declaration
+that no endpoint reaches is treated as used in both requests and responses.
 
 ## A GitHub Actions workflow
 

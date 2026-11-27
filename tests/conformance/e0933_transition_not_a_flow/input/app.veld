@@ -1,0 +1,27 @@
+// Every pair of a listed source and the target must be an edge of the machine.
+
+enum Status {
+  pending, paid, cancelled
+  flow pending -> paid
+  flow pending -> cancelled
+  final paid, cancelled
+}
+
+model Booking { id: uuid, status: Status }
+
+service Bookings at "/bookings" {
+  post "/{id}/a" backwards(id: uuid) -> 204 {
+    fact booking: Booking = id
+    transition booking.status: paid -> pending
+  }
+
+  post "/{id}/b" oneBadSource(id: uuid) -> 204 {
+    fact booking: Booking = id
+    transition booking.status: pending, paid -> cancelled
+  }
+
+  post "/{id}/c" unknownState(id: uuid) -> 204 {
+    fact booking: Booking = id
+    transition booking.status: pending -> shiped
+  }
+}

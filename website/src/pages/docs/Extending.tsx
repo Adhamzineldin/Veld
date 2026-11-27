@@ -36,16 +36,15 @@ veld plugin test node dist/main.js # runs the protocol conformance suite`}</Code
         The scaffold has <code>src/protocol.ts</code> (handshake and loop), <code>src/ir.d.ts</code> (generated
         IR types), <code>src/generate.ts</code> (your code) and a README. <code>veld plugin test</code> checks the
         handshake, path safety, determinism and signature embedding, and generates once for every declared
-        language version and framework. It exits 1 on any failure. Then pin the plugin in{' '}
-        <code>veld.toml</code>.
+        language version and framework. It exits 1 on any failure. Then pin the plugin in the{' '}
+        <code>veld.toml</code> of the workspace root, and use it in the <code>veld.toml</code> of the member
+        that gets the generated code. A plugin has no default <code>out</code>.
       </P>
-      <CodeBlock title="veld.toml" lang="toml">{`[plugins.mylang]
+      <CodeBlock title="veld.toml (the workspace root, or the only file)" lang="toml">{`[plugins.mylang]
 command = "node mylang/dist/main.js"
 version = "0.1.0"
-sha256 = "<sha-256 of the first word of command>"
-
-[[targets]]
-role = "client"
+sha256 = "<sha-256 of the first word of command>"`}</CodeBlock>
+      <CodeBlock title="veld.toml of the member" lang="toml">{`[client]
 emitter = "plugin:mylang"
 out = "generated/mylang"`}</CodeBlock>
       <P>

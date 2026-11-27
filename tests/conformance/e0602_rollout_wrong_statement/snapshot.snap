@@ -1,0 +1,42 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0602]: `@rollout` cannot be applied to a principal
+ --> app/app.veld:8:1
+  |
+8 | @rollout(audit)
+  | ^^^^^^^^^^^^^^^
+
+error[E0602]: `@rollout` cannot be applied to a policy
+ --> app/app.veld:23:1
+   |
+23 | @rollout(audit)
+   | ^^^^^^^^^^^^^^^
+
+error[E0602]: `@rollout` cannot be applied to `fact`
+ --> app/app.veld:31:5
+   |
+31 |     @rollout(audit)
+   |     ^^^^^^^^^^^^^^^
+
+error[E0602]: `@rollout` cannot be applied to `allow`
+ --> app/app.veld:33:5
+   |
+33 |     @rollout(audit)
+   |     ^^^^^^^^^^^^^^^
+
+error[E0602]: `@rollout` cannot be applied to `transition`
+ --> app/app.veld:35:5
+   |
+35 |     @rollout(audit)
+   |     ^^^^^^^^^^^^^^^
+
+error[E0602]: `@rollout` cannot be applied to an example
+ --> app/app.veld:42:1
+   |
+42 | @rollout(audit)
+   | ^^^^^^^^^^^^^^^
+
+== ir ==
+(no IR: compilation failed)

@@ -1,0 +1,17 @@
+[package]
+name = "tenancy-examples"
+version = "0.0.0"
+edition = "2021"
+publish = false
+default-run = "tenancy-serve"
+
+[[bin]]
+name = "tenancy-serve"
+path = "src/main.rs"
+
+[dependencies]
+bookings-server = { path = "../server" }
+bookings-client = { path = "../client" }
+axum = "0.8"
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time"] }

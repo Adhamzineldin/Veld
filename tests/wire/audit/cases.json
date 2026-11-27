@@ -1,0 +1,706 @@
+{
+  "package": "bookings",
+  "contract": "tests/wire/audit/contract.veld",
+  "cases": [
+    {
+      "name": "a payment that goes through",
+      "note": "The caller is the guest. The card number is a @secret and the note a @pii: both are left out of parameters, and listed. The booking fact has a @pii guest name and a @pii private note; the result has its own name, and the private note is hidden by @visible, so it is in hidden and not in redacted.",
+      "service": "Bookings",
+      "endpoint": "payBooking",
+      "request": {
+        "method": "POST",
+        "path": "/bookings/5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21/pay",
+        "query": {},
+        "headers": {},
+        "body": {
+          "amount": "120.00",
+          "card": {
+            "number": "4111111111111111",
+            "brand": "visa"
+          },
+          "note": "gift"
+        }
+      },
+      "clock": "2026-06-10T12:00:00Z",
+      "principal": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+        "roles": [],
+        "email": "01@example.test",
+        "token": "s3cr3t"
+      },
+      "facts": {
+        "booking": {
+          "id": "5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21",
+          "guest": {
+            "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+            "name": "Guest 1",
+            "phone": "+201000000001"
+          },
+          "status": "pending",
+          "total": "120.00",
+          "version": 3,
+          "private": "vip"
+        }
+      },
+      "returns": {
+        "id": "5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21",
+        "guest": {
+          "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+          "name": "Guest 1",
+          "phone": "+201000000001"
+        },
+        "status": "paid",
+        "total": "120.00",
+        "version": 3,
+        "private": "vip"
+      },
+      "limiter": null,
+      "status": 201,
+      "error": null,
+      "event": "{\"facts\":{\"booking\":{\"guest\":{\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"phone\":\"+201000000001\"},\"id\":\"5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21\",\"status\":\"pending\",\"total\":\"120.00\",\"version\":3}},\"hidden\":[\"private\"],\"operation\":\"veld:bookings/Bookings.payBooking@13a1fe6a454db92f\",\"outcome\":{\"status\":201},\"parameters\":{\"body\":{\"amount\":\"120.00\",\"card\":{\"brand\":\"visa\"}},\"id\":\"5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21\"},\"principal\":{\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"roles\":[]},\"redacted\":[\"facts.booking.guest.name\",\"facts.booking.private\",\"parameters.body.card.number\",\"parameters.body.note\",\"principal.email\",\"principal.token\",\"result.guest.name\"],\"result\":{\"guest\":{\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"phone\":\"+201000000001\"},\"id\":\"5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21\",\"status\":\"paid\",\"total\":\"120.00\",\"version\":3},\"time\":\"2026-06-10T12:00:00Z\"}"
+    },
+    {
+      "name": "an amount that does not match is a declared error",
+      "note": "The answer is the declared error AmountMismatch, built by the require. Its data is the result of the event, and its card number is a @secret.",
+      "service": "Bookings",
+      "endpoint": "payBooking",
+      "request": {
+        "method": "POST",
+        "path": "/bookings/5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21/pay",
+        "query": {},
+        "headers": {},
+        "body": {
+          "amount": "99.00",
+          "card": {
+            "number": "4111111111111111",
+            "brand": "visa"
+          }
+        }
+      },
+      "clock": "2026-06-10T12:00:00Z",
+      "principal": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+        "roles": [],
+        "email": "01@example.test"
+      },
+      "facts": {
+        "booking": {
+          "id": "5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21",
+          "guest": {
+            "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+            "name": "Guest 1",
+            "phone": "+201000000001"
+          },
+          "status": "pending",
+          "total": "120.00",
+          "version": 3
+        }
+      },
+      "returns": null,
+      "limiter": null,
+      "status": 409,
+      "error": "AmountMismatch",
+      "event": "{\"facts\":{\"booking\":{\"guest\":{\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"phone\":\"+201000000001\"},\"id\":\"5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21\",\"status\":\"pending\",\"total\":\"120.00\",\"version\":3}},\"hidden\":[],\"operation\":\"veld:bookings/Bookings.payBooking@13a1fe6a454db92f\",\"outcome\":{\"error\":\"AmountMismatch\",\"status\":409},\"parameters\":{\"body\":{\"amount\":\"99.00\",\"card\":{\"brand\":\"visa\"}},\"id\":\"5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21\"},\"principal\":{\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"roles\":[]},\"redacted\":[\"facts.booking.guest.name\",\"parameters.body.card.number\",\"principal.email\",\"result.card.number\"],\"result\":{\"card\":{\"brand\":\"visa\"},\"reason\":\"amount\"},\"time\":\"2026-06-10T12:00:00Z\"}"
+    },
+    {
+      "name": "a booking that is not pending cannot be paid",
+      "note": "409 InvalidTransition is an error of the prelude: the event has an outcome and no result.",
+      "service": "Bookings",
+      "endpoint": "payBooking",
+      "request": {
+        "method": "POST",
+        "path": "/bookings/5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21/pay",
+        "query": {},
+        "headers": {},
+        "body": {
+          "amount": "120.00",
+          "card": {
+            "number": "4111111111111111",
+            "brand": "visa"
+          }
+        }
+      },
+      "clock": "2026-06-10T12:00:00Z",
+      "principal": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+        "roles": [],
+        "email": "01@example.test"
+      },
+      "facts": {
+        "booking": {
+          "id": "5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21",
+          "guest": {
+            "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+            "name": "Guest 1",
+            "phone": "+201000000001"
+          },
+          "status": "paid",
+          "total": "120.00",
+          "version": 3
+        }
+      },
+      "returns": null,
+      "limiter": null,
+      "status": 409,
+      "error": "InvalidTransition",
+      "event": "{\"facts\":{\"booking\":{\"guest\":{\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"phone\":\"+201000000001\"},\"id\":\"5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21\",\"status\":\"paid\",\"total\":\"120.00\",\"version\":3}},\"hidden\":[],\"operation\":\"veld:bookings/Bookings.payBooking@13a1fe6a454db92f\",\"outcome\":{\"error\":\"InvalidTransition\",\"status\":409},\"parameters\":{\"body\":{\"amount\":\"120.00\",\"card\":{\"brand\":\"visa\"}},\"id\":\"5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21\"},\"principal\":{\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"roles\":[]},\"redacted\":[\"facts.booking.guest.name\",\"parameters.body.card.number\",\"principal.email\"],\"time\":\"2026-06-10T12:00:00Z\"}"
+    },
+    {
+      "name": "another caller is forbidden",
+      "note": "403 Forbidden from the policy. The fact was loaded, so it is in the event.",
+      "service": "Bookings",
+      "endpoint": "payBooking",
+      "request": {
+        "method": "POST",
+        "path": "/bookings/5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21/pay",
+        "query": {},
+        "headers": {},
+        "body": {
+          "amount": "120.00",
+          "card": {
+            "number": "4111111111111111",
+            "brand": "visa"
+          }
+        }
+      },
+      "clock": "2026-06-10T12:00:00Z",
+      "principal": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000002",
+        "roles": [],
+        "email": "02@example.test"
+      },
+      "facts": {
+        "booking": {
+          "id": "5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21",
+          "guest": {
+            "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+            "name": "Guest 1",
+            "phone": "+201000000001"
+          },
+          "status": "pending",
+          "total": "120.00",
+          "version": 3
+        }
+      },
+      "returns": null,
+      "limiter": null,
+      "status": 403,
+      "error": "Forbidden",
+      "event": "{\"facts\":{\"booking\":{\"guest\":{\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"phone\":\"+201000000001\"},\"id\":\"5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21\",\"status\":\"pending\",\"total\":\"120.00\",\"version\":3}},\"hidden\":[],\"operation\":\"veld:bookings/Bookings.payBooking@13a1fe6a454db92f\",\"outcome\":{\"error\":\"Forbidden\",\"status\":403},\"parameters\":{\"body\":{\"amount\":\"120.00\",\"card\":{\"brand\":\"visa\"}},\"id\":\"5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21\"},\"principal\":{\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000002\",\"roles\":[]},\"redacted\":[\"facts.booking.guest.name\",\"parameters.body.card.number\",\"principal.email\"],\"time\":\"2026-06-10T12:00:00Z\"}"
+    },
+    {
+      "name": "a booking that is not there is not found",
+      "note": "404: the loader found nothing, so the event has no facts.",
+      "service": "Bookings",
+      "endpoint": "payBooking",
+      "request": {
+        "method": "POST",
+        "path": "/bookings/5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21/pay",
+        "query": {},
+        "headers": {},
+        "body": {
+          "amount": "120.00",
+          "card": {
+            "number": "4111111111111111",
+            "brand": "visa"
+          }
+        }
+      },
+      "clock": "2026-06-10T12:00:00Z",
+      "principal": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+        "roles": [],
+        "email": "01@example.test"
+      },
+      "facts": {
+        "booking": null
+      },
+      "returns": null,
+      "limiter": null,
+      "status": 404,
+      "error": "NotFound",
+      "event": "{\"facts\":{},\"hidden\":[],\"operation\":\"veld:bookings/Bookings.payBooking@13a1fe6a454db92f\",\"outcome\":{\"error\":\"NotFound\",\"status\":404},\"parameters\":{\"body\":{\"amount\":\"120.00\",\"card\":{\"brand\":\"visa\"}},\"id\":\"5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21\"},\"principal\":{\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"roles\":[]},\"redacted\":[\"parameters.body.card.number\",\"principal.email\"],\"time\":\"2026-06-10T12:00:00Z\"}"
+    },
+    {
+      "name": "a body that breaks an invariant is a 422",
+      "note": "The parameters were bound, so they are in the event, with the card number left out. There are no facts: step 5 ended the request.",
+      "service": "Bookings",
+      "endpoint": "payBooking",
+      "request": {
+        "method": "POST",
+        "path": "/bookings/5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21/pay",
+        "query": {},
+        "headers": {},
+        "body": {
+          "amount": "0",
+          "card": {
+            "number": "4111111111111111",
+            "brand": "visa"
+          }
+        }
+      },
+      "clock": "2026-06-10T12:00:00Z",
+      "principal": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+        "roles": [],
+        "email": "01@example.test"
+      },
+      "facts": {
+        "booking": {
+          "id": "5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21",
+          "guest": {
+            "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+            "name": "Guest 1",
+            "phone": "+201000000001"
+          },
+          "status": "pending",
+          "total": "120.00",
+          "version": 3
+        }
+      },
+      "returns": null,
+      "limiter": null,
+      "status": 422,
+      "error": "ValidationError",
+      "event": "{\"facts\":{},\"hidden\":[],\"operation\":\"veld:bookings/Bookings.payBooking@13a1fe6a454db92f\",\"outcome\":{\"error\":\"ValidationError\",\"status\":422},\"parameters\":{\"body\":{\"amount\":\"0\",\"card\":{\"brand\":\"visa\"}},\"id\":\"5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21\"},\"principal\":{\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"roles\":[]},\"redacted\":[\"parameters.body.card.number\",\"principal.email\"],\"time\":\"2026-06-10T12:00:00Z\"}"
+    },
+    {
+      "name": "a request without a caller is a 401",
+      "note": "The auth hook refused: there is no principal, no parameters (step 4 was not reached) and no facts.",
+      "service": "Bookings",
+      "endpoint": "payBooking",
+      "request": {
+        "method": "POST",
+        "path": "/bookings/5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21/pay",
+        "query": {},
+        "headers": {},
+        "body": {
+          "amount": "120.00",
+          "card": {
+            "number": "4111111111111111",
+            "brand": "visa"
+          }
+        }
+      },
+      "clock": "2026-06-10T12:00:00Z",
+      "principal": null,
+      "facts": {
+        "booking": {
+          "id": "5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21",
+          "guest": {
+            "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+            "name": "Guest 1",
+            "phone": "+201000000001"
+          },
+          "status": "pending",
+          "total": "120.00",
+          "version": 3
+        }
+      },
+      "returns": null,
+      "limiter": null,
+      "status": 401,
+      "error": "Unauthorized",
+      "event": "{\"facts\":{},\"hidden\":[],\"operation\":\"veld:bookings/Bookings.payBooking@13a1fe6a454db92f\",\"outcome\":{\"error\":\"Unauthorized\",\"status\":401},\"parameters\":{},\"redacted\":[],\"time\":\"2026-06-10T12:00:00Z\"}"
+    },
+    {
+      "name": "a request that the limiter refuses is a 429",
+      "note": "The caller is known, the limiter ran after authentication and before binding: no parameters, no facts.",
+      "service": "Bookings",
+      "endpoint": "payBooking",
+      "request": {
+        "method": "POST",
+        "path": "/bookings/5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21/pay",
+        "query": {},
+        "headers": {},
+        "body": {
+          "amount": "120.00",
+          "card": {
+            "number": "4111111111111111",
+            "brand": "visa"
+          }
+        }
+      },
+      "clock": "2026-06-10T12:00:00Z",
+      "principal": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+        "roles": [],
+        "email": "01@example.test"
+      },
+      "facts": {
+        "booking": {
+          "id": "5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21",
+          "guest": {
+            "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+            "name": "Guest 1",
+            "phone": "+201000000001"
+          },
+          "status": "pending",
+          "total": "120.00",
+          "version": 3
+        }
+      },
+      "returns": null,
+      "limiter": {
+        "allowed": false,
+        "retryAfterSeconds": 30
+      },
+      "status": 429,
+      "error": "TooManyRequests",
+      "event": "{\"facts\":{},\"hidden\":[],\"operation\":\"veld:bookings/Bookings.payBooking@13a1fe6a454db92f\",\"outcome\":{\"error\":\"TooManyRequests\",\"status\":429},\"parameters\":{},\"principal\":{\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"roles\":[]},\"redacted\":[\"principal.email\"],\"time\":\"2026-06-10T12:00:00Z\"}"
+    },
+    {
+      "name": "a stale version is a 412",
+      "note": "If-Match names version 2 and the booking is at 3: 412 PreconditionFailed, an error of the prelude.",
+      "service": "Bookings",
+      "endpoint": "setTotal",
+      "request": {
+        "method": "PUT",
+        "path": "/bookings/5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21/total",
+        "query": {},
+        "headers": {
+          "If-Match": "\"2\""
+        },
+        "body": {
+          "amount": "120.00",
+          "card": {
+            "number": "4111111111111111",
+            "brand": "visa"
+          }
+        }
+      },
+      "clock": "2026-06-10T12:00:00Z",
+      "principal": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+        "roles": [],
+        "email": "01@example.test"
+      },
+      "facts": {
+        "booking": {
+          "id": "5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21",
+          "guest": {
+            "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+            "name": "Guest 1",
+            "phone": "+201000000001"
+          },
+          "status": "pending",
+          "total": "120.00",
+          "version": 3
+        }
+      },
+      "returns": null,
+      "limiter": null,
+      "status": 412,
+      "error": "PreconditionFailed",
+      "event": "{\"facts\":{\"booking\":{\"guest\":{\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"phone\":\"+201000000001\"},\"id\":\"5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21\",\"status\":\"pending\",\"total\":\"120.00\",\"version\":3}},\"hidden\":[],\"operation\":\"veld:bookings/Bookings.setTotal@242928c0f1cae08b\",\"outcome\":{\"error\":\"PreconditionFailed\",\"status\":412},\"parameters\":{\"body\":{\"amount\":\"120.00\",\"card\":{\"brand\":\"visa\"}},\"id\":\"5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21\"},\"principal\":{\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"roles\":[]},\"redacted\":[\"facts.booking.guest.name\",\"parameters.body.card.number\",\"principal.email\"],\"time\":\"2026-06-10T12:00:00Z\"}"
+    },
+    {
+      "name": "support sees the private note",
+      "note": "The visible field is there for support, so hidden is empty; the private note and the guest name are @pii and are left out of the result and the fact. The clock has milliseconds.",
+      "service": "Bookings",
+      "endpoint": "getBooking",
+      "request": {
+        "method": "GET",
+        "path": "/bookings/5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21",
+        "query": {},
+        "headers": {}
+      },
+      "clock": "2026-06-10T12:00:02.007Z",
+      "principal": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-0000000000aa",
+        "roles": [
+          "support"
+        ],
+        "email": "aa@example.test",
+        "token": "t"
+      },
+      "facts": {
+        "booking": {
+          "id": "5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21",
+          "guest": {
+            "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+            "name": "Guest 1",
+            "phone": "+201000000001"
+          },
+          "status": "pending",
+          "total": "120.00",
+          "version": 3,
+          "private": "vip"
+        }
+      },
+      "returns": {
+        "id": "5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21",
+        "guest": {
+          "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+          "name": "Guest 1",
+          "phone": "+201000000001"
+        },
+        "status": "pending",
+        "total": "120.00",
+        "version": 3,
+        "private": "vip"
+      },
+      "limiter": null,
+      "status": 200,
+      "error": null,
+      "event": "{\"facts\":{\"booking\":{\"guest\":{\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"phone\":\"+201000000001\"},\"id\":\"5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21\",\"status\":\"pending\",\"total\":\"120.00\",\"version\":3}},\"hidden\":[],\"operation\":\"veld:bookings/Bookings.getBooking@ece8c67556b3abf4\",\"outcome\":{\"status\":200},\"parameters\":{\"id\":\"5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21\"},\"principal\":{\"id\":\"0b5c9c3e-1111-4a5b-8c9d-0000000000aa\",\"roles\":[\"support\"]},\"redacted\":[\"facts.booking.guest.name\",\"facts.booking.private\",\"principal.email\",\"principal.token\",\"result.guest.name\",\"result.private\"],\"result\":{\"guest\":{\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"phone\":\"+201000000001\"},\"id\":\"5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21\",\"status\":\"pending\",\"total\":\"120.00\",\"version\":3},\"time\":\"2026-06-10T12:00:02.007Z\"}"
+    },
+    {
+      "name": "a result that breaks an output rule is a 500",
+      "note": "The handler returned a booking with a negative total: the answer is 500 Internal and the event has no result.",
+      "service": "Bookings",
+      "endpoint": "getBooking",
+      "request": {
+        "method": "GET",
+        "path": "/bookings/5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21",
+        "query": {},
+        "headers": {}
+      },
+      "clock": "2026-06-10T12:00:00Z",
+      "principal": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+        "roles": [],
+        "email": "01@example.test"
+      },
+      "facts": {
+        "booking": {
+          "id": "5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21",
+          "guest": {
+            "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+            "name": "Guest 1",
+            "phone": "+201000000001"
+          },
+          "status": "pending",
+          "total": "120.00",
+          "version": 3
+        }
+      },
+      "returns": {
+        "id": "5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21",
+        "guest": {
+          "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+          "name": "Guest 1",
+          "phone": "+201000000001"
+        },
+        "status": "pending",
+        "total": "-1.00",
+        "version": 3
+      },
+      "limiter": null,
+      "status": 500,
+      "error": "Internal",
+      "event": "{\"facts\":{\"booking\":{\"guest\":{\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"phone\":\"+201000000001\"},\"id\":\"5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21\",\"status\":\"pending\",\"total\":\"120.00\",\"version\":3}},\"hidden\":[],\"operation\":\"veld:bookings/Bookings.getBooking@ece8c67556b3abf4\",\"outcome\":{\"error\":\"Internal\",\"status\":500},\"parameters\":{\"id\":\"5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21\"},\"principal\":{\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"roles\":[]},\"redacted\":[\"facts.booking.guest.name\",\"principal.email\"],\"time\":\"2026-06-10T12:00:00Z\"}"
+    },
+    {
+      "name": "a list names its items with an index",
+      "note": "hidden and redacted are written from the result: the first item is the caller's own, the second is not.",
+      "service": "Bookings",
+      "endpoint": "listBookings",
+      "request": {
+        "method": "GET",
+        "path": "/bookings",
+        "query": {},
+        "headers": {}
+      },
+      "clock": "2026-06-10T12:00:00Z",
+      "principal": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+        "roles": [],
+        "email": "01@example.test"
+      },
+      "facts": {},
+      "returns": [
+        {
+          "id": "5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21",
+          "guest": {
+            "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+            "name": "Guest 1",
+            "phone": "+201000000001"
+          },
+          "status": "pending",
+          "total": "120.00",
+          "version": 3
+        },
+        {
+          "id": "5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e22",
+          "guest": {
+            "id": "0b5c9c3e-1111-4a5b-8c9d-000000000002",
+            "name": "Guest 2",
+            "phone": "+201000000002"
+          },
+          "status": "pending",
+          "total": "120.00",
+          "version": 3,
+          "private": "x"
+        }
+      ],
+      "limiter": null,
+      "status": 200,
+      "error": null,
+      "event": "{\"facts\":{},\"hidden\":[\"[1].guest.phone\",\"[1].private\"],\"operation\":\"veld:bookings/Bookings.listBookings@11b3f83724f22f18\",\"outcome\":{\"status\":200},\"parameters\":{},\"principal\":{\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"roles\":[]},\"redacted\":[\"principal.email\",\"result[0].guest.name\",\"result[1].guest.name\"],\"result\":[{\"guest\":{\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"phone\":\"+201000000001\"},\"id\":\"5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21\",\"status\":\"pending\",\"total\":\"120.00\",\"version\":3},{\"guest\":{\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000002\"},\"id\":\"5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e22\",\"status\":\"pending\",\"total\":\"120.00\",\"version\":3}],\"time\":\"2026-06-10T12:00:00Z\"}"
+    },
+    {
+      "name": "a page names its items under items",
+      "note": "The same for a page.",
+      "service": "Bookings",
+      "endpoint": "pageBookings",
+      "request": {
+        "method": "GET",
+        "path": "/bookings/page",
+        "query": {},
+        "headers": {}
+      },
+      "clock": "2026-06-10T12:00:00Z",
+      "principal": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+        "roles": [],
+        "email": "01@example.test"
+      },
+      "facts": {},
+      "returns": {
+        "items": [
+          {
+            "id": "5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e22",
+            "guest": {
+              "id": "0b5c9c3e-1111-4a5b-8c9d-000000000002",
+              "name": "Guest 2",
+              "phone": "+201000000002"
+            },
+            "status": "pending",
+            "total": "120.00",
+            "version": 3,
+            "private": "x"
+          }
+        ],
+        "total": "1",
+        "page": 1,
+        "size": 1
+      },
+      "limiter": null,
+      "status": 200,
+      "error": null,
+      "event": "{\"facts\":{},\"hidden\":[\"items[0].guest.phone\",\"items[0].private\"],\"operation\":\"veld:bookings/Bookings.pageBookings@ce55ca719ce5fce6\",\"outcome\":{\"status\":200},\"parameters\":{},\"principal\":{\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"roles\":[]},\"redacted\":[\"principal.email\",\"result.items[0].guest.name\"],\"result\":{\"items\":[{\"guest\":{\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000002\"},\"id\":\"5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e22\",\"status\":\"pending\",\"total\":\"120.00\",\"version\":3}],\"page\":1,\"size\":1,\"total\":\"1\"},\"time\":\"2026-06-10T12:00:00Z\"}"
+    },
+    {
+      "name": "a created booking",
+      "note": "201 with a body and a @pii note in the request.",
+      "service": "Bookings",
+      "endpoint": "createBooking",
+      "request": {
+        "method": "POST",
+        "path": "/bookings",
+        "query": {},
+        "headers": {},
+        "body": {
+          "amount": "120.00",
+          "card": {
+            "number": "4111111111111111",
+            "brand": "visa"
+          },
+          "note": "gift"
+        }
+      },
+      "clock": "2026-06-10T12:00:00Z",
+      "principal": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+        "roles": [],
+        "email": "01@example.test"
+      },
+      "facts": {},
+      "returns": {
+        "id": "5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21",
+        "guest": {
+          "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+          "name": "Guest 1",
+          "phone": "+201000000001"
+        },
+        "status": "pending",
+        "total": "120.00",
+        "version": 3
+      },
+      "limiter": null,
+      "status": 201,
+      "error": null,
+      "event": "{\"facts\":{},\"hidden\":[],\"operation\":\"veld:bookings/Bookings.createBooking@44ec6880646a5a6f\",\"outcome\":{\"status\":201},\"parameters\":{\"body\":{\"amount\":\"120.00\",\"card\":{\"brand\":\"visa\"}}},\"principal\":{\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"roles\":[]},\"redacted\":[\"parameters.body.card.number\",\"parameters.body.note\",\"principal.email\",\"result.guest.name\"],\"result\":{\"guest\":{\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"phone\":\"+201000000001\"},\"id\":\"5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21\",\"status\":\"pending\",\"total\":\"120.00\",\"version\":3},\"time\":\"2026-06-10T12:00:00Z\"}"
+    },
+    {
+      "name": "an answer without a body has no result",
+      "note": "204.",
+      "service": "Bookings",
+      "endpoint": "removeBooking",
+      "request": {
+        "method": "DELETE",
+        "path": "/bookings/5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21",
+        "query": {},
+        "headers": {}
+      },
+      "clock": "2026-06-10T12:00:00Z",
+      "principal": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+        "roles": [],
+        "email": "01@example.test"
+      },
+      "facts": {},
+      "returns": null,
+      "limiter": null,
+      "status": 204,
+      "error": null,
+      "event": "{\"facts\":{},\"hidden\":[],\"operation\":\"veld:bookings/Bookings.removeBooking@3e144d77b1851a2c\",\"outcome\":{\"status\":204},\"parameters\":{\"id\":\"5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21\"},\"principal\":{\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\",\"roles\":[]},\"redacted\":[\"principal.email\"],\"time\":\"2026-06-10T12:00:00Z\"}"
+    },
+    {
+      "name": "an endpoint that is not audited has no event",
+      "note": "touch has no @audited and its service has none.",
+      "service": "Bookings",
+      "endpoint": "touch",
+      "request": {
+        "method": "GET",
+        "path": "/bookings/5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21/touch",
+        "query": {},
+        "headers": {}
+      },
+      "clock": "2026-06-10T12:00:00Z",
+      "principal": {
+        "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+        "roles": [],
+        "email": "01@example.test"
+      },
+      "facts": {},
+      "returns": null,
+      "limiter": null,
+      "status": 204,
+      "error": null,
+      "event": null
+    },
+    {
+      "name": "an endpoint without auth has no principal",
+      "note": "The service Public is audited as a service. Without auth there is no caller: no principal in the event, and the visible fields are hidden.",
+      "service": "Public",
+      "endpoint": "publicBooking",
+      "request": {
+        "method": "GET",
+        "path": "/public/5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21",
+        "query": {},
+        "headers": {}
+      },
+      "clock": "2026-06-10T12:00:00Z",
+      "principal": null,
+      "facts": {},
+      "returns": {
+        "id": "5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21",
+        "guest": {
+          "id": "0b5c9c3e-1111-4a5b-8c9d-000000000001",
+          "name": "Guest 1",
+          "phone": "+201000000001"
+        },
+        "status": "pending",
+        "total": "120.00",
+        "version": 3,
+        "private": "vip"
+      },
+      "limiter": null,
+      "status": 200,
+      "error": null,
+      "event": "{\"facts\":{},\"hidden\":[\"guest.phone\",\"private\"],\"operation\":\"veld:bookings/Public.publicBooking@3230dcd01e8bf39b\",\"outcome\":{\"status\":200},\"parameters\":{\"id\":\"5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21\"},\"redacted\":[\"result.guest.name\"],\"result\":{\"guest\":{\"id\":\"0b5c9c3e-1111-4a5b-8c9d-000000000001\"},\"id\":\"5d2b3a0e-1c11-4a52-8d0f-0a4f1b7c9e21\",\"status\":\"pending\",\"total\":\"120.00\",\"version\":3},\"time\":\"2026-06-10T12:00:00Z\"}"
+    }
+  ]
+}

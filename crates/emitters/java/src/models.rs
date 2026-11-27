@@ -7,9 +7,10 @@ use std::collections::BTreeMap;
 use veld_codegen::naming;
 use veld_codegen::{CodeWriter, FileSet, GenDiagnostic};
 use veld_ir::{
-    Const, Decl, DeclId, DeclKind, Enum, ErrorDecl, Field, Literal, Model, Scalar, Type, Union,
+    Const, Decl, DeclId, DeclKind, Enum, ErrorDecl, Field, Literal, Scalar, Type, Union,
 };
 
+use crate::rules;
 use crate::tree::{FileCtx, Tree, java_path};
 use crate::types::{codec_expr, java_type, json_literal, nullable, schema_expr};
 use crate::util::{
@@ -33,27 +34,33 @@ pub fn emit(files: &mut FileSet, tree: &Tree<'_>) -> Result<(), Vec<GenDiagnosti
         add_file(
             files,
             &java_path(&package, &name),
-            render(tree, d, &package, &name),
+            render(tree, d, &package, &name)?,
         )?;
     }
     for (package, ids) in consts {
         let text = render_constants(tree, &package, &ids)?;
         add_file(files, &java_path(&package, "Constants"), text)?;
     }
-    Ok(())
+    crate::policy::emit(files, tree)
 }
 
-fn render(tree: &Tree<'_>, d: &Decl, package: &str, name: &str) -> String {
+fn render(
+    tree: &Tree<'_>,
+    d: &Decl,
+    package: &str,
+    name: &str,
+) -> Result<String, Vec<GenDiagnostic>> {
     let mut fc = FileCtx::new(tree, package, name);
     let mut w = CodeWriter::new();
     match &d.kind {
-        DeclKind::Model(m) => write_model(&mut w, &mut fc, d, m),
+        DeclKind::Model(m) => write_record(&mut w, &mut fc, d, &m.fields)?,
+        DeclKind::Event(e) => write_record(&mut w, &mut fc, d, &e.fields)?,
         DeclKind::Enum(e) => write_enum(&mut w, &mut fc, d, e),
         DeclKind::Union(u) => write_union(&mut w, &mut fc, d, u),
-        DeclKind::Error(e) => write_error(&mut w, &mut fc, d, e),
+        DeclKind::Error(e) => write_error(&mut w, &mut fc, d, e)?,
         DeclKind::Const(_) => {}
     }
-    fc.finish(&w.finish())
+    Ok(fc.finish(&w.finish()))
 }
 
 fn head_docs(w: &mut CodeWriter, d: &Decl, params: &[(String, String)]) {
@@ -84,7 +91,7 @@ fn field_params(fields: &[Field], idents: &[String]) -> Vec<(String, String)> {
         .collect()
 }
 
-fn field_idents(fields: &[Field]) -> Vec<String> {
+pub(crate) fn field_idents(fields: &[Field]) -> Vec<String> {
     unique(fields.iter().map(|f| member_ident(&f.name)).collect())
 }
 
@@ -173,11 +180,14 @@ fn write_object_schema(
     fc: &mut FileCtx<'_, '_>,
     fields: &[Field],
     modifiers: &str,
+    checked: &str,
 ) {
     let schema = fc.rt("Schema");
     w.line("/** The wire description: validation, defaults and canonical bytes. */");
     if fields.is_empty() {
-        w.line(format!("{modifiers}{schema} SCHEMA = {schema}.object();"));
+        w.line(format!(
+            "{modifiers}{schema} SCHEMA = {schema}.object(){checked};"
+        ));
         return;
     }
     open_call(w, format!("{modifiers}{schema} SCHEMA = {schema}.object"));
@@ -187,12 +197,18 @@ fn write_object_schema(
             .default
             .as_ref()
             .map_or_else(|| "null".to_string(), |l| json_literal(fc, l));
-        let sep = if i + 1 == fields.len() { ");" } else { "," };
+        let sep = match (i + 1 == fields.len(), checked.is_empty()) {
+            (false, _) => ",".to_string(),
+            (true, true) => ");".to_string(),
+            (true, false) => format!("){checked};"),
+        };
+        // A `@tenant` field is set by the server: a request may lack it (`spec/platform.md` section 3).
+        let tenant = if f.tenant { ", true" } else { "" };
         w.line(format!(
-            "{schema}.field({}, {}, {ty}, {}, {default}, {}){sep}",
+            "{schema}.field({}, {}, {ty}, {}, {default}, {}{tenant}){sep}",
             java_str(&f.name),
             java_str(&f.wire),
-            f.optional,
+            f.optional || f.derived.is_some(),
             f.readonly
         ));
     }
@@ -215,10 +231,15 @@ fn write_codec_and_canonical(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, name:
     w.close();
 }
 
-fn write_model(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, m: &Model) {
+fn write_record(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    d: &Decl,
+    fields: &[Field],
+) -> Result<(), Vec<GenDiagnostic>> {
     let name = type_name(d);
-    let idents = field_idents(&m.fields);
-    head_docs(w, d, &field_params(&m.fields, &idents));
+    let idents = field_idents(fields);
+    head_docs(w, d, &field_params(fields, &idents));
     let unions: Vec<String> = fc
         .tree
         .unions_of(d.id)
@@ -230,16 +251,34 @@ fn write_model(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, m: &Model
     } else {
         format!(" implements {}", unions.join(", "))
     };
-    let comps = components(fc, &m.fields, &idents);
+    let comps = components(fc, fields, &idents);
     open_record(w, "public", &name, &comps, &implements);
     write_sig(w, d, "public static final ");
     w.blank();
-    write_object_schema(w, fc, &m.fields, "public static final ");
+    let checked = format!(
+        "{}{}",
+        rules::schema_suffix(d, &name),
+        crate::platform::schema_suffix(fc, d, &name)
+    );
+    write_object_schema(w, fc, fields, "public static final ", &checked);
     w.blank();
-    write_wire_methods(w, fc, &name, &m.fields, &idents);
+    write_wire_methods(w, fc, &name, fields, &idents);
     w.blank();
     write_codec_and_canonical(w, fc, &name);
+    if rules::has_rules(d) {
+        w.blank();
+        rules::write_members(w, fc, d, &name)?;
+    }
+    if crate::derived::has_derived(d) {
+        w.blank();
+        crate::derived::write_members(w, fc, d, &name)?;
+    }
+    if crate::platform::has_members(fc, d) {
+        w.blank();
+        crate::platform::write_members(w, fc, d, &name)?;
+    }
     w.close();
+    Ok(())
 }
 
 fn write_enum(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, e: &Enum) {
@@ -293,7 +332,7 @@ fn write_enum(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, e: &Enum) 
     w.close();
     w.close();
     w.line(format!(
-        "throw new IllegalArgumentException(\"unknown {name}: \" + value);"
+        "throw new IllegalArgumentException(\"unknown {name}\");"
     ));
     w.close();
     w.blank();
@@ -310,11 +349,96 @@ fn write_enum(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, e: &Enum) 
     w.open("public String veldCanonical()");
     w.line(format!("return {wire}.canonicalOf(SCHEMA, toWire());"));
     w.close();
+    if e.is_state_machine() {
+        w.blank();
+        write_machine_helpers(w, fc, &name, e);
+    }
+    w.close();
+}
+
+/// `nextStates()` and `isFinal()` of a state machine (`spec/rules.md` section 10.3).
+fn write_machine_helpers(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, name: &str, e: &Enum) {
+    let list = fc.name("java.util.List");
+    let consts = enum_constants(e);
+    let constant = |variant: &str| {
+        e.variants
+            .iter()
+            .position(|v| v.name == variant)
+            .and_then(|i| consts.get(i).cloned())
+            .unwrap_or_default()
+    };
+    w.line(
+        "/** The states that can follow this one, in declaration order of the edges (`flow`). */",
+    );
+    w.open(format!("public {list}<{name}> nextStates()"));
+    w.open("return switch (this)");
+    for (v, c) in e.variants.iter().zip(&consts) {
+        let next: Vec<String> = e
+            .flows
+            .iter()
+            .filter(|f| f.from == v.name)
+            .map(|f| constant(&f.to))
+            .collect();
+        w.line(format!("case {c} -> {list}.of({});", next.join(", ")));
+    }
+    w.close_with("};");
+    w.close();
+    w.blank();
+    w.line("/** Whether this state is final: no state follows it. */");
+    w.open("public boolean isFinal()");
+    if e.finals.is_empty() {
+        w.line("return false;");
+    } else {
+        let finals: Vec<String> = e.finals.iter().map(|f| constant(f)).collect();
+        w.line(format!(
+            "return switch (this) {{ case {} -> true; default -> false; }};",
+            finals.join(", ")
+        ));
+    }
+    w.close();
+    if e.flows.iter().any(|f| f.after_ms.is_some()) {
+        w.blank();
+        write_timed_moves(w, fc, name, e, &constant);
+    }
+}
+
+/// `timedMoves()` of a state machine with a timed edge (`spec/platform.md` section 10.1): the
+/// source, the target and the milliseconds of each timed edge, so an app can show "expires in 3
+/// hours". A flagged edge is listed too: the server still decides.
+fn write_timed_moves(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    name: &str,
+    e: &Enum,
+    constant: &dyn Fn(&str) -> String,
+) {
+    let list = fc.name("java.util.List");
+    w.line("/** A timed edge (`flow a -> b after d`): the state it leaves, the state it enters and the milliseconds a value must have waited in the first. */");
+    w.line(format!(
+        "public record TimedMove({name} from, {name} to, long ms) {{}}"
+    ));
+    w.blank();
+    w.line("/** The timed edges of the state machine, in the order of the edges; a flagged edge is listed too. */");
+    w.open(format!("public static {list}<TimedMove> timedMoves()"));
+    let moves: Vec<String> = e
+        .flows
+        .iter()
+        .filter_map(|f| {
+            f.after_ms.as_ref().map(|ms| {
+                format!(
+                    "new TimedMove({}, {}, {ms}L)",
+                    constant(&f.from),
+                    constant(&f.to)
+                )
+            })
+        })
+        .collect();
+    w.line(format!("return {list}.of({});", moves.join(", ")));
     w.close();
 }
 
 /// Java constant names for the variants of an enum, unique and legal.
-fn enum_constants(e: &Enum) -> Vec<String> {
+pub(crate) fn enum_constants(e: &Enum) -> Vec<String> {
     unique(
         e.variants
             .iter()
@@ -388,7 +512,7 @@ fn write_union_methods(
         w.close();
     }
     w.line(format!(
-        "throw new IllegalArgumentException(\"unknown {name} arm: \" + value);"
+        "throw new IllegalArgumentException(\"unknown {name} arm\");"
     ));
     w.close();
     w.blank();
@@ -404,7 +528,7 @@ fn write_union_methods(
     }
     w.line("default:");
     w.line(format!(
-        "  throw new IllegalArgumentException(\"unknown {name} arm: \" + label);"
+        "  throw new IllegalArgumentException(\"unknown {name} arm\");"
     ));
     w.close();
     w.close();
@@ -422,7 +546,12 @@ fn write_union_methods(
     w.close();
 }
 
-fn write_error(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, e: &ErrorDecl) {
+fn write_error(
+    w: &mut CodeWriter,
+    fc: &mut FileCtx<'_, '_>,
+    d: &Decl,
+    e: &ErrorDecl,
+) -> Result<(), Vec<GenDiagnostic>> {
     let name = type_name(d);
     let base = fc.rt("VeldError");
     let json = fc.rt("Json");
@@ -442,7 +571,12 @@ fn write_error(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, e: &Error
         ));
     }
     w.blank();
-    write_object_schema(w, fc, fields, "public static final ");
+    let checked = format!(
+        "{}{}",
+        rules::schema_suffix(d, &name),
+        crate::platform::schema_suffix(fc, d, &name)
+    );
+    write_object_schema(w, fc, fields, "public static final ", &checked);
     w.blank();
     w.line("/** The error payload. */");
     let comps = components(fc, fields, &idents);
@@ -481,7 +615,20 @@ fn write_error(w: &mut CodeWriter, fc: &mut FileCtx<'_, '_>, d: &Decl, e: &Error
     w.close();
     w.blank();
     write_error_accessors(w, &name, &json, &schema, &veld);
+    if rules::has_rules(d) {
+        w.blank();
+        rules::write_members(w, fc, d, "Data")?;
+    }
+    if crate::derived::has_derived(d) {
+        w.blank();
+        crate::derived::write_members(w, fc, d, "Data")?;
+    }
+    if crate::platform::has_members(fc, d) {
+        w.blank();
+        crate::platform::write_members(w, fc, d, "Data")?;
+    }
     w.close();
+    Ok(())
 }
 
 fn write_error_accessors(w: &mut CodeWriter, name: &str, json: &str, schema: &str, veld: &str) {

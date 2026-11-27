@@ -1,0 +1,32 @@
+// A small contract that uses the four features of platform phase P2 at once (spec/platform.md
+// sections 10 to 13): a timed edge that is also behind a flag, a flagged `require`, a flagged
+// invariant, a deadline and a service level, next to an idempotency key.
+enum Phase {
+  draft, live, archived
+  flow draft -> live
+  flow live -> archived after hours(1) when flag("archiving")
+  final archived
+}
+
+model Room {
+  id: uuid
+  open: bool
+  guests: int
+  phase: Phase = .draft
+  liveSince: datetime
+
+  rule small: guests <= 6 when flag("smallGroups")
+}
+
+@slo(p99: ms(300), errors: 0.1)
+service Rooms at "/rooms" {
+  @timeout(seconds(2))
+  @idempotent
+  post "/{id}/archive" archive(id: uuid) -> Room {
+    fact room: Room = id
+    require room.open when flag("openOnly")
+    transition room.phase: live -> archived since room.liveSince
+  }
+
+  get "/{id}" getRoom(id: uuid) -> Room
+}

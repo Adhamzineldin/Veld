@@ -1,0 +1,13 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+assertion_line: 195
+---
+== diagnostics ==
+error[E0602]: `@readonly` cannot be applied to an event field
+ --> app/app.veld:2:12
+  |
+2 |   id: uuid @readonly
+  |            ^^^^^^^^^
+
+== ir ==
+(no IR: compilation failed)

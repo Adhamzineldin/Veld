@@ -434,4 +434,125 @@ public final class Wire {
   public static String canonicalOf(Schema schema, Json wire) {
     return prepare(schema, wire, Mode.CANONICAL).canonical();
   }
+
+  // -- a request value that lacks its read-only fields ---------------------------------------
+
+  /**
+   * The value a generated type decodes in request position: a request body has no read-only
+   * fields ({@code spec/language.md} section 7), but the generated record needs them, so each
+   * required field that the request did not carry is filled with a placeholder of its shape. A
+   * rule that reads such a field is skipped for a request, so a placeholder is never read.
+   */
+  public static Json fillReadonly(Schema schema, Json json) {
+    return fill(schema, json);
+  }
+
+  private static Json fill(Schema s, Json v) {
+    Schema node = s.resolve();
+    switch (node.kind) {
+      case LIST -> {
+        if (v instanceof Json.Arr arr) {
+          List<Json> items = new ArrayList<>();
+          for (Json item : arr.items()) {
+            items.add(fill(node.of, item));
+          }
+          return Json.array(items);
+        }
+      }
+      case MAP -> {
+        if (v instanceof Json.Obj obj) {
+          Map<String, Json> out = new LinkedHashMap<>();
+          for (Map.Entry<String, Json> e : obj.fields().entrySet()) {
+            out.put(e.getKey(), fill(node.of, e.getValue()));
+          }
+          return new Json.Obj(out);
+        }
+      }
+      case PAGE -> {
+        if (v instanceof Json.Obj obj && obj.get("items") != null) {
+          return obj.with("items", fill(Schema.list(node.of), obj.get("items")));
+        }
+      }
+      case OBJECT -> {
+        if (v instanceof Json.Obj obj) {
+          return fillObject(node, obj);
+        }
+      }
+      case UNION -> {
+        Json label = v instanceof Json.Obj obj ? obj.get(node.discriminator) : null;
+        Schema arm = label instanceof Json.Str str ? node.armFor(str.value()) : null;
+        if (arm != null && fill(arm, v) instanceof Json.Obj filled) {
+          return filled.with(node.discriminator, label);
+        }
+      }
+      default -> {
+      }
+    }
+    return v;
+  }
+
+  private static Json fillObject(Schema node, Json.Obj obj) {
+    Map<String, Json> out = new LinkedHashMap<>();
+    for (Schema.Field f : node.fields) {
+      Json x = obj.get(f.wire());
+      if (x != null) {
+        out.put(f.wire(), fill(f.type(), x));
+      } else if (!f.optional() && f.defaultValue() == null) {
+        out.put(f.wire(), placeholder(f.type()));
+      }
+    }
+    return new Json.Obj(out);
+  }
+
+  private static Json placeholder(Schema s) {
+    Schema node = s.resolve();
+    switch (node.kind) {
+      case STRING, BYTES:
+        return Json.of("");
+      case INT:
+        return Json.of(0L);
+      case FLOAT:
+        return Json.of(0.0);
+      case LONG, DECIMAL:
+        return Json.of("0");
+      case BOOL:
+        return Json.of(false);
+      case DATE:
+        return Json.of("1970-01-01");
+      case DATETIME:
+        return Json.of("1970-01-01T00:00:00Z");
+      case TIME:
+        return Json.of("00:00:00");
+      case UUID:
+        return Json.of("00000000-0000-0000-0000-000000000000");
+      case ENUM:
+        return Json.of(node.values.isEmpty() ? "" : node.values.get(0));
+      case LIST:
+        return Json.array();
+      case MAP:
+        return Json.object().build();
+      case PAGE:
+        return Json.object()
+            .put("items", Json.array())
+            .put("total", Json.of("0"))
+            .put("page", Json.of(0L))
+            .put("size", Json.of(0L))
+            .build();
+      case OBJECT:
+        return fillObject(node, Json.object().build());
+      case UNION:
+        return placeholderArm(node);
+      default:
+        return Json.NULL;
+    }
+  }
+
+  private static Json placeholderArm(Schema node) {
+    if (node.arms.isEmpty()) {
+      return Json.NULL;
+    }
+    Schema.Arm first = node.arms.get(0);
+    Json body = placeholder(first.schema().get());
+    return body instanceof Json.Obj obj ? obj.with(node.discriminator, Json.of(first.label())) : body;
+  }
 }

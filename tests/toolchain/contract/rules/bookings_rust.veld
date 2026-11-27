@@ -1,0 +1,27 @@
+/// Where a booking is in its life.
+enum Status { pending, paid }
+
+/// A booking with invariants: what callers send and what the server returns are both checked.
+model Booking {
+  guest: string
+  start: datetime
+  end: datetime
+  status: Status = .pending
+  rooms: int[]
+
+  rule endAfterStart: end > start
+    message "A booking must end after it starts"
+  rule maxStay: end - start <= days(30)
+  rule roomsPositive: all(rooms, r => r > 0)
+}
+
+/// A receipt whose total must be positive: the server's own output is checked.
+model Receipt {
+  total: int
+  rule positive: total > 0
+}
+
+service Bookings at "/bookings" {
+  post "/" createBooking(body: Booking) -> 201 Receipt
+  get "/receipt" receipt(@query total: int) -> Receipt
+}

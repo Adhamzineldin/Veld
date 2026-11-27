@@ -1,0 +1,15 @@
+[package]
+name = "tenancy-harness"
+version = "0.0.0"
+edition = "2021"
+publish = false
+default-run = "tenancy-http"
+
+[[bin]]
+name = "tenancy-http"
+path = "src/main.rs"
+
+[dependencies]
+bookings-server = { path = "../server" }
+bookings-client = { path = "../client" }
+serde_json = "1"

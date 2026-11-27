@@ -1,0 +1,15 @@
+[package]
+name = "all-four-harness"
+version = "0.0.0"
+edition = "2021"
+publish = false
+default-run = "all-four-http"
+
+[[bin]]
+name = "all-four-http"
+path = "src/main.rs"
+
+[dependencies]
+bookings-server = { path = "../server" }
+bookings-client = { path = "../client" }
+serde_json = "1"

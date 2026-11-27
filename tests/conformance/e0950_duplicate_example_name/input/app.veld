@@ -1,0 +1,15 @@
+// An example name is unique in its package.
+
+model Booking { id: uuid }
+
+service Bookings at "/bookings" {
+  get "/" list() -> 200 Booking[]
+}
+
+example "lists" {
+  list() -> ok
+}
+
+example "lists" {
+  list() -> ok
+}

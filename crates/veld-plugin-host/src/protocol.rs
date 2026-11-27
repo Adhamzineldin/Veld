@@ -421,6 +421,19 @@ mod tests {
     }
 
     #[test]
+    fn a_plugin_that_does_not_list_the_rules_features_does_not_support_them() {
+        // An older plugin knows no rules feature: it is not treated as supporting any.
+        let older = parse_handshake("k", &hello_reply(json!({}))).unwrap();
+        for f in Feature::RULES {
+            assert!(!older.capabilities.supports(f), "{}", f.name());
+        }
+        let newer = json!({"capabilities": ["auth", "rules_invariants"]});
+        let h = parse_handshake("k", &hello_reply(newer)).unwrap();
+        assert!(h.capabilities.supports(Feature::RulesInvariants));
+        assert!(!h.capabilities.supports(Feature::RulesEndpoint));
+    }
+
+    #[test]
     fn handshake_without_frameworks_or_language_still_parses() {
         let h = parse_handshake("k", &hello_reply(json!({}))).unwrap();
         assert!(h.frameworks.is_empty() && h.language.is_none());

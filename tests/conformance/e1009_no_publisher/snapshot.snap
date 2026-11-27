@@ -1,0 +1,14 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+assertion_line: 195
+---
+== diagnostics ==
+error[E1009]: nobody publishes channel `Orphans`
+ --> app/app.veld:5:3
+  |
+5 |   subscribes Orphans as "consumer" { on Paid -> handle }
+  |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  = help: a service of this workspace must publish it, or the channel belongs in a library
+
+== ir ==
+(no IR: compilation failed)

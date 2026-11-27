@@ -9,11 +9,15 @@ use veld_ir::{DeclId, DeclKind, Ir, Type};
 pub(super) struct Role {
     pub request: bool,
     pub response: bool,
+    /// Reached by an event: it is written by a publisher and read by consumers of an older and
+    /// of a newer contract, so a change is judged for both sides of the stream
+    /// (`spec/events.md` section 16).
+    pub stream: bool,
 }
 
 impl Role {
     fn is_empty(self) -> bool {
-        !self.request && !self.response
+        !self.request && !self.response && !self.stream
     }
 }
 
@@ -49,7 +53,7 @@ fn refs(ir: &Ir, id: DeclId, out: &mut Vec<DeclId>) {
         DeclKind::Model(m) => out.extend(m.parent),
         DeclKind::Union(u) => out.extend(u.arms.iter().map(|a| a.decl)),
         DeclKind::Const(c) => c.ty.collect_decls(out),
-        DeclKind::Error(_) | DeclKind::Enum(_) => {}
+        DeclKind::Error(_) | DeclKind::Enum(_) | DeclKind::Event(_) => {}
     }
     for f in d.fields() {
         f.ty.collect_decls(out);
@@ -78,6 +82,15 @@ fn roles(ir: &Ir) -> BTreeMap<String, Role> {
         }
     }
     let mut out: BTreeMap<String, Role> = BTreeMap::new();
+    let events: Vec<DeclId> = ir
+        .decls
+        .iter()
+        .filter(|d| d.is_event())
+        .map(|d| d.id)
+        .collect();
+    for id in closure(ir, events) {
+        out.entry(ir.decl(id).qualified.clone()).or_default().stream = true;
+    }
     for id in closure(ir, req) {
         out.entry(ir.decl(id).qualified.clone())
             .or_default()

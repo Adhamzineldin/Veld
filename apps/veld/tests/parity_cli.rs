@@ -184,6 +184,74 @@ fn non_breaking_changes_pass_and_check_and_dry_run_never_block() {
         .stderr(predicate::str::contains("breaking changes"));
 }
 
+const ROOM: &str = "model Room {\n  size: int\n  rule small: size <= 10\n}\n\nservice Rooms at \"/rooms\" {\n  post \"/\" book(body: Room) -> 204\n}\n";
+
+/// Adds a contract with one rule on a request body; the rule is the part the tests change.
+fn add_room(dir: &Path) {
+    write(dir, "contracts/room.veld", ROOM);
+}
+
+#[test]
+fn a_changed_rule_stops_generate_and_says_it_cannot_tell_the_direction() {
+    let tmp = tempdir().unwrap();
+    let dir = tmp.path();
+    project(dir);
+    add_room(dir);
+    generated(dir);
+    write(dir, "contracts/room.veld", &ROOM.replace("<= 10", "<= 5"));
+    let before = tree(dir);
+    for args in [&["generate"][..], &["generate", "--strict"]] {
+        veld(dir).args(args).assert().code(1).stderr(
+            predicate::str::contains("possibly breaking changes (1)")
+                .and(predicate::str::contains("cannot tell"))
+                .and(predicate::str::contains("--accept-breaking")),
+        );
+    }
+    assert_eq!(before, tree(dir), "a blocked generate writes nothing");
+    veld(dir)
+        .args(["generate", "--accept-breaking"])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("possibly breaking changes (1)"));
+    veld(dir).arg("generate").assert().success();
+}
+
+#[test]
+fn a_changed_rule_does_not_block_check_and_dry_run() {
+    let tmp = tempdir().unwrap();
+    let dir = tmp.path();
+    project(dir);
+    add_room(dir);
+    generated(dir);
+    write(dir, "contracts/room.veld", &ROOM.replace("<= 10", "<= 5"));
+    veld(dir)
+        .args(["generate", "--dry-run"])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("possibly breaking changes (1)"));
+}
+
+#[test]
+fn an_added_event_channel_publisher_or_subscriber_does_not_stop_generate() {
+    let tmp = tempdir().unwrap();
+    let dir = tmp.path();
+    project(dir);
+    add_room(dir);
+    generated(dir);
+    let events = "event Booked { id: uuid }\nchannel Bookings { carries Booked }\n\
+                  service Desk {\n  publishes Bookings\n}\n\
+                  service Audit {\n  subscribes Bookings as \"audit\" {\n    on Booked -> record\n  }\n}\n";
+    write(dir, "contracts/room.veld", &format!("{ROOM}{events}"));
+    // Additions are compatible: the gate lets them through and the Node server generates them.
+    veld(dir)
+        .arg("generate")
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("possibly breaking").not())
+        .stderr(predicate::str::contains("breaking changes (").not())
+        .stderr(predicate::str::contains("--accept-breaking").not());
+}
+
 #[test]
 fn strict_and_accept_breaking_exclude_each_other() {
     let tmp = tempdir().unwrap();
@@ -228,7 +296,7 @@ fn the_use_it_block_aligns_its_columns_whatever_the_target_names() {
     append(
         dir,
         "veld.toml",
-        "\n[[targets]]\nname = \"a-rather-long-client-target\"\nrole = \"client\"\nemitter = \"typescript\"\nout = \"generated/client\"\n",
+        "\n[client]\nname = \"a-rather-long-client-target\"\nemitter = \"typescript\"\nout = \"generated/client\"\n",
     );
     let out = veld(dir).arg("generate").output().unwrap();
     let text = String::from_utf8_lossy(&out.stdout).to_string();
@@ -359,6 +427,7 @@ fn check_lints_and_the_levels_come_from_veld_toml() {
     let tmp = tempdir().unwrap();
     let dir = tmp.path();
     project(dir);
+    // The scaffold says `@auth(none)`, so the unused model is the only finding.
     append(dir, "contracts/hello.veld", UNUSED);
     veld(dir)
         .arg("check")
@@ -415,7 +484,7 @@ fn two_module_workspace(dir: &Path) {
     write(
         dir,
         "veld.toml",
-        "[project]\nname = \"p\"\ncontracts = \"contracts\"\n",
+        "[service]\nname = \"p\"\ncontracts = \"contracts\"\n",
     );
     write(
         dir,
@@ -588,7 +657,7 @@ fn client_only_project(dir: &Path) {
     write(
         dir,
         "veld.toml",
-        "[project]\nname = \"p\"\n[[targets]]\nname = \"oas\"\nrole = \"client\"\nemitter = \"typescript\"\nout = \"spec\"\n",
+        "[service]\nname = \"p\"\n[[client]]\nname = \"oas\"\nemitter = \"typescript\"\nout = \"spec\"\n",
     );
     write(
         dir,
@@ -617,7 +686,7 @@ fn doctor_reports_each_problem_with_a_fix_and_exits_1() {
     append(
         dir,
         "veld.toml",
-        "\n[plugins.ghost]\ncommand = \"veld-no-such-plugin-xyz\"\n\n[[targets]]\nname = \"web\"\nrole = \"client\"\nemitter = \"plugin:ghost\"\nout = \"web\"\n\n[lint]\nbogus = \"warn\"\n\n[dependencies]\n\"@acme/billing\" = \"^1\"\n",
+        "\n[plugins.ghost]\ncommand = \"veld-no-such-plugin-xyz\"\n\n[[client]]\nname = \"web\"\nemitter = \"plugin:ghost\"\nout = \"web\"\n\n[lint]\nbogus = \"warn\"\n\n[dependencies]\n\"@acme/billing\" = \"^1\"\n",
     );
     write(dir, "contracts/b.veld", "model B { x: Missing }\n");
     write(dir, "spec", "a file, not a directory");
@@ -647,7 +716,7 @@ fn doctor_reports_a_broken_config_and_a_corrupt_baseline() {
     veld(dir).arg("doctor").assert().code(1).stdout(
         predicate::str::contains("✗ baseline").and(predicate::str::contains("veld clean --lock")),
     );
-    write(dir, "veld.toml", "[project]\nnam = \"x\"\n");
+    write(dir, "veld.toml", "[service]\nnam = \"x\"\n");
     veld(dir)
         .arg("doctor")
         .assert()

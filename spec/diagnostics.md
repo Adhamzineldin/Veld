@@ -11,7 +11,7 @@ never reused. The ranges are listed in `language.md` section 9.
 | `E0002` | error | veld-compiler | Lexical error (bad character, unterminated string, integer literal out of range) |
 | `E0003` | error | veld-compiler | Unexpected token: the parser expected something else |
 | `E0004` | error | veld-compiler | Reserved word used as a name |
-| `E0005` | error | veld-compiler | Nesting too deep: types and annotation call arguments are limited to 64 levels |
+| `E0005` | error | veld-compiler | Nesting too deep: types and annotation call arguments are limited to 64 levels, rule expressions to 32 |
 | `E0006` | error | veld-compiler | `extends` chain longer than 64 models |
 | `E0101` | error | veld-compiler | Module path derived from a file path is invalid |
 | `E0201` | error | veld-compiler | Duplicate declaration in a module |
@@ -35,7 +35,7 @@ never reused. The ranges are listed in `language.md` section 9.
 | `E0408` | error | veld-compiler | `extends` target is not a model |
 | `E0409` | error | veld-compiler | Union arm is not a model, or the union is empty |
 | `E0410` | error | veld-compiler | Duplicate field, wire name, variant or arm |
-| `E0501` | error | veld-compiler | Service prefix or endpoint path does not start with `/` |
+| `E0501` | error | veld-compiler | Service prefix or endpoint path does not start with `/`, or a service with endpoints has no `at` |
 | `E0502` | error | veld-compiler | Path parameter is optional or has an invalid type |
 | `E0503` | error | veld-compiler | `body` is not allowed on this HTTP method |
 | `E0504` | error | veld-compiler | Invalid `query` parameter or `@query` binding type |
@@ -43,7 +43,7 @@ never reused. The ranges are listed in `language.md` section 9.
 | `E0506` | error | veld-compiler | Path template names a parameter that does not exist |
 | `E0507` | error | veld-compiler | Success status is not 2xx |
 | `E0508` | error | veld-compiler | Error has neither a status here nor a default status |
-| `E0509` | error | veld-compiler | Endpoint declared twice in a service |
+| `E0509` | error | veld-compiler | Endpoint or event handler declared twice in a service |
 | `E0510` | error | veld-compiler | Two endpoints collide on method and path |
 | `E0511` | error | veld-compiler | `stream` used where it is not allowed |
 | `E0512` | error | veld-compiler | Duplicate parameter |
@@ -52,23 +52,95 @@ never reused. The ranges are listed in `language.md` section 9.
 | `E0603` | error | veld-compiler | Pattern is outside the portable regex subset |
 | `E0700` | error | veld-project | Invalid `veld.toml` |
 | `E0701` | error | veld-compiler | Unknown key in `veld.toml`, or a reserved package name |
-| `E0702` | error | veld-compiler | `consumes` or `service` names an unknown service |
+| `E0702` | error | veld-compiler | `consumes` or `uses` names an unknown service |
 | `E0703` | error | veld-project | Two targets have overlapping output directories |
-| `E0704` | error | veld-project | Output directory is forbidden (project root or a contracts directory) |
+| `E0704` | error | veld-project | Output directory is forbidden (workspace root or a contracts directory) |
 | `E0705` | error | veld-plugin-host | Plugin executable hash does not match `sha256` |
 | `E0706` | error | veld-plugin-host | Plugin protocol error |
 | `E0707` | error | veld-plugin-host | Plugin returned invalid or unsafe files |
 | `E0708` | error | veld-plugin-host | Plugin process failed or timed out |
+| `E0709` | error | veld-project | `veld.toml` is in the layout of earlier betas (`[project]`, `[services.*]`, `[libraries.*]` or `[[targets]]`); the message says what to write instead |
+| `E0710` | error | veld-project | Invalid workspace structure (no member table, more than one, a nested workspace, a member no workspace lists, a bad `members` pattern, a missing member file, a missing, invalid or duplicate member or target name) |
+| `E0711` | error | veld-project | A table that is not allowed in this `veld.toml` (a root-only table in a member file, a `[server]` in an app, a target in a library) |
+| `E0712` | error | veld-project | `--affected` cannot read the changes (no git work tree, `git` not found, unknown ref) |
 | `E0801` | error | veld-codegen | Feature not supported by the generator for this role |
 | `E0802` | error | veld-codegen | Invalid generator options (also: an unsupported language version, such as `java = "19"`) |
-| `E0803` | error | veld-codegen | Invalid generation request (unknown framework or framework version, a language older than the framework needs, unknown role or service, nothing selected) |
+| `E0803` | error | veld-codegen | Invalid generation request (unknown framework or framework version, a language older than the framework needs, unknown role or service, nothing selected, a `-p` name or a target that is not a selected member, `export asyncapi` of a workspace without channels) |
 | `E0804` | error | generators | Constant cannot be represented by the generator |
 | `E0805` | error | generators | Generated file cannot be added (bad or duplicate path) |
 | `E0899` | error | veld-codegen | Generator or plugin failure without a more specific code |
+| `E0901` | error | veld-compiler | Unknown name in an expression, or a lambda variable that shadows another name |
+| `E0902` | error | veld-compiler | Type error in an expression: operand types do not fit the operator, a rule that is not `bool`, a chained comparison, an enum literal with no enum to infer |
+| `E0903` | error | veld-compiler | An optional value is read where it is not known to be present |
+| `E0904` | error | veld-compiler | `now`, `result` or `old` used where it is not available |
+| `E0905` | error | veld-compiler | Operation not supported on this type: `/` or `%` on decimal, ordering strings, comparing models, lists, maps, bytes or json, a `const` of an unsupported type |
+| `E0906` | error | veld-compiler | Unknown function, wrong number or type of arguments, lambda where none is allowed |
+| `E0907` | error | veld-compiler | Duplicate rule name in a declaration, counting inherited rules |
+| `E0908` | error | veld-compiler | Numeric literal out of range for its type |
+| `E0920` | error | veld-compiler | A fact named like a parameter, another fact, the principal, `now` or `result`; a parameter or fact named `transition` on an endpoint that has one |
+| `E0921` | error | veld-compiler | The error after `else` is not one of the endpoint's declared errors |
+| `E0922` | error | veld-compiler | Two facts with one name but different types, key types or optionality in a service; an unknown or missing field in an `else` payload |
+| `E0923` | error | veld-compiler | A fact read in `ensure` outside `old(...)` |
+| `E0924` | error | veld-compiler | `ensure` on an endpoint whose success is a stream |
+| `E0930` | error | veld-compiler | A `flow` or `final` names something that is not a variant of the enum |
+| `E0931` | error | veld-compiler | A `final` state with an outgoing flow, or `final` in an enum with no flow |
+| `E0932` | error | veld-compiler | The path of a `transition` does not start at a fact, does not end in a state machine, or passes through an optional step |
+| `E0933` | error | veld-compiler | A `transition` lists a move that is not a flow of the machine |
+| `E0934` | error | veld-compiler | More than one `transition` in an endpoint |
+| `E0935` | error | veld-compiler | `after` is wrong: on a `flow` with several edges, twice for one edge, or not a positive constant duration |
+| `E0936` | error | veld-compiler | `since` is wrong: missing on a timed edge, present on another, several sources, or not a required `datetime` field of the fact |
+| `E0937` | error | veld-compiler | `when flag(..)` is wrong: a bad name, or on a statement that cannot have it |
+| `E0938` | error | veld-compiler | `given flag` in an example names a flag that no statement of the workspace uses |
+| `E0940` | error | veld-compiler | The type after `principal` is not a model |
+| `E0941` | error | veld-compiler | More than one `principal` in a package |
+| `E0942` | error | veld-compiler | `allow` names an unknown policy, or its arguments do not fit the policy's parameters |
+| `E0950` | error | veld-compiler | Duplicate example name; unknown or ambiguous endpoint in an example |
+| `E0951` | error | veld-compiler | `given` names something that is not a fact of the called endpoint |
+| `E0952` | error | veld-compiler | A value in an example does not fit the type it is used at, or writes a derived field |
+| `E0953` | error | veld-rules | A value an example leaves out cannot be filled in, or the filled-in value breaks an invariant |
+| `E0960` | error | veld-compiler | Derived fields depend on each other in a cycle |
+| `E0961` | error | veld-compiler | A derived field is optional, or has `@readonly` or `@example` |
+| `E0970` | error | veld-prove | `--prove`: the rules contradict each other, a `require` can never pass, or a policy permits nobody |
+| `E1001` | error | veld-compiler | An event is used as a type, or an event field has an event type |
+| `E1002` | error | veld-compiler | `carries` names something that is not an event, names an event twice, or is missing |
+| `E1003` | error | veld-compiler | The topic of a channel is not a legal topic name |
+| `E1004` | error | veld-compiler | Two channels of the workspace have the same topic |
+| `E1005` | error | veld-compiler | The `key` of a channel is not a required field of the same key type in every carried event, or the channel has two keys |
+| `E1006` | error | veld-compiler | `publishes` or `subscribes` names something that is not a channel, or names a channel twice |
+| `E1007` | error | veld-compiler | The group of a subscription is not a legal group name |
+| `E1008` | error | veld-compiler | An `on` line names an event the channel does not carry or names an event twice, or the subscription has no `on` line |
+| `E1009` | error | veld-compiler | A subscription to a channel of this workspace that no service publishes |
+| `E1010` | error | veld-compiler | An example whose `expect` lines are not well formed. An event example: the channel cannot be chosen, an `expect` names no handler of that channel, `rejected` is combined with `called`, or `once` follows `not called` or `rejected`. A call example: `expect emitted` on an endpoint whose transition emits nothing, naming an event it does not emit, twice, without `ok` and `returns`, or combined with `expect not emitted` |
+| `E1011` | error | veld-compiler | `emits` is wrong: on a flow with several edges, not an event, or a transition whose service publishes no channel that carries it |
+| `E1101` | error | veld-compiler | `@visible` is wrong: a field that is not optional, a package without a principal, an expression that does not type, or a field an event reaches |
+| `E1110` | error | veld-compiler | `@tenant` is wrong: two in one model, an optional field or a type that cannot be a tenant, a field of an error, a derived field, a principal without one, or a tenant-scoped endpoint without auth |
+| `E1120` | error | veld-compiler | `@limit` is wrong: two on one endpoint, a bad count, window or subject, or a subject the endpoint cannot supply |
+| `E1201` | error | veld-compiler | A step or a `compensate` of a saga names a service that is not consumed, an endpoint that does not exist or cannot be called (a stream or `ws`), or arguments that do not fit |
+| `E1202` | error | veld-compiler | The endpoint of a step or of a `compensate` is not `@idempotent` |
+| `E1203` | error | veld-compiler | A saga is not well formed: two steps with one name, a step called like a parameter, an expression that reads a later step, a last step whose type is not the success type, a missing or wrong `timeout`, a saga without a step, or a statement of an endpoint block in it |
+| `E1301` | error | veld-compiler | A message catalog is not a flat table of strings, or its file name is not a language tag |
+| `E1310` | error | veld-compiler | `@retain` is wrong: the duration, the `since` field, `then`, or `anonymize` without a `@pii` field |
 | `W0001` | warning | veld-compiler | Doc comment is not attached to anything |
 | `W0201` | warning | veld-compiler | Unused import |
 | `W0202` | warning | veld-compiler | Declaration shadows a prelude declaration |
 | `W0701` | warning | veld-compiler | Service consumes itself |
+| `W0901` | warning | veld-compiler | `==` or `!=` on `float` |
+| `W0902` | warning | veld-compiler | Nested comprehension over a list without `@length(max: n)` |
+| `W0903` | warning | veld-compiler | A rule that reads no field |
+| `W0904` | warning | generators | A target with request validation turned off reaches rules, which it will not enforce |
+| `W0930` | warning | veld-compiler | The same flow declared twice |
+| `W0931` | warning | veld-compiler | A state that is not final and has no way out |
+| `W0932` | warning | veld-compiler | A variant of a state machine that takes part in no flow and is not final |
+| `W0933` | warning | veld-compiler | A timed edge that no `transition` takes |
+| `W0940` | warning | veld-compiler | A policy with no `permit` permits nobody |
+| `W0970` | warning | veld-prove | `--prove`: some questions ended unknown or unsupported |
+| `W1001` | warning | veld-compiler | A published channel that nobody in the workspace subscribes to |
+| `W1002` | warning | veld-compiler | An event of a published channel that no subscription handles |
+| `W1003` | warning | veld-compiler | A channel has `@retry` and no `@deadLetter` |
+| `W1101` | warning | veld-compiler | An endpoint returns a field with `@visible` and has no caller of the principal type: the field is never sent there |
+| `W1201` | warning | veld-compiler | A step of a saga that is not the last has no `compensate`: once it has run, the saga cannot be undone past it |
+| `W1301` | warning | veld-compiler | A message catalog has a key that no rule of the member has |
+| `W1302` | warning | veld-compiler | A message catalog lacks the message of a rule of the member |
 | `L0001` | lint | veld-tools | `unused-model`: declaration is never used by any endpoint, model or constant |
 | `L0002` | lint | veld-tools | `empty-service`: service has no endpoints |
 | `L0003` | lint | veld-tools | `empty-model`: model has no fields |
@@ -82,3 +154,8 @@ never reused. The ranges are listed in `language.md` section 9.
 | `L0011` | lint | veld-tools | `endpoint-name-case`: endpoint name is not camelCase |
 | `L0012` | lint | veld-tools | `variant-name-case`: enum variant is neither camelCase nor snake_case |
 | `L0013` | lint | veld-tools | `deprecated-declaration`: declaration or enum variant is deprecated |
+| `L0014` | lint | veld-tools | `auth-required`: an endpoint whose auth comes from neither its own `@auth` nor its service's |
+| `L0015` | lint | veld-tools | `pii-without-auth`: an endpoint with no auth can answer with a `@pii` field |
+| `L0016` | lint | veld-tools | `secret-in-output`: a `@secret` field that a response, a declared error, a stream item or an event can contain |
+| `L0017` | lint | veld-tools | `pii-without-retention`: a model with a `@pii` field and no `@retain` |
+| `L0018` | lint | veld-tools | `post-moves-state-as-created`: a `post` whose `transition` answers the fact's own type with the default `201` |

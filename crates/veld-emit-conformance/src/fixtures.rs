@@ -235,4 +235,10 @@ pub const FIXTURES: &[Fixture] = &[
         feature: Some(Feature::Bytes),
         source: BYTES,
     },
+    // A server refuses it with `E0801`; a client generates the same files as without the events.
+    Fixture {
+        name: "events",
+        feature: Some(Feature::Events),
+        source: crate::events::FIXTURE_SOURCE,
+    },
 ];

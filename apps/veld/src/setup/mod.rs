@@ -300,7 +300,17 @@ mod tests {
         load_str(root, toml).unwrap()
     }
 
-    const NPM_TOML: &str = "[project]\nname = \"hello\"\n[[targets]]\nname = \"api\"\nrole = \"server\"\nemitter = \"node\"\nservice = \"hello\"\nout = \"server/src/generated\"\n[[targets]]\nname = \"web\"\nrole = \"client\"\nemitter = \"typescript\"\nout = \"web/src/generated\"\n";
+    const NPM_TOML: &str = "[service]
+name = \"hello\"
+[server]
+name = \"api\"
+emitter = \"node\"
+out = \"server/src/generated\"
+[client]
+name = \"web\"
+emitter = \"typescript\"
+out = \"web/src/generated\"
+";
 
     #[test]
     fn relative_paths() {
@@ -393,7 +403,7 @@ mod tests {
             "out = \"server/src/generated\"
 ",
             "out = \"server/src/generated\"
-[targets.options]
+[server.options]
 package-name = \"@acme/api\"
 ",
         );
@@ -407,7 +417,13 @@ package-name = \"@acme/api\"
         );
     }
 
-    const JAVA_TOML: &str = "[project]\nname = \"svc\"\n[[targets]]\nname = \"api\"\nrole = \"server\"\nemitter = \"java\"\nservice = \"svc\"\nout = \"svc/gen/java\"\n";
+    const JAVA_TOML: &str = "[service]
+name = \"svc\"
+[server]
+name = \"api\"
+emitter = \"java\"
+out = \"svc/gen/java\"
+";
 
     #[test]
     fn maven_is_edited_and_a_standard_source_root_is_left_alone() {

@@ -1,0 +1,190 @@
+// Endpoint rules and examples (spec/rules.md 9 and 12). The examples are the vectors: every
+// server target and the reference evaluator must give exactly the stated outcome.
+
+enum Status { pending, paid, cancelled }
+
+model Room {
+  id: uuid
+  capacity: int @min(1)
+  closed: bool
+  nightly: decimal
+}
+
+model NewBooking {
+  roomId: uuid
+  guests: int @min(1)
+  start: datetime
+  end: datetime
+  couponCode?: string
+
+  rule endAfterStart: end > start
+    message "A booking must end after it starts"
+}
+
+model Booking extends NewBooking {
+  id: uuid @readonly
+  status: Status = .pending
+  total: decimal
+}
+
+model Coupon {
+  code: string
+  percent: int @min(1) @max(100)
+}
+
+model Payment {
+  amount: decimal
+}
+
+error RoomFull 409 { capacity: int }
+error RoomClosed 409 {}
+error AmountMismatch 422 { expected: decimal }
+
+service Bookings at "/bookings" {
+  post "/" createBooking(body: NewBooking) -> 201 Booking | RoomFull | RoomClosed {
+    fact room: Room = body.roomId
+    fact coupon?: Coupon = body.couponCode
+    require not room.closed else RoomClosed
+    require body.guests <= room.capacity else RoomFull { capacity: room.capacity }
+    require notInPast: body.start >= now
+      message "A booking cannot start in the past"
+    require couponWorks: has(coupon) implies coupon.percent <= 50
+    ensure startsPending: result.status == .pending
+    ensure keepsRoom: result.roomId == body.roomId
+  }
+
+  post "/{id}/pay" payBooking(id: uuid, body: Payment) -> Booking | AmountMismatch {
+    fact booking: Booking = id
+    require body.amount == booking.total else AmountMismatch { expected: booking.total }
+    ensure result.total == old(booking.total)
+    ensure result.status == .paid
+  }
+}
+
+// --- createBooking: the order of the pipeline ---
+
+example "a valid booking passes every check" {
+  given room = { capacity: 2, closed: false }
+  createBooking(body: { roomId: room.id, guests: 2 }) -> ok
+}
+
+example "a full room is rejected with its capacity" {
+  given room = { capacity: 2, closed: false }
+  createBooking(body: { roomId: room.id, guests: 3 }) -> RoomFull { capacity: 2 }
+}
+
+example "the first failing require wins" {
+  given room = { capacity: 1, closed: true }
+  createBooking(body: { roomId: room.id, guests: 5 }) -> RoomClosed
+}
+
+example "a missing room is not found" {
+  given room = absent
+  createBooking(body: { guests: 1 }) -> NotFound { resource: "room" }
+}
+
+example "an invalid body is rejected before the room is looked up" {
+  given room = absent
+  createBooking(body: { guests: 1, start: "2026-02-03T00:00:00Z", end: "2026-02-01T00:00:00Z" }) -> ValidationError
+}
+
+// --- now ---
+
+example "a booking cannot start in the past" {
+  given room = { capacity: 4, closed: false }
+  at "2026-06-01T00:00:00Z"
+  createBooking(body: { roomId: room.id, guests: 2, start: "2026-05-01T00:00:00Z", end: "2026-05-03T00:00:00Z" }) -> ValidationError
+}
+
+example "a booking may start exactly now" {
+  given room = { capacity: 4, closed: false }
+  at "2026-06-01T00:00:00Z"
+  createBooking(body: { roomId: room.id, guests: 2, start: "2026-06-01T00:00:00Z", end: "2026-06-02T00:00:00Z" }) -> ok
+}
+
+// --- an optional fact and its key ---
+
+example "a coupon above fifty percent is refused" {
+  given room = { capacity: 4, closed: false }
+  given coupon = { code: "BIG", percent: 60 }
+  createBooking(body: { roomId: room.id, guests: 2, couponCode: "BIG" }) -> ValidationError
+}
+
+example "a coupon of fifty percent is accepted" {
+  given room = { capacity: 4, closed: false }
+  given coupon = { code: "HALF", percent: 50 }
+  createBooking(body: { roomId: room.id, guests: 2, couponCode: "HALF" }) -> ok
+}
+
+example "a coupon is not loaded when the booking names none" {
+  given room = { capacity: 4, closed: false }
+  given coupon = { code: "BIG", percent: 60 }
+  createBooking(body: { roomId: room.id, guests: 2 }) -> ok
+}
+
+example "a coupon the loader does not find is absent, not an error" {
+  given room = { capacity: 4, closed: false }
+  given coupon = absent
+  createBooking(body: { roomId: room.id, guests: 2, couponCode: "GONE" }) -> ok
+}
+
+// --- ensure ---
+
+example "the handler must return a pending booking" {
+  given room = { capacity: 4, closed: false }
+  createBooking(body: { roomId: room.id, guests: 2 })
+    returns { roomId: room.id, guests: 2, status: .paid }
+    -> Internal
+}
+
+example "the handler must keep the room" {
+  given room = { capacity: 4, closed: false }
+  createBooking(body: { roomId: room.id, guests: 2 })
+    returns { guests: 2, status: .pending }
+    -> Internal
+}
+
+example "a result that keeps both promises passes" {
+  given room = { capacity: 4, closed: false }
+  createBooking(body: { roomId: room.id, guests: 2 })
+    returns { roomId: room.id, guests: 2, status: .pending }
+    -> ok
+}
+
+// --- payBooking: a declared error with a payload, and old ---
+
+example "paying the wrong amount is refused with the expected one" {
+  given booking = { total: 120.00 }
+  payBooking(id: booking.id, body: { amount: 100.00 }) -> AmountMismatch { expected: 120 }
+}
+
+example "an unknown booking is not found" {
+  given booking = absent
+  payBooking(body: { amount: 1.00 }) -> NotFound { resource: "booking" }
+}
+
+example "paying the total passes" {
+  given booking = { total: 120.00 }
+  payBooking(id: booking.id, body: { amount: 120.0 }) -> ok
+}
+
+example "the handler may not change the total" {
+  given booking = { total: 120.00 }
+  payBooking(id: booking.id, body: { amount: 120.00 })
+    returns { total: 99.00, status: .paid }
+    -> Internal
+}
+
+example "the handler must mark the booking paid" {
+  given booking = { total: 120.00 }
+  payBooking(id: booking.id, body: { amount: 120.00 })
+    returns { total: 120.00, status: .pending }
+    -> Internal
+}
+
+example "a paid booking with the same total passes" {
+  given booking = { total: 120.00 }
+  payBooking(id: booking.id, body: { amount: 120.00 })
+    returns { total: 120.0, status: .paid }
+    -> ok
+}

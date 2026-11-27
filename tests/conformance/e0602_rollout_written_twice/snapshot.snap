@@ -1,0 +1,24 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0602]: `@rollout` is written more than once
+ --> app/app.veld:7:3
+  |
+7 |   @rollout(audit)
+  |   ^^^^^^^^^^^^^^^
+
+error[E0602]: `@rollout` is written more than once
+ --> app/app.veld:14:5
+   |
+14 |     @rollout(audit)
+   |     ^^^^^^^^^^^^^^^
+
+error[E0602]: `@rollout` is written more than once
+ --> app/app.veld:17:5
+   |
+17 |     @rollout(audit)
+   |     ^^^^^^^^^^^^^^^
+
+== ir ==
+(no IR: compilation failed)

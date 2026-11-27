@@ -1,0 +1,13 @@
+event Paid { id: uuid }
+
+// An event is named only in `carries`, `on`, `emits` and `given event`.
+model Holder { paid: Paid }
+
+event Outer {
+  id: uuid
+  inner: Paid
+}
+
+service S at "/s" {
+  get "/p" p() -> Paid
+}

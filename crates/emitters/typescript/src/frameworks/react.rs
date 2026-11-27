@@ -5,8 +5,8 @@ use veld_codegen::{
 };
 
 use super::{
-    ClientModel, Flavor, PackageModel, framework_files, header, missing, write_clients_type,
-    write_hooks,
+    ClientModel, Flavor, PackageModel, RuntimeParts, framework_files, header, missing,
+    write_clients_type, write_hooks,
 };
 
 /// The framework id, as written in `veld.toml`.
@@ -14,6 +14,7 @@ pub const ID: &str = "react";
 
 const RUNTIME: &str = include_str!("../../runtime/react.ts");
 const STREAM_RUNTIME: &str = include_str!("../../runtime/react_stream.ts");
+const FORM_RUNTIME: &str = include_str!("../../runtime/react_form.ts");
 
 /// The `react` framework (React 18).
 #[derive(Debug, Clone, Copy)]
@@ -36,7 +37,12 @@ impl FrameworkAdapter<ClientModel> for React {
         if profile.framework() != Some(ID) {
             return Ok(FileSet::new());
         }
-        framework_files(ID, RUNTIME, STREAM_RUNTIME, model, package_source)
+        let parts = RuntimeParts {
+            runtime: RUNTIME,
+            stream: STREAM_RUNTIME,
+            form: FORM_RUNTIME,
+        };
+        framework_files(ID, &parts, model, package_source)
     }
 }
 
@@ -48,6 +54,7 @@ pub(super) const FLAVOR: Flavor = Flavor {
         "import type { ReactElement, ReactNode } from 'react';",
     ],
     query_request: |req| format!("{req} | null"),
+    form_types: "FormModel, FormRules",
 };
 
 fn package_source(pkg: &PackageModel, path: &str) -> String {

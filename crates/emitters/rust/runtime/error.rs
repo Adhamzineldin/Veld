@@ -32,7 +32,28 @@ pub struct Problem {
     pub data: Value,
     /// The payload's schema, when known: it gives `data` its canonical form.
     pub schema: Option<&'static Schema>,
+    // #if rules
+    /// The `violations` member and the local flag of a `ValidationError`; `None` for every other
+    /// problem (boxed so that `Error` stays small).
+    pub rulings: Option<Box<super::rules::Rulings>>,
+    // #endif
 }
+// #if rules
+
+impl Problem {
+    /// The rule violations of the problem document (empty without a `violations` member).
+    #[must_use]
+    pub fn violations(&self) -> &[super::rules::Violation] {
+        self.rulings.as_ref().map_or(&[][..], |r| r.violations.as_slice())
+    }
+
+    /// Whether the client raised this error itself, before sending anything.
+    #[must_use]
+    pub fn is_local(&self) -> bool {
+        self.rulings.as_ref().is_some_and(|r| r.local)
+    }
+}
+// #endif
 
 impl Problem {
     /// The problem as its JSON wire form.
@@ -47,6 +68,11 @@ impl Problem {
             self.op.clone().map_or(Value::Null, Value::String),
         );
         m.insert("data".into(), self.data.clone());
+        // #if rules
+        if !self.violations().is_empty() {
+            m.insert("violations".into(), Value::Array(self.violations().iter().map(super::rules::Violation::to_json).collect()));
+        }
+        // #endif
         Value::Object(m)
     }
 
@@ -56,6 +82,19 @@ impl Problem {
     #[must_use]
     pub fn to_text(&self) -> String {
         let text = |s: &str| serde_json::to_string(s).unwrap_or_else(|_| "\"\"".into());
+        // #if rules
+        if !self.violations().is_empty() {
+            return format!(
+                "{{\"type\":{},\"title\":{},\"status\":{},\"operation\":{},\"data\":{},\"violations\":{}}}",
+                text(&self.sig),
+                text(&self.title),
+                self.status,
+                self.op.as_deref().map_or_else(|| "null".to_string(), text),
+                self.data,
+                super::rules::violations_text(self.violations())
+            );
+        }
+        // #endif
         format!(
             "{{\"type\":{},\"title\":{},\"status\":{},\"operation\":{},\"data\":{}}}",
             text(&self.sig),
@@ -82,6 +121,15 @@ impl Problem {
             op: obj.get("operation").and_then(Value::as_str).map(str::to_string),
             data: obj.get("data").cloned().unwrap_or(Value::Null),
             schema: None,
+            // #if rules
+            rulings: super::rules::Rulings::boxed(
+                obj.get("violations")
+                    .and_then(Value::as_array)
+                    .map(|a| a.iter().filter_map(super::rules::Violation::from_json).collect())
+                    .unwrap_or_default(),
+                false,
+            ),
+            // #endif
         })
     }
 }
@@ -115,6 +163,9 @@ impl Error {
             op: None,
             data: value.to_wire(),
             schema: Some(E::schema()),
+            // #if rules
+            rulings: None,
+            // #endif
         })
     }
 
@@ -162,6 +213,24 @@ impl Error {
     pub fn is<E: DeclaredError>(&self) -> bool {
         E::matches(self)
     }
+    // #if rules
+
+    /// The rule violations of a `ValidationError` (empty for every other error, and for a
+    /// problem document without a `violations` member).
+    #[must_use]
+    pub fn violations(&self) -> &[super::rules::Violation] {
+        self.problem().map_or(&[][..], Problem::violations)
+    }
+
+    /// Whether the client raised this error itself, before sending anything.
+    #[must_use]
+    pub fn is_local(&self) -> bool {
+        match self {
+            Error::Problem(p) => p.is_local(),
+            Error::Invalid(_) | Error::Http { .. } | Error::Transport(_) | Error::Other(_) => false,
+        }
+    }
+    // #endif
 }
 
 impl fmt::Display for Error {

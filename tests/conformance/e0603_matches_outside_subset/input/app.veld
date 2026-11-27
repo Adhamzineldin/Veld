@@ -1,0 +1,6 @@
+model Pattern {
+  code: string
+  rule lookahead: matches(code, "(?=a)b")
+  rule backreference: matches(code, "(a)\\1")
+  rule fine: matches(code, "^[a-z]+$")
+}

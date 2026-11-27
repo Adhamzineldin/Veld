@@ -14,8 +14,29 @@ use serde_json::Value;
 use crate::fileset::FileSet;
 use crate::generator::{GenDiagnostic, Role};
 
-/// The option key of the framework version (`[targets.options] framework-version = "3"`).
+/// The option key of the framework version (`[server.options] framework-version = "3"`).
 pub const FRAMEWORK_VERSION_KEY: &str = "framework-version";
+
+/// The reserved option key that carries the target's name to a built-in generator
+/// ([`with_target_name`]). The core resolves it into [`Profile::target_name`] and strips it, so a
+/// generator's typed `Options` never sees it.
+pub const TARGET_NAME_KEY: &str = "target-name";
+
+/// `options` with the target's name added under [`TARGET_NAME_KEY`], for a built-in generator.
+/// `options` may be `Null` (no options). Anything else that is not an object is returned as it
+/// is, and the generator reports it as it always did.
+#[must_use]
+pub fn with_target_name(options: &Value, name: &str) -> Value {
+    let mut map = match options {
+        Value::Null => serde_json::Map::new(),
+        Value::Object(m) => m.clone(),
+        Value::Bool(_) | Value::Number(_) | Value::String(_) | Value::Array(_) => {
+            return options.clone();
+        }
+    };
+    map.insert(TARGET_NAME_KEY.to_string(), Value::String(name.to_string()));
+    Value::Object(map)
+}
 
 /// A language version as `major.minor`: `17`, `1.9`, or an ECMAScript edition (`es2022`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -154,6 +175,7 @@ pub struct Profile {
     language: Option<(String, LanguageVersion)>,
     framework: Option<String>,
     framework_version: Option<String>,
+    target_name: Option<String>,
 }
 
 /// What a generator offers, as the profile resolution needs it.
@@ -247,10 +269,12 @@ impl Profile {
                 ),
             ));
         }
+        let target_name = option_text(offer, options, TARGET_NAME_KEY)?.map(str::to_string);
         Ok(Self {
             language,
             framework: framework.map(str::to_string),
             framework_version,
+            target_name,
         })
     }
 
@@ -268,6 +292,13 @@ impl Profile {
     #[must_use]
     pub fn framework(&self) -> Option<&str> {
         self.framework.as_deref()
+    }
+
+    /// The name of the target being generated (`bookings`), when the core supplied it. It is
+    /// `None` for a plugin and for a caller that built the options by hand.
+    #[must_use]
+    pub fn target_name(&self) -> Option<&str> {
+        self.target_name.as_deref()
     }
 
     #[must_use]
@@ -390,6 +421,7 @@ pub fn strip_profile_keys(options: &Value, language: Option<&LanguageInfo>) -> V
     };
     let mut rest = map.clone();
     rest.remove(FRAMEWORK_VERSION_KEY);
+    rest.remove(TARGET_NAME_KEY);
     if let Some(l) = language {
         rest.remove(&l.id);
     }
@@ -496,6 +528,27 @@ mod tests {
         let err = resolve(Some("spring"), &Value::Null).unwrap_err();
         assert_eq!(err.code, "E0803");
         assert!(err.message.contains("java 21 or newer"), "{}", err.message);
+    }
+
+    #[test]
+    fn the_target_name_travels_in_the_options_and_is_stripped() {
+        let o = with_target_name(&json!({ "package": "a.b" }), "bookings");
+        assert_eq!(o, json!({ "package": "a.b", "target-name": "bookings" }));
+        assert_eq!(
+            with_target_name(&Value::Null, "web"),
+            json!({ "target-name": "web" })
+        );
+        assert_eq!(strip_profile_keys(&o, None), json!({ "package": "a.b" }));
+        let offer = Offer {
+            generator: "java",
+            role: Role::Server,
+            language: None,
+            frameworks: &[],
+        };
+        let p = Profile::resolve(&offer, None, &o).unwrap();
+        assert_eq!(p.target_name(), Some("bookings"));
+        let p = Profile::resolve(&offer, None, &Value::Null).unwrap();
+        assert_eq!(p.target_name(), None);
     }
 
     #[test]

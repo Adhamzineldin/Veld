@@ -1,0 +1,38 @@
+// The contract of the limit goldens (`spec/platform.md` section 5), compiled as the file `t.veld` of
+// the package `bookings`: one endpoint for each subject, and a limit that a service gives its
+// endpoints.
+
+model User {
+  id: uuid
+  tenantId?: uuid @tenant
+}
+
+principal User
+
+model Room {
+  id: uuid
+}
+
+@auth(bearer)
+service Rooms at "/rooms" {
+  @limit(10, per: minute, by: user)
+  get "/{id}" byUser(id: uuid) -> Room
+
+  @limit(100, per: hour, by: tenant)
+  get "/tenant" byTenant() -> Room[]
+
+  @limit(5, per: second, by: ip)
+  get "/ip" byIp() -> Room[]
+
+  @limit(1, per: day, by: ip)
+  post "/{id}/archive" archive(id: uuid) -> 204
+}
+
+@limit(20, per: minute, by: ip)
+@auth(none)
+service Public at "/public" {
+  get "/" listing() -> Room[]
+
+  @limit(2, per: second, by: ip)
+  get "/hot" hot() -> Room[]
+}

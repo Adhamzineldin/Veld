@@ -28,6 +28,13 @@ pub fn generate(files: &str, target: &str, project: Option<String>) -> String {
     json(&api::generate_json(files, target, project.as_deref()))
 }
 
+/// `resolveWorkspace(filesJson)` resolves the `veld.toml` files of a workspace (`path`, `text`)
+/// to the packages and targets, as a `WorkspaceResult` as JSON.
+#[wasm_bindgen(js_name = resolveWorkspace)]
+pub fn resolve_workspace(files: &str) -> String {
+    json(&api::workspace_json(files))
+}
+
 /// `format(text)` returns a `FormatResult` as JSON.
 #[wasm_bindgen(js_name = format)]
 pub fn format(text: &str) -> String {

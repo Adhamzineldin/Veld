@@ -1,0 +1,24 @@
+---
+source: crates/veld-compiler/tests/conformance.rs
+---
+== diagnostics ==
+error[E0005]: nesting is too deep (the limit is 32 levels)
+ --> app/app.veld:3:49
+  |
+3 |   rule parens: (((((((((((((((((((((((((((((((((a)))))))))))))))))))))))))))))))))
+  |                                                 ^
+
+error[E0005]: nesting is too deep (the limit is 32 levels)
+ --> app/app.veld:7:180
+  |
+7 |   rule chain: a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a || a
+  |                                                                                                                                                                                    ^
+
+error[E0005]: nesting is too deep (the limit is 32 levels)
+ --> app/app.veld:12:52
+   |
+12 |   rule negations: !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!a
+   |                                                    ^
+
+== ir ==
+(no IR: compilation failed)

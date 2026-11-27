@@ -143,7 +143,8 @@ final class ServerImpl implements OrdersService {
   }
 
   VeldHandler handler() {
-    VeldHandler core = OrdersHandler.create(this, hooks());
+    VeldHandler core = OrdersHandler.create(
+        this, hooks(), gen.a.runtimeconfig.GenARuntime.builder().iamUrl("http://127.0.0.1:1").build());
     return request -> {
       requests.incrementAndGet();
       return core.handle(request);
