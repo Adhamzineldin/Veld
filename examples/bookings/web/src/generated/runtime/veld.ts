@@ -2487,7 +2487,10 @@ export class ClientCore {
     this.baseUrl = base.replace(/\/+$/, '');
     const f = opts.fetch ?? (globalThis as { fetch?: FetchLike }).fetch;
     if (!f) throw new VeldTransportError('no fetch implementation: pass options.fetch');
-    this.doFetch = f;
+    // `window.fetch` is a branded method in browsers and throws when called
+    // without `window` as its receiver. Keep caller-supplied fetch functions
+    // unchanged, but bind the platform implementation before storing it.
+    this.doFetch = opts.fetch ?? f.bind(globalThis);
   }
 
   private check(ep: EndpointSpec, req: Record<string, unknown>): void {
