@@ -49,7 +49,8 @@ The runtime package is `<base>.runtime`. Packages named `adapters`, `clients`, `
 | Veld | Java | Wire |
 |---|---|---|
 | `string` | `String` | string |
-| `int` / `long` / `float` / `bool` | `int` / `long` / `double` / `boolean`; boxed when optional | number; **`long` is a decimal string** |
+| `int` / `float` / `bool` | `int` / `double` / `boolean`; boxed when optional | number |
+| `long` | `long`; boxed when optional | **decimal string** (lossless across JSON/JavaScript)
 | `decimal` | `java.math.BigDecimal` | string (text is significant: `1.50` is not `1.5`) |
 | `date` / `time` | `LocalDate` / `LocalTime` | string |
 | `datetime` | `Instant` | RFC 3339 string; any offset is accepted, canonical form is UTC |
@@ -63,6 +64,8 @@ The runtime package is `<base>.runtime`. Packages named `adapters`, `clients`, `
 | `union` | a `sealed interface` whose arms are the records of its member models; static `fromWire`/`toWire` use the discriminator | object with the discriminator field |
 
 Optional fields and absent optional parameters are `null` (boxed types for scalars). Schema defaults are applied when decoding and when computing canonical bytes. `readonly` fields are dropped from request bodies (a request that lacks a required one still decodes: `Wire.fillReadonly` gives the record a placeholder, which no code reads). Each declaration has a static `SCHEMA` (validation, defaults, canonical bytes), `codec()`, `fromWire(Json)` and `toWire()`, and `veldCanonical()`.
+
+`long` is intentionally not transported as a JSON number: JavaScript and JSON number consumers can round values above 2^53-1. Java application code uses a checked `long`, while the generated codec validates and writes its decimal-string wire form. `decimal` uses `BigDecimal` and its exact text is transported as a string. Models, enums and unions remain strongly typed generated declarations; `json` is the explicit untyped escape hatch.
 
 ## 3. Errors
 

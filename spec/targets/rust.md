@@ -58,7 +58,8 @@ Package, module and service names become snake_case module names (`.` and `/` be
 | Veld | Rust | Wire |
 |---|---|---|
 | `string` | `String` | string |
-| `int` / `long` / `float` / `bool` | `i32` / `i64` / `f64` / `bool` | number; **`long` is a decimal string** |
+| `int` / `float` / `bool` | `i32` / `f64` / `bool` | number |
+| `long` | `i64` | **decimal string** (lossless across JSON/JavaScript) |
 | `decimal` | `String` (the text is significant: `1.50` is not `1.5`) | string |
 | `date` / `time` / `datetime` / `uuid` | `String` (validated by the schema; canonical form is UTC `Z` / lower case) | string |
 | `bytes` | `Vec<u8>` | base64 string |
@@ -72,6 +73,8 @@ Package, module and service names become snake_case module names (`.` and `/` be
 | `const` | `pub const NAME: i32 = 50;` (strings as `&str`); constants of other types are `E0801` | n/a |
 
 `datetime`, `date`, `time`, `uuid` and `decimal` are `String` so that the generated crate needs no `chrono`, `time`, `uuid` or `decimal` dependency; the schema validates them and canonical bytes normalise them. Optional fields are `Option<T>` (absent on the wire, never `null`). A recursive reference is boxed. Defaults are applied by the schema when a value is decoded (`T::from_wire`, the server's binding, the client's response decoding) and when canonical bytes are computed; `readonly` fields are dropped from request bodies. A declaration named like an item of the standard prelude (`Option`, `Result`, `String`, ...) gets a trailing `_`. `#[deprecated]` is never emitted (the generated code itself uses every item); the deprecation is written into the docs.
+
+`long` is intentionally not transported as a JSON number: JavaScript and JSON number consumers can round values above 2^53-1. Rust application code uses checked `i64` arithmetic, while `to_wire`/`from_wire` convert it to and from a validated decimal-string wire form. `decimal` remains exact text, and `json` is the explicit untyped escape hatch.
 
 The *typed form* (what `serde` derives produce: `long` as a number, `bytes` as an array) and the *wire form* (what travels) differ only in those two scalars. `VeldDecl::to_wire` and `from_wire` convert, applying defaults; `serde_json::to_string(&value)` is the typed form, not the wire form.
 
