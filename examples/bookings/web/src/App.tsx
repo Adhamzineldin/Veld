@@ -51,6 +51,10 @@ export function App() {
 /** Everything a signed-in account sees. The caller comes from the server, typed as the contract's `User`. */
 function Session() {
   const me = useWhoAmI();
+  console.log(me);
+    if (me.error) {
+        console.error('WhoAmI error:', me.error, me.error.message, me.error.cause);
+    }
   const [stamp, setStamp] = useState(0); // a new booking: show the list again from the server
   if (me.error !== undefined && me.error !== null) {
     return (

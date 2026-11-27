@@ -238,7 +238,7 @@ const RE_DEC = /^(-?)(\d+)(?:\.(\d+))?$/;
 /** Parses a wire decimal (or a decimal literal). */
 export function dec(text: string | number): Decimal {
   const m = RE_DEC.exec(String(text));
-  if (m === null) throw new TypeError(`invalid decimal: ${String(text)}`);
+  if (m === null) throw new TypeError('invalid decimal');
   const frac = m[3] ?? '';
   return { n: BigInt(`${m[1] ?? ''}${m[2] ?? ''}${frac}`), s: frac.length };
 }
@@ -316,8 +316,8 @@ function daysFromCivil(year: number, m: number, d: number): number {
   return era * 146_097 + doe - 719_468;
 }
 
-function badInstant(kind: string, text: string): TypeError {
-  return new TypeError(`invalid ${kind}: ${text}`);
+function badInstant(kind: string, _text: string): TypeError {
+  return new TypeError(`invalid ${kind}`);
 }
 
 function dayNumber(s: string, kind: string): number {
